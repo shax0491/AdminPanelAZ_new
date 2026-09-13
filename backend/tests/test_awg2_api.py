@@ -289,7 +289,7 @@ def test_create_amneziawg2_health_probe_failure_409():
 def test_delete_amneziawg2_calls_replicate_and_awg2():
     db = _FakeDb()
     current_user = SimpleNamespace(id=1, username="admin", role=UserRole.admin)
-    config = SimpleNamespace(id=11, client_name="awg2user", vpn_type=VpnType.amneziawg2)
+    config = SimpleNamespace(id=11, node_id=1, client_name="awg2user", vpn_type=VpnType.amneziawg2)
     adapter = MagicMock()
 
     with (
@@ -310,6 +310,32 @@ def test_delete_amneziawg2_calls_replicate_and_awg2():
     adapter.awg2_delete_client.assert_called_once_with("awg2user")
     adapter.delete_wireguard_client.assert_not_called()
     replicate.assert_called_once()
+
+
+def test_delete_refuses_when_other_protocols_remain_for_same_client():
+    """client.sh has no per-protocol delete — option 2 removes OpenVPN + WireGuard +
+    AmneziaWG 1.5 + native AmneziaWG 2.0 for a name all at once. Deleting just the AWG2 row
+    while an OpenVPN row for the same client_name still exists must NOT silently kill the
+    OpenVPN client's access too."""
+    other_config = SimpleNamespace(id=12, node_id=1, client_name="awg2user", vpn_type=VpnType.openvpn)
+    db = _FakeDb(existing=other_config)
+    current_user = SimpleNamespace(id=1, username="admin", role=UserRole.admin)
+    config = SimpleNamespace(id=11, node_id=1, client_name="awg2user", vpn_type=VpnType.amneziawg2)
+    adapter = MagicMock()
+
+    with (
+        patch.object(configs_router, "_get_config_for_active_node", return_value=config),
+        patch.object(configs_router, "_can_mutate_config", return_value=True),
+        patch.object(configs_router, "require_ha_primary_for_client_ops"),
+        patch.object(configs_router, "get_active_adapter", return_value=adapter),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            configs_router.delete_config(11, SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")), db, current_user)
+
+    assert exc.value.status_code == 409
+    adapter.awg2_delete_client.assert_not_called()
+    adapter.delete_openvpn_client.assert_not_called()
+    adapter.delete_wireguard_client.assert_not_called()
 
 
 def test_get_obfuscation_ok():

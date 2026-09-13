@@ -110,7 +110,7 @@ def _run_single_op(
         elif operation == "renew_cert":
             if config.vpn_type != VpnType.openvpn:
                 return {"config_id": config_id, "ok": False, "error": "not openvpn"}
-            adapter.add_openvpn_client(name, renew_cert_days)
+            adapter.add_openvpn_client(name, renew_cert_days, force=True)
             recreate_openvpn_profiles_after_admin_change(
                 adapter,
                 client_names=[name],

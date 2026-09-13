@@ -111,8 +111,44 @@ class AntiZapretService:
             )
         return name
 
-    def add_openvpn_client(self, client_name: str, cert_expire_days: int = 3650) -> str:
+    def _client_already_provisioned(self, client_name: str) -> bool:
+        """True once client.sh's unified `addClient()` (option 1) has already run for this
+        name under ANY protocol.
+
+        client.sh has no per-protocol "add" anymore — option 1 always creates OpenVPN +
+        WireGuard + AmneziaWG 1.5 + native AmneziaWG 2.0 together. The WG/AWG2 halves of
+        that are idempotent (they detect an existing `# Client = name` block and just
+        reuse it), but `addOpenVPN()` is NOT: calling it again for a name whose cert
+        already exists drops into its "already exists" branch, which — since the panel
+        adds one protocol per API call and doesn't pass a cert-expire-days value past the
+        very first call — falls through to an interactive `read` for the expiry prompt.
+        That `read` hits closed stdin (EOF) under `set -e` and kills the whole script,
+        surfacing as "Client with that name already exists!" followed by a hard failure.
+        So every add-client call after the first for a given name must skip client.sh
+        entirely once any protocol already exists for it.
+        """
+        if (EASYRSA3_ROOT / "pki" / "issued" / f"{client_name}.crt").is_file():
+            return True
+        marker = f"# Client = {client_name}"
+        for interface in WIREGUARD_SERVER_INTERFACES:
+            path = WIREGUARD_SERVER_CONFIG_DIR / f"{interface}.conf"
+            if path.is_file() and marker in path.read_text(encoding="utf-8", errors="replace"):
+                return True
+        for _tunnel, (server_conf, _subdir) in NATIVE_AWG2_TUNNELS.items():
+            if server_conf.is_file() and marker in server_conf.read_text(encoding="utf-8", errors="replace"):
+                return True
+        return False
+
+    def add_openvpn_client(
+        self, client_name: str, cert_expire_days: int = 3650, *, force: bool = False
+    ) -> str:
+        # `force` bypasses the idempotency guard for the OpenVPN certificate *renewal* path
+        # (client.sh's addOpenVPN "already exists" branch re-signs with a new expiry when a
+        # valid CLIENT_CERT_EXPIRE is passed) — the only case where re-hitting client.sh for
+        # an already-provisioned name is both intentional and safe.
         self.validate_client_name(client_name)
+        if not force and self._client_already_provisioned(client_name):
+            return f"Клиент '{client_name}' уже существует на сервере — профиль OpenVPN уже создан"
         return self._run_client_script("1", client_name, str(cert_expire_days))
 
     def delete_openvpn_client(self, client_name: str) -> str:
@@ -126,9 +162,11 @@ class AntiZapretService:
     def add_wireguard_client(self, client_name: str) -> str:
         # client.sh no longer has a protocol-specific "add wireguard" option: option 1 is a
         # single unified add that creates OpenVPN + WireGuard + AmneziaWG 1.5 + AmneziaWG 2.0
-        # profiles together (idempotent — reuses existing keys/peers for a name that already
-        # has some of those profiles). See _run_client_script docstring notes below.
+        # profiles together. See _client_already_provisioned for why a second call for the
+        # same name must not reach client.sh again.
         self.validate_client_name(client_name)
+        if self._client_already_provisioned(client_name):
+            return f"Клиент '{client_name}' уже существует на сервере — профиль WireGuard/AmneziaWG уже создан"
         return self._run_client_script("1", client_name)
 
     def delete_wireguard_client(self, client_name: str) -> str:
@@ -148,6 +186,13 @@ class AntiZapretService:
         obfuscation params always match the live server interface and MTU is forced to 1280.
         """
         self.validate_client_name(client_name)
+        if self._client_already_provisioned(client_name):
+            # Still (re)sync obfuscation/MTU even when skipping client.sh — e.g. the client
+            # was created via WireGuard/OpenVPN first and this is the first AWG2-specific
+            # call for it, so its *-am2.conf already exists from that unified add but may
+            # not have gone through the override pass yet.
+            self._apply_native_awg2_overrides(client_name)
+            return f"Клиент '{client_name}' уже существует на сервере — профиль AmneziaWG 2.0 уже создан"
         output = self._run_client_script("1", client_name)
         self._apply_native_awg2_overrides(client_name)
         return output

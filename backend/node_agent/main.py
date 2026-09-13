@@ -131,6 +131,7 @@ class ConfigContent(BaseModel):
 class OpenVpnClientRequest(BaseModel):
     client_name: str = Field(min_length=1, max_length=32)
     cert_expire_days: int = Field(default=3650, ge=1, le=3650)
+    force: bool = False
 
 
 class WireGuardClientRequest(BaseModel):
@@ -303,7 +304,7 @@ def list_openvpn(_: None = Depends(verify_api_key)):
 
 @app.post("/clients/openvpn")
 def add_openvpn(payload: OpenVpnClientRequest, _: None = Depends(verify_api_key)):
-    output = service.add_openvpn_client(payload.client_name, payload.cert_expire_days)
+    output = service.add_openvpn_client(payload.client_name, payload.cert_expire_days, force=payload.force)
     return {"message": "OpenVPN клиент создан", "detail": output}
 
 

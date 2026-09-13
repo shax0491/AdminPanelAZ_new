@@ -44,7 +44,9 @@ class NodeAdapter(ABC):
     def health_check(self) -> dict[str, Any]: ...
 
     @abstractmethod
-    def add_openvpn_client(self, client_name: str, cert_expire_days: int = 3650) -> str: ...
+    def add_openvpn_client(
+        self, client_name: str, cert_expire_days: int = 3650, *, force: bool = False
+    ) -> str: ...
 
     @abstractmethod
     def delete_openvpn_client(self, client_name: str) -> str: ...
@@ -427,8 +429,10 @@ class LocalNodeAdapter(NodeAdapter):
     def health_check(self) -> dict[str, Any]:
         return build_health_payload(self._service, agent_version=NODE_AGENT_VERSION, listen_tls=False)
 
-    def add_openvpn_client(self, client_name: str, cert_expire_days: int = 3650) -> str:
-        return self._service.add_openvpn_client(client_name, cert_expire_days)
+    def add_openvpn_client(
+        self, client_name: str, cert_expire_days: int = 3650, *, force: bool = False
+    ) -> str:
+        return self._service.add_openvpn_client(client_name, cert_expire_days, force=force)
 
     def delete_openvpn_client(self, client_name: str) -> str:
         return self._service.delete_openvpn_client(client_name)
@@ -1095,11 +1099,13 @@ class RemoteNodeAdapter(NodeAdapter):
     def health_check(self) -> dict[str, Any]:
         return self._request("GET", "/health", timeout=10.0)
 
-    def add_openvpn_client(self, client_name: str, cert_expire_days: int = 3650) -> str:
+    def add_openvpn_client(
+        self, client_name: str, cert_expire_days: int = 3650, *, force: bool = False
+    ) -> str:
         data = self._request(
             "POST",
             "/clients/openvpn",
-            json={"client_name": client_name, "cert_expire_days": cert_expire_days},
+            json={"client_name": client_name, "cert_expire_days": cert_expire_days, "force": force},
         )
         return data.get("message", "ok")
 
