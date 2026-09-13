@@ -2,26 +2,22 @@ import { Activity, Network, Shield, Users } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import MetricCard from '@/components/noc/MetricCard'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { Awg2HealthResponse, Awg2StatusResponse } from '@/types'
-import { formatAwg2ClientCount, formatAwg2IfacePort } from './utils'
+import type { Awg2HealthResponse, Awg2MonitoringResponse } from '@/types'
+import { formatAwg2IfacePeers, formatAwg2OnlineCount } from './utils'
 
 interface Awg2OverviewCardsProps {
   health: Awg2HealthResponse | null
-  status: Awg2StatusResponse | null
+  monitoring: Awg2MonitoringResponse | null
   loading?: boolean
 }
 
 export default function Awg2OverviewCards({
   health,
-  status,
+  monitoring,
   loading = false,
 }: Awg2OverviewCardsProps) {
-  const env = status?.services_env
-  const azIfacePort = formatAwg2IfacePort(env?.AZ_IFACE, env?.AZ_PORT)
-  const vpnIfacePort = formatAwg2IfacePort(env?.VPN_IFACE, env?.VPN_PORT)
   const missingCount = health?.missing_components?.length ?? 0
-  const azSubnet = env?.AZ_SUBNET?.trim() || null
-  const vpnSubnet = env?.VPN_SUBNET?.trim() || null
+  const total = monitoring?.clients.length ?? 0
 
   if (loading && !health) {
     return (
@@ -43,8 +39,8 @@ export default function Awg2OverviewCards({
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <MetricCard
         label="Состояние"
-        value={!health ? '—' : health.installed ? 'Установлен' : 'Не установлен'}
-        sub={missingCount > 0 ? `${missingCount} компонентов` : azSubnet || vpnSubnet || 'слой AWG2'}
+        value={!health ? '—' : health.installed ? 'Готов' : 'Не готов'}
+        sub={missingCount > 0 ? `${missingCount} компонентов` : 'нативный awg'}
         icon={Activity}
         accent={health?.installed ? 'green' : health ? 'amber' : 'default'}
       />
@@ -54,8 +50,8 @@ export default function Awg2OverviewCards({
         title="Открыть Клиенты"
       >
         <MetricCard
-          label="Клиенты"
-          value={formatAwg2ClientCount(status)}
+          label="Онлайн / всего"
+          value={`${formatAwg2OnlineCount(monitoring)} / ${total || '—'}`}
           sub="Клиенты → AmneziaWG 2.0"
           icon={Users}
           accent="cyan"
@@ -63,15 +59,15 @@ export default function Awg2OverviewCards({
       </Link>
       <MetricCard
         label="AntiZapret"
-        value={azIfacePort}
-        sub={azSubnet || 'iface · port'}
+        value={formatAwg2IfacePeers(monitoring, 'antizapret')}
+        sub="antizapret2 (10.29.9.0/24)"
         icon={Shield}
         accent="amber"
       />
       <MetricCard
         label="VPN"
-        value={vpnIfacePort}
-        sub={vpnSubnet || 'iface · port'}
+        value={formatAwg2IfacePeers(monitoring, 'vpn')}
+        sub="vpn2"
         icon={Network}
       />
     </div>

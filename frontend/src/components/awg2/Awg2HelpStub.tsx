@@ -1,14 +1,6 @@
 import { Info } from 'lucide-react'
-import type { Awg2HealthResponse } from '@/types'
-import { AWG2_INSTALL_CMD } from './utils'
 
-interface Awg2HelpStubProps {
-  health: Awg2HealthResponse | null
-}
-
-export default function Awg2HelpStub({ health }: Awg2HelpStubProps) {
-  const updateCmd = health?.update_command?.trim() || `${AWG2_INSTALL_CMD} --update`
-
+export default function Awg2HelpStub() {
   return (
     <div className="space-y-4 rounded-xl border bg-card/50 p-5">
       <div className="flex items-start gap-3">
@@ -18,70 +10,47 @@ export default function Awg2HelpStub({ health }: Awg2HelpStubProps) {
         <div className="min-w-0 space-y-2 text-sm">
           <h2 className="text-base font-semibold tracking-tight">Справка</h2>
           <p className="text-muted-foreground">
-            AZ-AWG2 — параллельный слой AmneziaWG 2.0 (az-awg2) поверх AntiZapret.
-            Штатные WireGuard и стоковый AmneziaWG не затрагиваются.
+            Нативный AmneziaWG 2.0 — второй туннель поверх AntiZapret, встроенный прямо в{' '}
+            <code className="text-xs">setup.sh</code> (собирается вместе с остальным VPN, отдельно
+            ничего ставить не нужно). Штатные OpenVPN и WireGuard/AmneziaWG 1.5 не затрагиваются.
           </p>
           <div className="space-y-1.5 text-muted-foreground">
             <p>
-              <span className="font-medium text-foreground">Vs стоковый AmneziaWG:</span> отдельный
-              overlay (`/opt/antizapret-awg`), тип конфига <code className="text-xs">amneziawg2</code>,
-              своя вкладка на Dashboard и клиенты через <code className="text-xs">awg-client</code>.
-              Вкладка «AmneziaWG» в Клиентах остаётся для стока AntiZapret.
+              <span className="font-medium text-foreground">Клиенты:</span> создание, скачивание и
+              блокировка — на странице{' '}
+              <strong className="text-foreground">Клиенты</strong> (галочка «AmneziaWG 2.0»).
+              Отдельной вкладки клиентов на <code className="text-xs">/awg2</code> нет — здесь только
+              статус и живой мониторинг пиров.
             </p>
             <p>
-              <span className="font-medium text-foreground">Vs AZ-WARP:</span> WARP точечно гонит
-              выбранные домены через Cloudflare. AZ-AWG2 выдаёт полноценные VPN-профили (оба
-              туннеля: AntiZapret и полный VPN) для клиентов AmneziaWG 2.0.
+              <span className="font-medium text-foreground">Обфускация (Jc/Jmin/Jmax/S1-S4/H1-H4):</span>{' '}
+              задаётся один раз при установке <code className="text-xs">setup.sh</code> и читается
+              с живого серверного интерфейса при каждой генерации клиента — панель не меняет её на
+              лету, поскольку это потребовало бы перезапуска интерфейса и разрыва уже подключённых
+              клиентов.
             </p>
             <p>
-              <span className="font-medium text-foreground">HA:</span> репликация клиентов AWG2 на
-              replica поддерживается. Если на replica не установлен слой AZ-AWG2, sync завершится
-              ошибкой и вернёт команду установки для этого узла. <code className="text-xs">stats.db</code>{' '}
-              в HA-архив не входит (локальная статистика узла).
+              <span className="font-medium text-foreground">MTU:</span> клиентские профили AmneziaWG 2.0
+              всегда получают <code className="text-xs">MTU = 1280</code> — минимум, гарантированно
+              проходящий через мобильные сети и CGNAT.
             </p>
             <p>
-              <span className="font-medium text-foreground">Клиенты:</span> создание, скачивание, блокировки
-              и TTL — на странице{' '}
-              <strong className="text-foreground">Клиенты</strong> (вкладка AmneziaWG 2.0). Отдельной
-              вкладки клиентов на `/awg2` нет.
+              <span className="font-medium text-foreground">Статистика:</span> живые пиры (эта
+              страница, «Мониторинг») читаются напрямую из{' '}
+              <code className="text-xs">awg show &lt;iface&gt; dump</code>; накопленный RX/TX и лимиты
+              — в <strong className="text-foreground">Мониторинг трафика</strong> (протокол AmneziaWG 2.0).
             </p>
             <p>
-              <span className="font-medium text-foreground">Обфускация:</span> вкладка меняет preset /
-              template через <code className="text-xs">awg-obfuscation</code>; после apply переимпортируйте
-              клиентские профили.
+              <span className="font-medium text-foreground">HA:</span> при репликации на replica-узел
+              копируются серверные конфиги, ключ и архив клиентских профилей, затем применяется{' '}
+              <code className="text-xs">awg syncconf</code> (только диф пиров, без перезапуска
+              интерфейса).
             </p>
             <p>
-              <span className="font-medium text-foreground">Статистика:</span> live-пиры AWG 2.0 — в{' '}
-              <strong className="text-foreground">NOC Мониторинг</strong>; накопленный RX/TX и лимиты — в{' '}
-              <strong className="text-foreground">Мониторинг трафика</strong> (протокол AWG 2.0).
+              <span className="font-medium text-foreground">Установка/переустановка:</span> выполняется
+              только через <code className="text-xs">setup.sh</code> по SSH на сервере — из панели
+              недоступна, поскольку это часть базового VPN-стека, а не отдельный компонент.
             </p>
-            <p>
-              <span className="font-medium text-foreground">TTL клиентов:</span> для профилей{' '}
-              <code className="text-xs">amneziawg2</code> можно задать автоистечение при создании на
-              Клиентах: нет / 30m / 2h / 6h / 7d.
-            </p>
-            <p>
-              <span className="font-medium text-foreground">Backup:</span> вкладка «Бэкап» делает узкий
-              экспорт/restore только слоя AZ-AWG2. Это не замена полному <code className="text-xs">awg-backup</code>,
-              backup AntiZapret или backup панели.
-            </p>
-          </div>
-          <p className="text-muted-foreground">
-            Вкладки: обфускация, бэкап, справка. Если слой не установлен на текущем узле или на
-            HA replica, сначала выполните установку по SSH либо запустите install.sh из панели. install-base и
-            возможная перезагрузка остаются только в SSH.
-          </p>
-          <div>
-            <p className="mb-1.5 text-xs font-medium text-muted-foreground">Установка:</p>
-            <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-3 font-mono text-xs">
-              {health?.install_command?.trim() || AWG2_INSTALL_CMD}
-            </pre>
-          </div>
-          <div>
-            <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-              Обновление слоя (без смены обфускации):
-            </p>
-            <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-3 font-mono text-xs">{updateCmd}</pre>
           </div>
         </div>
       </div>

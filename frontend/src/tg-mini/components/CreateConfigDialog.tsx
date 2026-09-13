@@ -13,13 +13,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   createTgPanelConfig,
   getTgPanelUsers,
   setTgClientAccessUntil,
@@ -27,7 +20,6 @@ import {
   tgOpenvpnSetTrafficLimit,
   tgWgSetTrafficLimit,
 } from '@/tg-mini/api'
-import { AWG2_TTL_OPTIONS } from '@/components/awg2/utils'
 import { cn } from '@/lib/utils'
 import type { SelfServiceQuota, User, VpnType } from '@/types'
 
@@ -94,7 +86,6 @@ export default function CreateConfigDialog({
   const [description, setDescription] = useState('')
   const [selectedProtocols, setSelectedProtocols] = useState<VpnType[]>([])
   const [certDays, setCertDays] = useState('3650')
-  const [ttl, setTtl] = useState<string>('none')
   const [accessUntilDate, setAccessUntilDate] = useState('')
   const [ownerId, setOwnerId] = useState<number | null>(currentUserId ?? null)
   const [users, setUsers] = useState<User[]>([])
@@ -108,7 +99,6 @@ export default function CreateConfigDialog({
   useEffect(() => {
     if (!open) return
     setSelectedProtocols(availableProtocols)
-    setTtl('none')
     setAccessUntilDate('')
     setOwnerId(currentUserId ?? null)
     setTrafficLimitEnabled(false)
@@ -130,7 +120,6 @@ export default function CreateConfigDialog({
     setDescription('')
     setSelectedProtocols(availableProtocols)
     setCertDays('3650')
-    setTtl('none')
     setAccessUntilDate('')
     setOwnerId(currentUserId ?? null)
     setTrafficLimitEnabled(false)
@@ -245,7 +234,6 @@ export default function CreateConfigDialog({
             cert_expire_days: vpnType === 'openvpn' ? parsedCertDays : undefined,
             description: description.trim() || undefined,
             owner_id: isAdmin && ownerId ? ownerId : undefined,
-            ttl: vpnType === 'amneziawg2' && ttl !== 'none' ? ttl : undefined,
           })
           created.push(vpnType)
           const nextAccessErr = await applyAccessUntilAfterCreate(
@@ -376,24 +364,6 @@ export default function CreateConfigDialog({
                   onChange={(e) => setCertDays(e.target.value)}
                   disabled={busy || quotaReached}
                 />
-              </div>
-            )}
-
-            {selectedProtocols.includes('amneziawg2') && (
-              <div className="space-y-2">
-                <Label htmlFor="tg-mini-awg2-ttl">TTL AWG 2.0</Label>
-                <Select value={ttl} onValueChange={setTtl} disabled={busy || quotaReached}>
-                  <SelectTrigger id="tg-mini-awg2-ttl">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="z-[100]">
-                    {AWG2_TTL_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
             )}
 

@@ -1,25 +1,20 @@
-import { Download, Eye, Shield } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { getAwg2Health, getAwg2Status } from '@/api/client'
+import { CloudOff } from 'lucide-react'
+import { getAwg2Health, getAwg2Monitoring } from '@/api/client'
+import Awg2ClientsTable from '@/components/awg2/Awg2ClientsTable'
+import Awg2HelpStub from '@/components/awg2/Awg2HelpStub'
 import Awg2Hero from '@/components/awg2/Awg2Hero'
 import Awg2OverviewCards from '@/components/awg2/Awg2OverviewCards'
-import BackupTab from '@/components/awg2/BackupTab'
-import Awg2HelpStub from '@/components/awg2/Awg2HelpStub'
-import Awg2InstallPrompt from '@/components/awg2/Awg2InstallPrompt'
-import ObfuscationTab from '@/components/awg2/ObfuscationTab'
-import { formatAwg2NodeLabel, type Awg2Tab } from '@/components/awg2/utils'
+import { formatAwg2NodeLabel } from '@/components/awg2/utils'
+import EmptyState from '@/components/ui/EmptyState'
 import SettingsAlert from '@/components/settings/SettingsAlert'
-import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useNode } from '@/context/NodeContext'
-import type { Awg2HealthResponse, Awg2StatusResponse } from '@/types'
+import type { Awg2HealthResponse, Awg2MonitoringResponse } from '@/types'
 
 export default function Awg2Page() {
   const { activeNode } = useNode()
-  const [tab, setTab] = useState<Awg2Tab>('obfuscation')
   const [health, setHealth] = useState<Awg2HealthResponse | null>(null)
-  const [status, setStatus] = useState<Awg2StatusResponse | null>(null)
+  const [monitoring, setMonitoring] = useState<Awg2MonitoringResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -30,15 +25,15 @@ export default function Awg2Page() {
       const healthData = await getAwg2Health()
       setHealth(healthData)
       if (healthData.installed) {
-        const statusData = await getAwg2Status().catch(() => null)
-        setStatus(statusData)
+        const monitoringData = await getAwg2Monitoring().catch(() => null)
+        setMonitoring(monitoringData)
       } else {
-        setStatus(null)
+        setMonitoring(null)
       }
     } catch (err) {
       setHealth(null)
-      setStatus(null)
-      setLoadError(err instanceof Error ? err.message : 'Не удалось загрузить AZ-AWG2')
+      setMonitoring(null)
+      setLoadError(err instanceof Error ? err.message : 'Не удалось загрузить AmneziaWG 2.0')
     } finally {
       setLoading(false)
     }
@@ -53,13 +48,7 @@ export default function Awg2Page() {
 
   return (
     <div className="space-y-6">
-      <Awg2Hero
-        health={health}
-        loading={loading}
-        nodeLabel={nodeLabel}
-        onRefresh={() => void load()}
-        onUpdated={() => void load()}
-      />
+      <Awg2Hero health={health} loading={loading} nodeLabel={nodeLabel} onRefresh={() => void load()} />
 
       {loadError && (
         <SettingsAlert variant="danger" title="Ошибка загрузки">
@@ -67,57 +56,21 @@ export default function Awg2Page() {
         </SettingsAlert>
       )}
 
-      {ready && (
-        <SettingsAlert variant="info" title="Данные активного узла">
-          Слой AmneziaWG 2.0 управляется на{' '}
-          <strong>{activeNode?.name ?? nodeLabel}</strong>
-          {activeNode?.is_local ? ' (локальный controller)' : ' (удалённый node agent)'}.
-          Клиенты — на странице{' '}
-          <Link to="/" className="font-medium text-foreground underline-offset-2 hover:underline">
-            Клиенты
-          </Link>{' '}
-          (вкладка AmneziaWG 2.0). install-base и перезагрузка — только по SSH.
-        </SettingsAlert>
-      )}
-
-      {ready && <Awg2OverviewCards health={health} status={status} loading={loading} />}
+      {ready && <Awg2OverviewCards health={health} monitoring={monitoring} loading={loading} />}
 
       {ready ? (
-        <Tabs value={tab} onValueChange={(v) => setTab(v as Awg2Tab)} className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TabsList className="flex h-auto w-full flex-wrap gap-1 bg-muted/50 p-1 sm:inline-flex sm:w-auto">
-              <TabsTrigger value="obfuscation" className="gap-1.5">
-                <Eye className="h-4 w-4" />
-                Обфускация
-              </TabsTrigger>
-              <TabsTrigger value="backup" className="gap-1.5">
-                <Download className="h-4 w-4" />
-                Бэкап
-              </TabsTrigger>
-              <TabsTrigger value="help" className="gap-1.5">
-                <Shield className="h-4 w-4" />
-                Справка
-              </TabsTrigger>
-            </TabsList>
-            <Button asChild variant="outline" size="sm">
-              <Link to="/">Клиенты · AmneziaWG 2.0</Link>
-            </Button>
-          </div>
-
-          <TabsContent value="obfuscation" className="mt-0 focus-visible:outline-none">
-            <ObfuscationTab health={health} />
-          </TabsContent>
-
-          <TabsContent value="backup" className="mt-0 focus-visible:outline-none">
-            <BackupTab />
-          </TabsContent>
-
-          <TabsContent value="help" className="mt-0 focus-visible:outline-none">
-            <Awg2HelpStub health={health} />
-          </TabsContent>
-        </Tabs>
+        <div className="space-y-4">
+          <Awg2ClientsTable monitoring={monitoring} />
+          <Awg2HelpStub />
+        </div>
       ) : !loading ? (
-        <Awg2InstallPrompt health={health} activeNode={activeNode} onInstalled={() => void load()} />
+        <div className="rounded-xl border bg-card/50 p-6">
+          <EmptyState
+            icon={CloudOff}
+            title="Нативный AmneziaWG 2.0 не найден"
+            description={`На узле ${nodeLabel} не найден бинарь awg. Пересоберите его через setup.sh (amneziawg-go + amneziawg-tools) по SSH — из панели это недоступно, поскольку это часть базового VPN-стека.`}
+          />
+        </div>
       ) : null}
     </div>
   )

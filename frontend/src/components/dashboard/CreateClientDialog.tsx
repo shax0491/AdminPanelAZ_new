@@ -8,7 +8,6 @@ import {
   setClientAccessUntil,
   wgSetTrafficLimit,
 } from '@/api/client'
-import { AWG2_TTL_OPTIONS } from '@/components/awg2/utils'
 import ConfigOwnerSelect from '@/components/dashboard/ConfigOwnerSelect'
 import { Button } from '@/components/ui/button'
 import {
@@ -23,13 +22,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import DatePickerField from '@/components/ui/DatePickerField'
 import { panelToday } from '@/lib/trafficPeriod'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type { User, VpnType } from '@/types'
 
@@ -120,7 +112,6 @@ export default function CreateClientDialog({
   const [description, setDescription] = useState('')
   const [selectedProtocols, setSelectedProtocols] = useState<VpnType[]>([])
   const [certDays, setCertDays] = useState(3650)
-  const [awg2Ttl, setAwg2Ttl] = useState('none')
   const [accessUntilDate, setAccessUntilDate] = useState('')
   const [ownerId, setOwnerId] = useState<number | null>(currentUserId ?? null)
   const [trafficLimitEnabled, setTrafficLimitEnabled] = useState(false)
@@ -140,7 +131,6 @@ export default function CreateClientDialog({
     setDescription('')
     setSelectedProtocols(availableProtocols)
     setCertDays(3650)
-    setAwg2Ttl('none')
     setAccessUntilDate('')
     setOwnerId(currentUserId ?? null)
     setTrafficLimitEnabled(false)
@@ -258,7 +248,6 @@ export default function CreateClientDialog({
               client_name: trimmedName,
               vpn_type: vpnType,
               cert_expire_days: vpnType === 'openvpn' ? certDays : undefined,
-              ttl: vpnType === 'amneziawg2' && awg2Ttl !== 'none' ? awg2Ttl : undefined,
               description: description || undefined,
               owner_id: isAdmin && ownerId ? ownerId : undefined,
             })
@@ -321,7 +310,6 @@ export default function CreateClientDialog({
   const fieldClass = 'h-10 text-sm lg:h-11 lg:text-base xl:h-12 xl:text-base'
   const hintClass = 'text-xs text-muted-foreground lg:text-sm'
   const showOpenVpnOpts = selectedProtocols.includes('openvpn')
-  const showAwg2Opts = selectedProtocols.includes('amneziawg2')
 
   return (
     <Dialog
@@ -409,49 +397,23 @@ export default function CreateClientDialog({
               )}
             </div>
 
-            {(showOpenVpnOpts || showAwg2Opts) && (
-              <div
-                className={cn(
-                  'grid gap-4',
-                  showOpenVpnOpts && showAwg2Opts ? 'md:grid-cols-2' : 'grid-cols-1',
-                )}
-              >
-                {showOpenVpnOpts && (
-                  <div className="space-y-2">
-                    <Label htmlFor="createCertDays" className="lg:text-base">
-                      Срок сертификата OpenVPN (дней)
-                    </Label>
-                    <Input
-                      id="createCertDays"
-                      className={fieldClass}
-                      type="number"
-                      min={1}
-                      max={3650}
-                      value={certDays}
-                      onChange={(e) => setCertDays(Number(e.target.value))}
-                      disabled={submitting}
-                    />
-                  </div>
-                )}
-                {showAwg2Opts && (
-                  <div className="space-y-2">
-                    <Label htmlFor="createAwg2Ttl" className="lg:text-base">
-                      TTL AmneziaWG 2.0
-                    </Label>
-                    <Select value={awg2Ttl} onValueChange={setAwg2Ttl} disabled={submitting}>
-                      <SelectTrigger id="createAwg2Ttl" className={fieldClass}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {AWG2_TTL_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+            {showOpenVpnOpts && (
+              <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="createCertDays" className="lg:text-base">
+                    Срок сертификата OpenVPN (дней)
+                  </Label>
+                  <Input
+                    id="createCertDays"
+                    className={fieldClass}
+                    type="number"
+                    min={1}
+                    max={3650}
+                    value={certDays}
+                    onChange={(e) => setCertDays(Number(e.target.value))}
+                    disabled={submitting}
+                  />
+                </div>
               </div>
             )}
 

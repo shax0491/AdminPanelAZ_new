@@ -1892,72 +1892,9 @@ export interface WarperHealthResponse {
 
 export interface Awg2HealthResponse {
   installed: boolean
-  awg_client?: boolean
-  overlay_dir?: boolean
-  amnezia_dir?: boolean
+  awg_binary?: boolean
+  server_dir?: boolean
   missing_components?: string[]
-  install_command?: string
-  update_command?: string
-  node_id?: number | null
-  node_name?: string | null
-  node_host?: string | null
-}
-
-export type Awg2InstallStreamEvent =
-  | {
-      event: 'start'
-      mode: 'install' | 'update'
-      argv?: string[]
-      mtu?: number | null
-    }
-  | {
-      event: 'log'
-      line?: string
-    }
-  | {
-      event: 'done'
-      return_code?: number | null
-      success: boolean
-    }
-  | {
-      event: 'error'
-      detail?: string
-    }
-
-export interface Awg2StatusResponse {
-  installed: boolean
-  services_env?: {
-    AZ_IFACE?: string | null
-    VPN_IFACE?: string | null
-    AZ_PORT?: string | null
-    VPN_PORT?: string | null
-    AZ_SUBNET?: string | null
-    VPN_SUBNET?: string | null
-  }
-  client_counts?: {
-    antizapret?: number
-    vpn?: number
-  }
-  node_id?: number | null
-  node_name?: string | null
-  node_host?: string | null
-}
-
-export interface Awg2ObfuscationResponse {
-  preset?: string | null
-  template?: string | null
-  mtu?: number | string | null
-  host?: string | null
-  fp?: string | null
-  generated?: string | null
-  params?: Record<string, string>
-  reimport_required?: boolean
-  ha?: {
-    attempted?: boolean
-    errors?: Array<{ node_name?: string | null; error?: string | null }>
-  }
-  output?: string
-  regen_all?: string
   node_id?: number | null
   node_name?: string | null
   node_host?: string | null
@@ -2006,18 +1943,6 @@ export interface Awg2ClientStats {
   tx_life?: number | null
   daily: Awg2ClientStatsDailyRow[]
   geo: Awg2ClientStatsGeo | null
-}
-
-export interface Awg2RestoreResponse {
-  message: string
-  runtime?: Record<string, unknown>
-  ha?: {
-    attempted?: boolean
-    errors?: Array<{ node_name?: string | null; error?: string | null }>
-  }
-  node_id?: number | null
-  node_name?: string | null
-  node_host?: string | null
 }
 
 export interface WarperStatusResponse {

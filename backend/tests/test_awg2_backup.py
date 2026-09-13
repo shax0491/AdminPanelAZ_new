@@ -1,13 +1,8 @@
-import asyncio
 import io
 import tarfile
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from fastapi import HTTPException, UploadFile, status
-
-from app.routers import awg2 as awg2_router
 from app.services import awg2
 
 
@@ -37,13 +32,6 @@ def _seed_awg2_tree(tmp_path: Path, *, with_expiry: bool = True) -> None:
     (tmp_path / "amnezia" / "__pycache__" / "ignored.pyc").write_bytes(b"compiled")
     (tmp_path / "overlay" / "openvpn").mkdir(parents=True)
     (tmp_path / "overlay" / "openvpn" / "server.conf").write_text("ovpn", encoding="utf-8")
-
-
-async def _read_streaming_response(response) -> bytes:
-    chunks: list[bytes] = []
-    async for chunk in response.body_iterator:
-        chunks.append(chunk)
-    return b"".join(chunks)
 
 
 def test_export_narrow_backup_contains_only_expected_members(tmp_path: Path):
@@ -221,6 +209,7 @@ def test_import_narrow_backup_replaces_trees_and_clears_missing_expiry(tmp_path:
         patch.object(awg2, "AWG2_CLIENT_DIR", tmp_path / "overlay" / "clients"),
         patch.object(awg2, "AWG2_AMNEZIA_DIR", tmp_path / "amnezia"),
         patch.object(awg2, "AWG2_EXPIRY_TSV", tmp_path / "overlay" / "expiry.tsv"),
+        patch("app.routers.awg2._ha_sync_awg2_from_active") as ha_mock,
     ):
         service = awg2.Awg2Service()
         service.import_narrow_backup(buffer.getvalue())
@@ -233,67 +222,5 @@ def test_import_narrow_backup_replaces_trees_and_clears_missing_expiry(tmp_path:
         "[Interface]\nAddress = 10.0.0.2/32\n"
     )
     assert not (tmp_path / "overlay" / "expiry.tsv").exists()
-
-
-def test_awg2_backup_route_streams_archive():
-    adapter = MagicMock()
-    adapter.export_awg2_backup.return_value = b"archive-bytes"
-
-    with patch.object(awg2_router, "get_active_adapter", return_value=adapter):
-        response = awg2_router.awg2_backup(db=MagicMock(), _=SimpleNamespace())
-
-    body = asyncio.run(_read_streaming_response(response))
-    assert body == b"archive-bytes"
-    assert response.media_type == "application/gzip"
-    assert response.headers["content-disposition"] == 'attachment; filename="az-awg2-backup.tar.gz"'
-    adapter.export_awg2_backup.assert_called_once_with()
-
-
-def test_awg2_restore_route_calls_runtime_and_ha_sync():
-    adapter = MagicMock()
-    adapter.restore_awg2_backup.return_value = {"success": True, "synced": ["antizapret-awg"]}
-    node = SimpleNamespace(id=1, name="node-1", host="10.0.0.1")
-    upload = UploadFile(filename="narrow-backup.tar.gz", file=io.BytesIO(b"payload"))
-
-    with (
-        patch.object(awg2_router, "get_active_node", return_value=node),
-        patch.object(awg2_router, "get_active_adapter", return_value=adapter),
-        patch.object(
-            awg2_router,
-            "_ha_sync_awg2_from_active",
-            return_value={"attempted": True, "errors": [{"node_name": "replica-1", "error": "down"}]},
-        ),
-    ):
-        result = asyncio.run(awg2_router.awg2_restore(archive=upload, db=MagicMock(), _=SimpleNamespace()))
-
-    assert result["message"] == "AZ-AWG2 восстановлен из бэкапа"
-    assert result["runtime"]["success"] is True
-    assert result["ha"]["errors"][0]["node_name"] == "replica-1"
-    assert result["node_id"] == 1
-    adapter.restore_awg2_backup.assert_called_once_with(b"payload", "narrow-backup.tar.gz")
-
-
-def test_awg2_restore_route_raises_when_runtime_fails():
-    adapter = MagicMock()
-    adapter.restore_awg2_backup.return_value = {
-        "success": False,
-        "synced": [],
-        "errors": [{"interface": "antizapret-awg", "stderr": "awg-quick failed"}],
-    }
-    node = SimpleNamespace(id=1, name="node-1", host="10.0.0.1")
-    upload = UploadFile(filename="narrow-backup.tar.gz", file=io.BytesIO(b"payload"))
-    ha_mock = MagicMock()
-
-    with (
-        patch.object(awg2_router, "get_active_node", return_value=node),
-        patch.object(awg2_router, "get_active_adapter", return_value=adapter),
-        patch.object(awg2_router, "_ha_sync_awg2_from_active", ha_mock),
-    ):
-        try:
-            asyncio.run(awg2_router.awg2_restore(archive=upload, db=MagicMock(), _=SimpleNamespace()))
-            raise AssertionError("expected HTTPException")
-        except HTTPException as exc:
-            assert exc.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-            assert "awg-quick failed" in str(exc.detail)
 
     ha_mock.assert_not_called()

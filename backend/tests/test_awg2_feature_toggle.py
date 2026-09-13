@@ -15,17 +15,20 @@ def _svc(env_file: Path, **flags: bool) -> FeatureToggleService:
     return FeatureToggleService(env_file)
 
 
-def test_awg2_toggle_registered_default_off(tmp_path: Path):
+def test_awg2_toggle_registered_default_on(tmp_path: Path):
+    # Native AmneziaWG 2.0 (client.sh/awg) replaced the third-party az-awg2 overlay this
+    # module used to gate — it's a real, tested feature now, not an obscure add-on, so it
+    # defaults on like the other core VPN protocol modules.
     env_file = tmp_path / ".env"
     env_file.write_text("", encoding="utf-8")
     defn = FEATURE_TOGGLE_BY_KEY["awg2"]
-    assert defn.default is False
+    assert defn.default is True
     assert defn.env_key == "FEATURE_AWG2_ENABLED"
     assert defn.api_prefixes == ("/api/awg2", "/api/client-access/amneziawg2")
     assert "/awg2" in defn.frontend_paths
-    assert defn.label == "AZ-AWG2"
+    assert defn.label == "AmneziaWG 2.0"
     service = FeatureToggleService(env_file)
-    assert service.is_enabled("awg2") is False
+    assert service.is_enabled("awg2") is True
 
 
 def test_awg2_path_blocked_when_disabled(tmp_path: Path):

@@ -8,7 +8,6 @@ import { NodeBadge } from '@/components/NodeSelector'
 import { useNode } from '@/context/NodeContext'
 import type { Awg2HealthResponse } from '@/types'
 import { cn } from '@/lib/utils'
-import Awg2InstallDialog from './Awg2InstallDialog'
 import { awg2StatusMeta } from './utils'
 
 interface Awg2HeroProps {
@@ -16,17 +15,16 @@ interface Awg2HeroProps {
   loading: boolean
   nodeLabel: string
   onRefresh: () => void
-  onUpdated: () => void
 }
 
-export default function Awg2Hero({ health, loading, nodeLabel, onRefresh, onUpdated }: Awg2HeroProps) {
+export default function Awg2Hero({ health, loading, nodeLabel, onRefresh }: Awg2HeroProps) {
   const { activeNode } = useNode()
   const status = awg2StatusMeta(health)
 
   return (
     <PageSectionHeader
       icon={Shield}
-      title="AZ-AWG2"
+      title="AmneziaWG 2.0"
       docsHref={DOCS.awg2}
       titleAddon={
         <>
@@ -43,26 +41,17 @@ export default function Awg2Hero({ health, loading, nodeLabel, onRefresh, onUpda
       }
       description={
         <>
-          AmneziaWG 2.0 на узле <strong className="font-medium text-foreground">{nodeLabel}</strong>
+          Нативный AmneziaWG 2.0 (client.sh/awg) на узле{' '}
+          <strong className="font-medium text-foreground">{nodeLabel}</strong>
           {activeNode?.is_local ? ' (локальный controller)' : activeNode ? ' (удалённый node agent)' : ''}.
-          Управление клиентами — в разделе Клиенты; здесь обфускация и backup слоя.
+          Управление клиентами — в разделе Клиенты; здесь только статус и живой мониторинг пиров.
         </>
       }
       actions={
-        <>
-          <Button variant="outline" size="sm" onClick={onRefresh} disabled={loading}>
-            <RefreshCw className={cn('mr-1.5 h-4 w-4', loading && 'animate-spin')} />
-            Обновить
-          </Button>
-          {health?.installed && (
-            <Awg2InstallDialog
-              mode="update"
-              triggerLabel="Обновить слой"
-              triggerVariant="outline"
-              onCompleted={onUpdated}
-            />
-          )}
-        </>
+        <Button variant="outline" size="sm" onClick={onRefresh} disabled={loading}>
+          <RefreshCw className={cn('mr-1.5 h-4 w-4', loading && 'animate-spin')} />
+          Обновить
+        </Button>
       }
     />
   )

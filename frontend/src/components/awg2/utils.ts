@@ -1,6 +1,4 @@
-import type { Awg2HealthResponse, Awg2StatusResponse, Node } from '@/types'
-
-export type Awg2Tab = 'obfuscation' | 'backup' | 'help'
+import type { Awg2HealthResponse, Awg2MonitoringResponse, Node } from '@/types'
 
 export function awg2StatusMeta(health: Awg2HealthResponse | null) {
   if (!health) {
@@ -12,46 +10,25 @@ export function awg2StatusMeta(health: Awg2HealthResponse | null) {
   return { label: 'Установлен', variant: 'success' as const, dot: 'bg-emerald-500' }
 }
 
-export function formatAwg2ClientCount(status: Awg2StatusResponse | null): string {
-  const vpn = status?.client_counts?.vpn
-  if (typeof vpn === 'number') return String(vpn)
-  const az = status?.client_counts?.antizapret
-  if (typeof az === 'number') return String(az)
-  return '—'
+export function formatAwg2ClientCount(monitoring: Awg2MonitoringResponse | null): string {
+  if (!monitoring) return '—'
+  return String(monitoring.clients.length)
 }
 
-export function formatAwg2IfacePort(iface?: string | null, port?: string | null): string {
-  const parts = [iface, port].map((p) => (typeof p === 'string' ? p.trim() : '')).filter(Boolean)
-  return parts.length ? parts.join(' · ') : '—'
+export function formatAwg2OnlineCount(monitoring: Awg2MonitoringResponse | null): string {
+  if (!monitoring) return '—'
+  return String(monitoring.clients.filter((c) => c.online).length)
 }
 
-export const AWG2_INSTALL_CMD =
-  'bash <(curl -fsSL https://raw.githubusercontent.com/blindtechnique/az-awg2/main/install.sh)'
-
-export const AWG2_PRESETS = [
-  { value: 'router', label: 'router — минимум шума' },
-  { value: 'low', label: 'low — лёгкая обфускация' },
-  { value: 'medium', label: 'medium — баланс' },
-  { value: 'high', label: 'high — агрессивный DPI' },
-  { value: 'paranoid', label: 'paranoid — максимум' },
-] as const
-
-export const AWG2_TEMPLATES = [
-  { value: 'quic', label: 'quic' },
-  { value: 'tls', label: 'tls' },
-  { value: 'web', label: 'web' },
-  { value: 'voip', label: 'voip' },
-  { value: 'dns', label: 'dns' },
-  { value: 'mixed', label: 'mixed' },
-] as const
-
-export const AWG2_TTL_OPTIONS = [
-  { value: 'none', label: 'нет' },
-  { value: '30m', label: '30m' },
-  { value: '2h', label: '2h' },
-  { value: '6h', label: '6h' },
-  { value: '7d', label: '7d' },
-] as const
+export function formatAwg2IfacePeers(
+  monitoring: Awg2MonitoringResponse | null,
+  ifaceName: string,
+): string {
+  const iface = monitoring?.ifaces.find((i) => i.name === ifaceName)
+  if (!iface) return '—'
+  const count = iface.peer_count ?? 0
+  return `${count} ${count === 1 ? 'клиент' : 'клиентов'}`
+}
 
 export function formatAwg2NodeLabel(health: Awg2HealthResponse | null, activeNode: Node | null): string {
   const name = health?.node_name ?? activeNode?.name
