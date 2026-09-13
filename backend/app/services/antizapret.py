@@ -152,8 +152,11 @@ class AntiZapretService:
         return self._run_client_script("1", client_name, str(cert_expire_days))
 
     def delete_openvpn_client(self, client_name: str) -> str:
+        # Option 7 = OpenVPN-only delete (revokes cert, removes profile files) — does not
+        # touch this client's WireGuard/AmneziaWG 1.5/AmneziaWG 2.0 peers, unlike unified
+        # option 2. Added specifically so the panel can delete one protocol at a time.
         self.validate_client_name(client_name)
-        return self._run_client_script("2", client_name)
+        return self._run_client_script("7", client_name)
 
     def list_openvpn_clients(self) -> list[str]:
         output = self._run_client_script("3")
@@ -176,8 +179,9 @@ class AntiZapretService:
         return self._run_client_script("1", client_name, "3650")
 
     def delete_wireguard_client(self, client_name: str) -> str:
+        # Option 8 = WireGuard/AmneziaWG 1.5-only delete — see delete_openvpn_client.
         self.validate_client_name(client_name)
-        return self._run_client_script("2", client_name)
+        return self._run_client_script("8", client_name)
 
     def list_wireguard_clients(self) -> list[str]:
         output = self._run_client_script("3")
@@ -207,8 +211,9 @@ class AntiZapretService:
         return output
 
     def delete_amneziawg2_client(self, client_name: str) -> str:
+        # Option 9 = AmneziaWG 2.0-only delete — see delete_openvpn_client.
         self.validate_client_name(client_name)
-        return self._run_client_script("2", client_name)
+        return self._run_client_script("9", client_name)
 
     def list_amneziawg2_clients(self) -> list[str]:
         output = self._run_client_script("3")

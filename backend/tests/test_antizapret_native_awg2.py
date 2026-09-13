@@ -193,11 +193,11 @@ def test_client_sh_option_numbers_match_unified_menu(tmp_path, monkeypatch):
     service.recreate_profiles()
 
     assert calls[0] == ["1", "alice", "3650"]
-    assert calls[1] == ["2", "alice"]
+    assert calls[1] == ["8", "alice"]  # WireGuard/AmneziaWG 1.5-only delete, not unified "2"
     assert calls[2] == ["3"]
     assert calls[3] == ["4"]
     for call in calls:
-        assert call[0] not in {"5", "6", "7"}, "must never hit backup/restore for a client add/delete/list/recreate action"
+        assert call[0] not in {"5", "6"}, "must never hit backup/restore for a client add/delete/list/recreate action"
 
 
 def test_parse_client_names_section_splits_unified_list_output():
