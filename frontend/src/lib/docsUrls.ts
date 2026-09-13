@@ -45,5 +45,3 @@ export const DOCS = {
 /** AntiZapret upstream: proxy.sh setup (not panel docs). */
 export const AZ_PROXY_SH_DOCS_URL =
   'https://github.com/shax0491/AntiZapret-VPN_new#настроить-прокси-сервер'
-
-export const FEEDBACK_URL = 'https://claymore0098.fider.io/'
