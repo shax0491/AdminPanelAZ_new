@@ -5,9 +5,11 @@ from app.auth import get_current_user, get_password_hash, require_admin
 from app.config import get_settings
 from app.database import get_db
 from app.models import (
+    ClientPortalToken,
     QrDownloadAuditLog,
     QrDownloadToken,
     RefreshToken,
+    UnlockCode,
     User,
     UserActionLog,
     UserConfigAccess,
@@ -55,6 +57,14 @@ def _purge_user_before_delete(db: Session, user: User, successor: User) -> None:
     )
     db.query(QrDownloadAuditLog).filter(QrDownloadAuditLog.actor_user_id == user.id).update(
         {QrDownloadAuditLog.actor_user_id: None},
+        synchronize_session=False,
+    )
+    db.query(UnlockCode).filter(UnlockCode.created_by_user_id == user.id).update(
+        {UnlockCode.created_by_user_id: None},
+        synchronize_session=False,
+    )
+    db.query(ClientPortalToken).filter(ClientPortalToken.created_by_user_id == user.id).update(
+        {ClientPortalToken.created_by_user_id: None},
         synchronize_session=False,
     )
     db.query(UserActionLog).filter(UserActionLog.user_id == user.id).update(
