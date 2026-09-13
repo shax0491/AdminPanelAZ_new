@@ -1,0 +1,27 @@
+[Unit]
+Description=AdminPanelAZ (AntiZapret admin panel)
+Documentation=file:///opt/AdminPanelAZ/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/AdminPanelAZ/backend
+EnvironmentFile=-/opt/AdminPanelAZ/backend/.env
+Environment=SERVE_FRONTEND=true
+Environment=FRONTEND_DIST_PATH=/opt/AdminPanelAZ/frontend/dist
+Environment=ADMINPANELAZ_STATE_DIR=/var/lib/adminpanelaz
+# Хост/порт/workers — из EnvironmentFile (.env). Дефолты http_direct в systemd-exec-panel.sh.
+ExecStart=/opt/AdminPanelAZ/scripts/systemd-exec-panel.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=adminpanelaz
+
+[Install]
+WantedBy=multi-user.target

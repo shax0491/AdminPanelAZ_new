@@ -1,0 +1,87 @@
+"""Background traffic collector task."""
+
+import asyncio
+import logging
+import time
+
+from app.config import get_settings
+from app.database import SessionLocal
+from app.models import Node
+from app.services.awg2_noc import fetch_awg2_peers_for_adapter
+from app.services.feature_toggles import is_awg2_enabled
+from app.services.node_manager import _is_vpn_node, get_adapter_for_node
+from app.services.traffic.collector import TrafficCollectorService, build_status_rows
+
+logger = logging.getLogger(__name__)
+
+
+def _is_traffic_sync_enabled() -> bool:
+    """Runtime gate — TRAFFIC_SYNC_ENABLED / traffic_sync can flip without restart."""
+    from app.services.feature_guards import get_feature_service
+
+    return get_feature_service().is_enabled("traffic_sync")
+
+
+async def run_traffic_collector_loop():
+    while True:
+        settings = get_settings()
+        interval = max(5, int(settings.traffic_sync_interval_seconds or 60))
+        try:
+            if not settings.traffic_sync_enabled or not _is_traffic_sync_enabled():
+                logger.debug("traffic_collector skipped — traffic_sync disabled")
+            else:
+                await asyncio.to_thread(_collect_all_nodes)
+        except Exception as exc:
+            logger.warning("Traffic collector error: %s", exc)
+        await asyncio.sleep(interval)
+
+
+def _collect_all_nodes():
+    started = time.perf_counter()
+    settings = get_settings()
+    db = SessionLocal()
+    total_wg_runtime_calls = 0
+    nodes_processed = 0
+    try:
+        nodes = db.query(Node).all()
+        awg2_enabled = is_awg2_enabled(db)
+        for node in nodes:
+            if not _is_vpn_node(node):
+                continue
+            node_started = time.perf_counter()
+            wg_runtime_calls = 0
+            clients_changed = 0
+            try:
+                adapter = get_adapter_for_node(node)
+                ovpn = adapter.parse_openvpn_status()
+                wg = adapter.parse_wireguard_status()
+                awg2_peers = fetch_awg2_peers_for_adapter(adapter) if awg2_enabled else []
+                status_rows = build_status_rows(ovpn, wg, awg2_peers)
+                collector = TrafficCollectorService(db, node.id)
+                collector.persist_snapshot(status_rows)
+                if settings.traffic_limit_reconcile_after_sync:
+                    from app.services.traffic_limit_reconcile import reconcile_traffic_limit_policies_safe
+
+                    reconcile_result = reconcile_traffic_limit_policies_safe(db, node_id=node.id)
+                    wg_runtime_calls = int(reconcile_result.get("wg_runtime_calls") or 0)
+                    clients_changed = int(reconcile_result.get("clients_changed") or 0)
+                nodes_processed += 1
+                total_wg_runtime_calls += wg_runtime_calls
+                logger.info(
+                    "Traffic collect node=%s node_id=%d duration_ms=%d wg_runtime_calls=%d clients_changed=%d",
+                    node.name,
+                    node.id,
+                    int((time.perf_counter() - node_started) * 1000),
+                    wg_runtime_calls,
+                    clients_changed,
+                )
+            except Exception as exc:
+                logger.debug("Traffic collect failed for node %s: %s", node.name, exc)
+    finally:
+        db.close()
+    logger.info(
+        "Traffic collect finished nodes=%d duration_ms=%d wg_runtime_calls=%d",
+        nodes_processed,
+        int((time.perf_counter() - started) * 1000),
+        total_wg_runtime_calls,
+    )

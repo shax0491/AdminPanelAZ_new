@@ -1,0 +1,329 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 187 85% 38%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 16% 93%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 16% 93%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 187 60% 94%;
+    --accent-foreground: 187 85% 28%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 187 85% 38%;
+    --radius: 0.5rem;
+    --scrollbar-size: 8px;
+    --scrollbar-track: transparent;
+    --scrollbar-thumb: 215 16% 47% / 0.28;
+    --scrollbar-thumb-hover: 187 85% 38% / 0.55;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+  }
+
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 210 20% 96%;
+    --card: 222 47% 10%;
+    --card-foreground: 210 20% 96%;
+    --popover: 222 47% 10%;
+    --popover-foreground: 210 20% 96%;
+    --primary: 187 72% 45%;
+    --primary-foreground: 222 47% 7%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 16% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 187 72% 55%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 210 20% 96%;
+    --border: 217 33% 18%;
+    --input: 217 33% 18%;
+    --ring: 187 72% 45%;
+    --scrollbar-thumb: 215 16% 55% / 0.22;
+    --scrollbar-thumb-hover: 187 72% 45% / 0.65;
+  }
+
+  * {
+    @apply border-border;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--scrollbar-thumb)) var(--scrollbar-track);
+  }
+
+  *::-webkit-scrollbar {
+    width: var(--scrollbar-size);
+    height: var(--scrollbar-size);
+  }
+
+  *::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--scrollbar-thumb));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--scrollbar-thumb-hover));
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+}
+
+@layer utilities {
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  .pt-safe {
+    padding-top: var(--safe-top);
+  }
+
+  .pb-safe {
+    padding-bottom: calc(1rem + var(--safe-bottom));
+  }
+
+  .px-safe {
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .orientation-compact-tabs-list {
+    height: 2rem;
+    padding: 0.125rem;
+  }
+
+  .orientation-compact-tabs-trigger {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+
+  .orientation-compact-header {
+    height: auto;
+    min-height: 2.5rem;
+    padding-top: calc(0.25rem + var(--safe-top));
+    padding-bottom: 0.25rem;
+  }
+
+  .orientation-compact-header-subtitle {
+    display: none;
+  }
+
+  .orientation-compact-settings-page {
+    gap: 0.75rem;
+  }
+
+  .orientation-compact-settings-section {
+    gap: 0.5rem;
+  }
+
+  .orientation-compact-settings-section-header {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .orientation-compact-settings-tab {
+    gap: 0.75rem;
+  }
+
+  /* Mobile/desktop sidebar: free vertical space for nav links */
+  .orientation-compact-sidebar-header {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .orientation-compact-sidebar-brand-icon {
+    height: 2rem;
+    width: 2rem;
+    border-radius: 0.5rem;
+  }
+
+  .orientation-compact-sidebar-brand-icon svg {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .orientation-compact-sidebar-brand-sub,
+  .orientation-compact-sidebar-status {
+    display: none;
+  }
+
+  .orientation-compact-sidebar-nav {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+
+  .orientation-compact-sidebar-nav .orientation-compact-sidebar-group-label {
+    padding-top: 0.35rem;
+    padding-bottom: 0.15rem;
+  }
+
+  .orientation-compact-sidebar-link {
+    gap: 0.5rem;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+
+  .orientation-compact-sidebar-link-icon {
+    height: 1.75rem;
+    width: 1.75rem;
+  }
+
+  .orientation-compact-sidebar-link-icon svg {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  .orientation-compact-sidebar-footer {
+    padding: 0.5rem;
+    padding-bottom: calc(0.5rem + var(--safe-bottom));
+  }
+
+  .orientation-compact-sidebar-footer-stack {
+    display: none;
+  }
+
+  .orientation-compact-sidebar-footer-inline {
+    display: flex;
+  }
+
+  .orientation-compact-sidebar-sheet {
+    width: min(20rem, 70vw) !important;
+    max-width: min(20rem, 70vw) !important;
+  }
+}
+
+/* Recharts hover: полоса/линия по времени и точки на сериях */
+.recharts-tooltip-cursor {
+  fill: hsl(var(--primary) / 0.08) !important;
+  stroke: hsl(var(--muted-foreground) / 0.4) !important;
+  stroke-width: 1 !important;
+}
+
+.recharts-active-dot {
+  stroke: hsl(var(--background)) !important;
+  stroke-width: 2 !important;
+}
+
+.recharts-default-tooltip {
+  background-color: hsl(var(--popover)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.25);
+}
+
+.recharts-default-tooltip .recharts-tooltip-label,
+.recharts-default-tooltip .recharts-tooltip-item-name,
+.recharts-default-tooltip .recharts-tooltip-item-value,
+.recharts-default-tooltip .recharts-tooltip-item-separator {
+  color: hsl(var(--popover-foreground)) !important;
+  font-size: 12px;
+}
+
+.recharts-tooltip-wrapper {
+  outline: none !important;
+  z-index: 50;
+}
+
+.recharts-legend-wrapper {
+  font-size: 12px;
+}
+
+/* Radix Select viewport scrollbar hide (mirrors runtime <style> when nonce is passed). */
+[data-radix-select-viewport] {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+[data-radix-select-viewport]::-webkit-scrollbar {
+  display: none;
+}
+
+.monitoring-chart-panel {
+  min-height: 220px;
+}
+
+.monitoring-chart-frame {
+  height: 220px;
+}
+
+.chart-responsive[data-h='180'] {
+  height: 180px;
+}
+
+.chart-responsive[data-h='220'] {
+  height: 220px;
+}
+
+.chart-responsive[data-h='240'] {
+  height: 240px;
+}
+
+.chart-responsive[data-h='260'] {
+  height: 260px;
+}
+
+.chart-responsive[data-h='280'] {
+  height: 280px;
+}
+
+.chart-responsive[data-h='300'] {
+  height: 300px;
+}
+
+.monitoring-slice-dot-0 {
+  background-color: hsl(187, 72%, 45%);
+}
+
+.monitoring-slice-dot-1 {
+  background-color: hsl(142, 71%, 45%);
+}
+
+.monitoring-slice-dot-2 {
+  background-color: hsl(217, 33%, 55%);
+}
+
+.monitoring-slice-dot-3 {
+  background-color: hsl(38, 92%, 50%);
+}
+
+.monitoring-slice-dot-4 {
+  background-color: hsl(280, 65%, 55%);
+}
+
+.monitoring-slice-dot-5 {
+  background-color: hsl(0, 72%, 58%);
+}
+
+.monitoring-slice-dot-6 {
+  background-color: hsl(210, 16%, 46%);
+}

@@ -1,0 +1,182 @@
+"""Copy access policy rows between nodes (e.g. primary → replica after Push full)."""
+
+from __future__ import annotations
+
+from sqlalchemy.orm import Session
+
+from app.models import AmneziaWg2AccessPolicy, Node, OpenVpnAccessPolicy, VpnType, WgAccessPolicy
+
+_OVPN_POLICY_FIELDS = (
+    "access_until",
+    "is_temp_blocked",
+    "is_permanent_blocked",
+    "block_reason",
+    "block_started_at",
+    "block_days",
+    "block_until",
+    "traffic_limit_bytes",
+    "traffic_limit_period_days",
+    "updated_by",
+)
+
+# WG stores access deadline in expires_at (no access_until column).
+_WG_POLICY_FIELDS = (
+    "expires_at",
+    "is_temp_blocked",
+    "is_permanent_blocked",
+    "block_reason",
+    "block_started_at",
+    "block_days",
+    "block_until",
+    "traffic_limit_bytes",
+    "traffic_limit_period_days",
+    "updated_by",
+)
+
+_AWG2_POLICY_FIELDS = (
+    "access_until",
+    "is_temp_blocked",
+    "is_permanent_blocked",
+    "block_reason",
+    "block_started_at",
+    "block_days",
+    "block_until",
+    "traffic_limit_bytes",
+    "traffic_limit_period_days",
+    "updated_by",
+)
+
+
+def _copy_policy_row(source, target, fields: tuple[str, ...]) -> None:
+    for field in fields:
+        setattr(target, field, getattr(source, field))
+
+
+def _copy_policies_for_model(
+    db: Session,
+    model: type[OpenVpnAccessPolicy] | type[WgAccessPolicy] | type[AmneziaWg2AccessPolicy],
+    *,
+    source_node_id: int,
+    target_node_id: int,
+    fields: tuple[str, ...],
+) -> int:
+    copied = 0
+    for source in db.query(model).filter(model.node_id == source_node_id).all():
+        target = (
+            db.query(model)
+            .filter(
+                model.node_id == target_node_id,
+                model.client_name == source.client_name,
+            )
+            .first()
+        )
+        if target is None:
+            target = model(node_id=target_node_id, client_name=source.client_name)
+            db.add(target)
+            copied += 1
+        _copy_policy_row(source, target, fields)
+    return copied
+
+
+def copy_access_policies_from_node(db: Session, source_node: Node, target_node: Node) -> int:
+    """Copy OpenVPN/WG/AWG2 access policies from source node to target node (upsert by client_name)."""
+    source_id = source_node.id
+    target_id = target_node.id
+    copied = _copy_policies_for_model(
+        db,
+        OpenVpnAccessPolicy,
+        source_node_id=source_id,
+        target_node_id=target_id,
+        fields=_OVPN_POLICY_FIELDS,
+    )
+    copied += _copy_policies_for_model(
+        db,
+        WgAccessPolicy,
+        source_node_id=source_id,
+        target_node_id=target_id,
+        fields=_WG_POLICY_FIELDS,
+    )
+    copied += _copy_policies_for_model(
+        db,
+        AmneziaWg2AccessPolicy,
+        source_node_id=source_id,
+        target_node_id=target_id,
+        fields=_AWG2_POLICY_FIELDS,
+    )
+    db.commit()
+    return copied
+
+
+def copy_single_client_policy(
+    db: Session,
+    source_node: Node,
+    target_node: Node,
+    client_name: str,
+    *,
+    vpn_type,
+) -> int:
+    """Copy OVPN, WG, or AWG2 access policy for one client from source to target (upsert)."""
+    copied = 0
+    if vpn_type == VpnType.openvpn:
+        source = (
+            db.query(OpenVpnAccessPolicy)
+            .filter_by(node_id=source_node.id, client_name=client_name)
+            .first()
+        )
+        if source is None:
+            return 0
+        target = (
+            db.query(OpenVpnAccessPolicy)
+            .filter_by(node_id=target_node.id, client_name=client_name)
+            .first()
+        )
+        if target is None:
+            target = OpenVpnAccessPolicy(node_id=target_node.id, client_name=client_name)
+            db.add(target)
+            copied = 1
+        _copy_policy_row(source, target, _OVPN_POLICY_FIELDS)
+        db.flush()
+        return copied
+
+    if vpn_type == VpnType.amneziawg2:
+        normalized = client_name.strip().lower()
+        source = (
+            db.query(AmneziaWg2AccessPolicy)
+            .filter_by(node_id=source_node.id, client_name=normalized)
+            .first()
+        )
+        if source is None:
+            return 0
+        target = (
+            db.query(AmneziaWg2AccessPolicy)
+            .filter_by(node_id=target_node.id, client_name=normalized)
+            .first()
+        )
+        if target is None:
+            target = AmneziaWg2AccessPolicy(node_id=target_node.id, client_name=normalized)
+            db.add(target)
+            copied = 1
+        _copy_policy_row(source, target, _AWG2_POLICY_FIELDS)
+        db.flush()
+        return copied
+
+    normalized = client_name.strip().lower()
+    source = (
+        db.query(WgAccessPolicy)
+        .filter_by(node_id=source_node.id, client_name=normalized)
+        .first()
+    )
+    if source is None:
+        return 0
+    target = (
+        db.query(WgAccessPolicy)
+        .filter_by(node_id=target_node.id, client_name=normalized)
+        .first()
+    )
+    if target is None:
+        target = WgAccessPolicy(node_id=target_node.id, client_name=normalized)
+        db.add(target)
+        copied = 1
+    _copy_policy_row(source, target, _WG_POLICY_FIELDS)
+    db.flush()
+    return copied

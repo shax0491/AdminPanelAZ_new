@@ -1,0 +1,238 @@
+import { useCallback, useEffect, useState } from 'react'
+import { ExternalLink, Loader2, RefreshCw, Save } from 'lucide-react'
+import {
+  ApiError,
+  getProxyNodeStatus,
+  putProxyDestination,
+  putProxyNodeStatus,
+  updateNode,
+} from '@/api/client'
+import ProxyLinkSelect from '@/components/proxy/ProxyLinkSelect'
+import SettingsAlert from '@/components/settings/SettingsAlert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { useNotifications } from '@/context/NotificationContext'
+import {
+  PROXY_LINK_NONE,
+  linkedVpnNodeIdFromSelectorValue,
+  proxyLinkSelectorOptions,
+  resolveProxyLinkSelectorValue,
+} from '@/lib/proxyLinkTarget'
+import type { Node, NodeSyncGroup, ProxyStatusResponse } from '@/types'
+import { AZ_PROXY_SH_DOCS_URL } from '@/lib/docsUrls'
+
+/** AntiZapret upstream docs — admin installs proxy.sh manually; panel never does. */
+export { AZ_PROXY_SH_DOCS_URL } from '@/lib/docsUrls'
+
+type ProxyNodePanelProps = {
+  node: Node
+  nodes?: Node[]
+  syncGroups?: NodeSyncGroup[]
+  onUpdated?: () => void | Promise<void>
+}
+
+export default function ProxyNodePanel({
+  node,
+  nodes = [],
+  syncGroups = [],
+  onUpdated,
+}: ProxyNodePanelProps) {
+  const { success, error: notifyError } = useNotifications()
+  const [status, setStatus] = useState<ProxyStatusResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [savingLink, setSavingLink] = useState(false)
+  const [destination, setDestination] = useState(node.destination_ip ?? '')
+  const [linkValue, setLinkValue] = useState(() =>
+    resolveProxyLinkSelectorValue(node.linked_vpn_node_id, nodes, syncGroups),
+  )
+
+  const applyStatus = useCallback((payload: ProxyStatusResponse) => {
+    setStatus(payload)
+    if (payload.destination_ip != null) {
+      setDestination(payload.destination_ip)
+    }
+  }, [])
+
+  const loadStatus = useCallback(async () => {
+    setLoading(true)
+    try {
+      applyStatus(await getProxyNodeStatus(node.id))
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : 'Не удалось получить статус прокси')
+      setStatus(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [applyStatus, node.id, notifyError])
+
+  useEffect(() => {
+    void loadStatus()
+  }, [loadStatus])
+
+  useEffect(() => {
+    setLinkValue(resolveProxyLinkSelectorValue(node.linked_vpn_node_id, nodes, syncGroups))
+  }, [node.linked_vpn_node_id, node.id, nodes, syncGroups])
+
+  const handleRefresh = async () => {
+    setLoading(true)
+    try {
+      applyStatus(await putProxyNodeStatus(node.id))
+      await onUpdated?.()
+      success('Статус прокси обновлён')
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : 'Не удалось обновить статус')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSaveDestination = async () => {
+    const trimmed = destination.trim()
+    if (!trimmed) {
+      notifyError('Укажите DESTINATION IP')
+      return
+    }
+    setSaving(true)
+    try {
+      applyStatus(await putProxyDestination(node.id, trimmed))
+      await onUpdated?.()
+      success('DESTINATION обновлён')
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : 'Не удалось сохранить DESTINATION')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleLinkChange = async (value: string) => {
+    const previous = linkValue
+    setLinkValue(value)
+    const linkedVpnNodeId = linkedVpnNodeIdFromSelectorValue(
+      value,
+      proxyLinkSelectorOptions(nodes, syncGroups),
+    )
+    const current = node.linked_vpn_node_id ?? null
+    if (linkedVpnNodeId === current) return
+
+    setSavingLink(true)
+    try {
+      await updateNode(node.id, { linked_vpn_node_id: linkedVpnNodeId })
+      await onUpdated?.()
+      success(
+        linkedVpnNodeId == null ? 'Привязка прокси снята' : 'Привязка прокси сохранена',
+      )
+    } catch (err) {
+      setLinkValue(previous)
+      notifyError(err instanceof ApiError ? err.message : 'Не удалось сохранить привязку')
+    } finally {
+      setSavingLink(false)
+    }
+  }
+
+  const showLinkSelect = nodes.length > 0
+
+  return (
+    <div className="space-y-3 rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-medium">Прокси (proxy_agent)</p>
+          {status && (
+            <Badge variant={status.installed ? 'default' : 'secondary'} className="text-[10px]">
+              {status.installed ? 'proxy.sh обнаружен' : 'proxy.sh не найден'}
+            </Badge>
+          )}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={loading || saving || savingLink}
+          onClick={() => void handleRefresh()}
+        >
+          {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+          Статус
+        </Button>
+      </div>
+
+      {showLinkSelect && (
+        <ProxyLinkSelect
+          id={`proxy-link-${node.id}`}
+          value={linkValue || PROXY_LINK_NONE}
+          onChange={(value) => void handleLinkChange(value)}
+          nodes={nodes}
+          syncGroups={syncGroups}
+          disabled={savingLink || loading || saving}
+          orphanNodeId={node.linked_vpn_node_id ?? null}
+        />
+      )}
+
+      {loading && !status ? (
+        <p className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 size={14} className="animate-spin" />
+          Загрузка статуса…
+        </p>
+      ) : (
+        <>
+          {status && !status.installed && (
+            <SettingsAlert variant="warning" title="proxy.sh не установлен на этом сервере">
+              Установите прокси сами по инструкции AntiZapret, затем обновите статус. Панель не
+              ставит и не запускает proxy.sh.{' '}
+              <a
+                href={AZ_PROXY_SH_DOCS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 font-medium underline underline-offset-2"
+              >
+                Настроить прокси-сервер
+                <ExternalLink size={12} />
+              </a>
+            </SettingsAlert>
+          )}
+
+          {status?.detail && (
+            <p className="text-xs text-muted-foreground">{status.detail}</p>
+          )}
+
+          <div className="grid gap-2">
+            <Label htmlFor={`proxy-dest-${node.id}`}>DESTINATION IP</Label>
+            <div className="flex flex-wrap gap-2">
+              <Input
+                id={`proxy-dest-${node.id}`}
+                value={destination}
+                onChange={(e) => setDestination(e.target.value)}
+                placeholder="x.x.x.x"
+                className="font-mono text-xs"
+                disabled={saving}
+              />
+              <Button
+                type="button"
+                size="sm"
+                disabled={saving || loading || savingLink}
+                onClick={() => void handleSaveDestination()}
+              >
+                {saving ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Save size={14} />
+                )}
+                Сохранить
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Меняет целевой IP в iptables DNAT/SNAT на RU-прокси (не через proxy.sh).
+            </p>
+          </div>
+
+          {(status?.destination_ip || node.destination_ip) && (
+            <p className="font-mono text-[11px] text-muted-foreground">
+              Кэш панели: {status?.destination_ip ?? node.destination_ip ?? '—'}
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}

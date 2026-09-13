@@ -1,0 +1,182 @@
+"""Panel-side orchestration: enable / disable mTLS for remote nodes."""
+
+from __future__ import annotations
+
+import json
+import time
+from datetime import datetime
+
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.config import get_settings
+from app.models import Node, User
+from app.services.action_log import log_action
+from app.services.node_adapter import RemoteNodeAdapter
+from app.services.node_manager import (
+    NODE_KIND_PROXY,
+    check_node_health,
+    get_api_key_plain,
+    node_metadata_dict,
+    update_node_from_health,
+)
+from app.services.node_mtls_certs import (
+    ensure_panel_mtls_materials,
+    generate_agent_cert_for_node,
+    read_agent_bundle_for_node,
+)
+
+_MTLS_HEALTH_ATTEMPTS = 12
+_MTLS_HEALTH_DELAY_SECONDS = 2.0
+
+
+def _node_kind(node: Node) -> str:
+    return (getattr(node, "node_kind", None) or "vpn").strip().lower()
+
+
+def _wait_for_mtls_health(node: Node) -> dict:
+    """Poll HTTPS health after node agent restart (mTLS bootstrap)."""
+    last: dict = {"status": "offline", "error": "Таймаут ожидания node agent по HTTPS"}
+    for attempt in range(_MTLS_HEALTH_ATTEMPTS):
+        if attempt > 0:
+            time.sleep(_MTLS_HEALTH_DELAY_SECONDS)
+        last = check_node_health(node)
+        if last.get("status") == "online":
+            return last
+    return last
+
+
+def _enable_proxy_mtls_flag(db: Session, node: Node, actor: User) -> Node:
+    """Flag-only mTLS for proxy nodes — certs are installed manually on proxy_agent.
+
+    See docs/proxy-agent.md. Panel still needs CA/client materials to speak HTTPS.
+    """
+    ensure_panel_mtls_materials()
+    meta = node_metadata_dict(node)
+    meta["mtls_flag_only_at"] = datetime.utcnow().isoformat() + "Z"
+    node.node_metadata = json.dumps(meta)
+    node.transport = "mtls"
+    node.mtls_enabled = True
+    node.updated_at = datetime.utcnow()
+    db.add(node)
+    db.commit()
+    db.refresh(node)
+
+    settings = get_settings()
+    if settings.audit_log_enabled:
+        log_action(
+            db,
+            action="node_mtls_enable",
+            user_id=actor.id,
+            username=actor.username,
+            details=f"name={node.name}, id={node.id}, kind=proxy, flag_only=1",
+        )
+    return node
+
+
+def enable_mtls(db: Session, node: Node, actor: User) -> Node:
+    from app.services.node_transport import TRANSPORT_MTLS, resolve_transport_id
+
+    if node.is_local:
+        raise ValueError("Локальный узел не поддерживает mTLS")
+    if resolve_transport_id(node) == TRANSPORT_MTLS:
+        raise ValueError("mTLS уже включён для этого узла")
+
+    if _node_kind(node) == NODE_KIND_PROXY:
+        return _enable_proxy_mtls_flag(db, node, actor)
+
+    api_key = get_api_key_plain(node)
+    if not api_key:
+        raise ValueError("API-ключ узла недоступен")
+
+    pre_health = check_node_health(node, api_key_override=api_key)
+    if pre_health.get("status") != "online":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=pre_health.get("error")
+            or "Узел недоступен — включение mTLS требует доступного node agent по HTTP",
+        )
+
+    ensure_panel_mtls_materials()
+    generate_agent_cert_for_node(node.id, node.name)
+    bundle = read_agent_bundle_for_node(node.id)
+
+    adapter = RemoteNodeAdapter(
+        host=node.host,
+        port=node.port,
+        api_key=api_key,
+        mtls_enabled=False,
+    )
+    try:
+        result = adapter.provision_mtls(bundle)
+    finally:
+        adapter.close()
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=result.get("message", "Ошибка provision mTLS на узле"),
+        )
+
+    meta = node_metadata_dict(node)
+    meta["mtls_provisioned_at"] = datetime.utcnow().isoformat() + "Z"
+    node.node_metadata = json.dumps(meta)
+    node.transport = "mtls"
+    node.mtls_enabled = True
+    node.updated_at = datetime.utcnow()
+    db.add(node)
+    db.commit()
+    db.refresh(node)
+
+    post_health = _wait_for_mtls_health(node)
+    if post_health.get("status") != "online":
+        node.transport = "http"
+        node.mtls_enabled = False
+        node.updated_at = datetime.utcnow()
+        db.add(node)
+        db.commit()
+        db.refresh(node)
+        error = post_health.get("error") or "Узел не ответил по HTTPS после включения mTLS"
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                f"Сертификаты отправлены, но проверка по HTTPS не прошла: {error}. "
+                "Флаг mTLS в панели сброшен — повторите попытку или проверьте node agent."
+            ),
+        )
+
+    update_node_from_health(node, post_health, db)
+
+    settings = get_settings()
+    if settings.audit_log_enabled:
+        log_action(
+            db,
+            action="node_mtls_enable",
+            user_id=actor.id,
+            username=actor.username,
+            details=f"name={node.name}, id={node.id}",
+        )
+    return node
+
+
+def disable_mtls(db: Session, node: Node, actor: User | None = None) -> Node:
+    if node.is_local:
+        raise ValueError("Локальный узел не поддерживает mTLS")
+
+    node.transport = "http"
+    node.mtls_enabled = False
+    node.updated_at = datetime.utcnow()
+    db.add(node)
+    db.commit()
+    db.refresh(node)
+
+    settings = get_settings()
+    if settings.audit_log_enabled and actor is not None:
+        log_action(
+            db,
+            action="node_mtls_disable",
+            user_id=actor.id,
+            username=actor.username,
+            details=f"name={node.name}, id={node.id}",
+        )
+    return node

@@ -1,0 +1,318 @@
+import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { Settings, User as UserIcon } from 'lucide-react'
+import { Navigate, NavLink, useParams } from 'react-router-dom'
+import { ApiError, changePassword, createUser, deleteUser, getSettings, getUsers } from '@/api/client'
+import { ConfirmDialogHost } from '@/components/shared/ConfirmDialog'
+import HaReplicaBanner from '@/components/dashboard/HaReplicaBanner'
+import MobileSettingsSectionPicker from '@/components/settings/MobileSettingsSectionPicker'
+import PageSectionHeader from '@/components/shared/PageSectionHeader'
+import DocsLink from '@/components/shared/DocsLink'
+import { DOCS } from '@/lib/docsUrls'
+import BackupTab from '@/components/settings/BackupTab'
+import ConfigDeliveryTab from '@/components/settings/ConfigDeliveryTab'
+import FeatureTogglesTab from '@/components/settings/FeatureTogglesTab'
+import MaintenanceTab from '@/components/settings/MaintenanceTab'
+import MonitoringTab from '@/components/settings/MonitoringTab'
+import PersonalTab from '@/components/settings/PersonalTab'
+import SecurityTab from '@/components/settings/SecurityTab'
+import {
+  getVisibleNavGroups,
+  isSectionAvailable,
+  isValidSettingsSection,
+  type SettingsSection,
+} from '@/components/settings/SettingsNav'
+import SettingsSectionBrowser from '@/components/settings/SettingsSectionBrowser'
+import { getSectionMeta } from '@/components/settings/settingsLabels'
+import PanelOpsTab from '@/components/settings/PanelOpsTab'
+import RunbookTab from '@/components/settings/RunbookTab'
+import UpdatesTab from '@/components/settings/UpdatesTab'
+import UsersTab from '@/components/settings/UsersTab'
+import VpnNetworkTab from '@/components/settings/VpnNetworkTab'
+import { NodeBadge } from '@/components/NodeSelector'
+import { useAuth } from '@/context/AuthContext'
+import { useFeatureModules } from '@/context/FeatureModulesContext'
+import { useNode } from '@/context/NodeContext'
+import { useNotifications } from '@/context/NotificationContext'
+import { useProgress } from '@/context/ProgressContext'
+import { useConfirmDialog } from '@/hooks/useConfirmDialog'
+import { useTheme } from '@/context/ThemeContext'
+import {
+  settingsSectionNeedsNodeSettings,
+  settingsSectionNeedsUsers,
+} from '@/lib/settingsPageLoads'
+import type { AppSettings, User, UserRole } from '@/types'
+
+export default function SettingsPage() {
+  const { section: sectionParam } = useParams<{ section?: string }>()
+  const { user } = useAuth()
+  const { isSettingsTabEnabled, isEnabled } = useFeatureModules()
+  const { activeNode } = useNode()
+  const { theme, setTheme } = useTheme()
+  const { success, error: notifyError } = useNotifications()
+  const { startGlobal, doneGlobal } = useProgress()
+  const { confirm, dialogProps } = useConfirmDialog()
+  const [settings, setSettings] = useState<AppSettings | null>(null)
+  const [users, setUsers] = useState<User[]>([])
+  const [newUsername, setNewUsername] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [newRole, setNewRole] = useState<UserRole>('user')
+  const [currentPwd, setCurrentPwd] = useState('')
+  const [newPwd, setNewPwd] = useState('')
+  const isAdmin = user?.role === 'admin'
+
+  const activeSection = useMemo((): SettingsSection | null => {
+    if (!sectionParam) return null
+    if (!isValidSettingsSection(sectionParam)) return null
+    if (!isSectionAvailable(sectionParam, isAdmin, isSettingsTabEnabled, isEnabled)) return null
+    return sectionParam
+  }, [sectionParam, isAdmin, isSettingsTabEnabled, isEnabled])
+
+  const visibleGroups = useMemo(
+    () => getVisibleNavGroups(isAdmin, isSettingsTabEnabled, isEnabled),
+    [isAdmin, isSettingsTabEnabled, isEnabled],
+  )
+
+  // GET /settings reads active-node config files — only maintenance uses the parent payload.
+  // Users are panel-wide. Personal and other tabs self-fetch; skip reloads on node switch.
+  useEffect(() => {
+    if (!settingsSectionNeedsNodeSettings(activeSection)) return
+    let cancelled = false
+    const loadNodeSettings = async () => {
+      startGlobal()
+      try {
+        const s = await getSettings()
+        if (!cancelled) setSettings(s)
+      } catch (err) {
+        if (!cancelled) {
+          notifyError(err instanceof ApiError ? err.message : 'Ошибка загрузки настроек')
+        }
+      } finally {
+        doneGlobal()
+      }
+    }
+    void loadNodeSettings()
+    return () => {
+      cancelled = true
+    }
+  }, [activeSection, activeNode?.id, user?.role, startGlobal, doneGlobal, notifyError])
+
+  useEffect(() => {
+    if (!settingsSectionNeedsUsers(activeSection, isAdmin)) return
+    let cancelled = false
+    const loadUsersList = async () => {
+      try {
+        const list = await getUsers()
+        if (!cancelled) setUsers(list)
+      } catch (err) {
+        if (!cancelled) {
+          notifyError(err instanceof ApiError ? err.message : 'Ошибка загрузки пользователей')
+        }
+      }
+    }
+    void loadUsersList()
+    return () => {
+      cancelled = true
+    }
+  }, [activeSection, isAdmin, user?.role, notifyError])
+
+  const handleCreateUser = async (e: FormEvent) => {
+    e.preventDefault()
+    const createdName = newUsername.trim()
+    if (!createdName) {
+      notifyError('Укажите логин')
+      return
+    }
+    if (!newPassword) {
+      notifyError('Укажите пароль')
+      return
+    }
+    try {
+      await createUser({ username: createdName, password: newPassword, role: newRole })
+      setNewUsername('')
+      setNewPassword('')
+      setUsers(await getUsers())
+      success(`Пользователь «${createdName}» создан`)
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : 'Ошибка создания пользователя')
+    }
+  }
+
+  const handleDeleteUser = (id: number, name: string) => {
+    confirm({
+      title: 'Удалить пользователя?',
+      description: (
+        <>
+          Учётная запись «<strong>{name}</strong>» будет удалена без возможности восстановления.
+        </>
+      ),
+      confirmLabel: 'Удалить',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await deleteUser(id)
+          setUsers(await getUsers())
+          success(`Пользователь «${name}» удалён`)
+        } catch (err) {
+          notifyError(err instanceof ApiError ? err.message : 'Ошибка удаления')
+        }
+      },
+    })
+  }
+
+  const handleChangePassword = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!currentPwd) {
+      notifyError('Укажите текущий пароль')
+      return
+    }
+    if (!newPwd || newPwd.length < 4) {
+      notifyError('Новый пароль: минимум 4 символа')
+      return
+    }
+    try {
+      await changePassword(currentPwd, newPwd)
+      setCurrentPwd('')
+      setNewPwd('')
+      success('Пароль изменён')
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : 'Ошибка смены пароля')
+    }
+  }
+
+  if (sectionParam === 'cloudflare') {
+    return <Navigate to="/settings/vpn_network?tab=cloudflare" replace />
+  }
+
+  if (sectionParam && !activeSection) {
+    return <Navigate to="/settings" replace />
+  }
+
+  if (!sectionParam) {
+    return (
+      <div className="flex flex-col gap-6 orientation-compact-settings-page">
+        <HaReplicaBanner />
+        <PageSectionHeader
+          icon={isAdmin ? Settings : UserIcon}
+          title={isAdmin ? 'Настройки' : 'Мой профиль'}
+          titleAddon={<NodeBadge name={activeNode?.name ?? settings?.node_name} status={activeNode?.status} />}
+          description={
+            isAdmin
+              ? 'Профиль, доступ, VPN и работа панели — выберите раздел'
+              : 'Тема, пароль, Telegram и дополнительная защита при входе'
+          }
+          docsHref={isAdmin ? DOCS.settings : DOCS.profile}
+        />
+        <SettingsSectionBrowser groups={visibleGroups} variant="hub" />
+      </div>
+    )
+  }
+
+  const section = activeSection as SettingsSection
+  const sectionMeta = getSectionMeta(section)
+
+  const renderSection = () => {
+    switch (section) {
+      case 'personal':
+        return (
+          <PersonalTab
+            theme={theme}
+            onThemeChange={setTheme}
+            currentPwd={currentPwd}
+            newPwd={newPwd}
+            onCurrentPwdChange={setCurrentPwd}
+            onNewPwdChange={setNewPwd}
+            onChangePassword={handleChangePassword}
+          />
+        )
+      case 'users':
+        return (
+          <UsersTab
+            users={users}
+            currentUserId={user?.id}
+            newUsername={newUsername}
+            newPassword={newPassword}
+            newRole={newRole}
+            onNewUsernameChange={setNewUsername}
+            onNewPasswordChange={setNewPassword}
+            onNewRoleChange={setNewRole}
+            onCreateUser={handleCreateUser}
+            onDeleteUser={handleDeleteUser}
+          />
+        )
+      case 'security':
+        return <SecurityTab />
+      case 'config_delivery':
+        return <ConfigDeliveryTab />
+      case 'maintenance':
+        return <MaintenanceTab settings={settings} />
+      case 'backup':
+        return <BackupTab />
+      case 'monitoring':
+        return <MonitoringTab />
+      case 'modules':
+        return <FeatureTogglesTab />
+      case 'updates':
+        return <UpdatesTab />
+      case 'panel_ops':
+        return <PanelOpsTab />
+      case 'tests':
+        return <RunbookTab />
+      case 'vpn_network':
+        return <VpnNetworkTab />
+      default:
+        return null
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6 orientation-compact-settings-page">
+      <ConfirmDialogHost dialogProps={dialogProps} />
+      <HaReplicaBanner />
+      <PageSectionHeader
+        icon={isAdmin ? Settings : UserIcon}
+        title={isAdmin ? 'Настройки' : 'Мой профиль'}
+        titleAddon={<NodeBadge name={activeNode?.name ?? settings?.node_name} status={activeNode?.status} />}
+        description={
+          isAdmin
+            ? 'Профиль, доступ, VPN и работа панели'
+            : 'Тема, пароль, Telegram и дополнительная защита при входе'
+        }
+        docsHref={isAdmin ? DOCS.settings : DOCS.profile}
+      />
+
+      <div className="flex items-center justify-between gap-3 lg:hidden">
+        <div className="min-w-0 flex-1">
+          <MobileSettingsSectionPicker value={section} />
+        </div>
+        <NavLink
+          to="/settings"
+          className="shrink-0 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        >
+          Все настройки
+        </NavLink>
+      </div>
+
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
+        <aside className="hidden w-56 shrink-0 lg:sticky lg:top-4 lg:block">
+          <SettingsSectionBrowser groups={visibleGroups} variant="nav" activeSection={section} />
+        </aside>
+
+        <div className="min-w-0 flex-1 flex flex-col gap-4 orientation-compact-settings-section">
+          <div className="orientation-compact-settings-section-header">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h3 className="text-base font-semibold tracking-tight">{sectionMeta.title}</h3>
+              <p className="text-xs text-muted-foreground">{sectionMeta.description}</p>
+              {sectionMeta.docsHref ? (
+                <DocsLink href={sectionMeta.docsHref} className="shrink-0" />
+              ) : null}
+            </div>
+            {sectionMeta.hint ? (
+              <p className="mt-1 text-xs text-muted-foreground/80">{sectionMeta.hint}</p>
+            ) : null}
+          </div>
+          {renderSection()}
+        </div>
+      </div>
+    </div>
+  )
+}

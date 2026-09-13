@@ -1,0 +1,191 @@
+"""Scheduled auto-backup and runtime backup cleanup workers."""
+
+import asyncio
+import logging
+from datetime import datetime, timezone
+from pathlib import Path
+
+from app.database import SessionLocal
+from app.models import AppSetting
+from app.services.backup_manager import BackupManager
+from app.services.cidr.pipeline.file_pipeline import _prune_runtime_backups
+from app.services.feature_guards import get_feature_service
+from app.services.feature_toggles import FeatureToggleService
+from app.services.node_manager import get_active_adapter
+from app.services.telegram import send_tg_document
+from app.services.telegram_recipients import get_setting_chat_ids
+
+logger = logging.getLogger(__name__)
+
+
+def _is_backups_enabled() -> bool:
+    """Runtime gate — FEATURE_BACKUPS_ENABLED / backups can flip without restart."""
+    from app.services.feature_guards import get_feature_service
+
+    return get_feature_service().is_enabled("backups")
+
+
+def _get_setting(db, key: str, default: str = "") -> str:
+    row = db.query(AppSetting).filter(AppSetting.key == key).first()
+    return row.value if row else default
+
+
+def _should_run(last_run_key: str, interval_days: int, db) -> bool:
+    last_raw = _get_setting(db, last_run_key, "")
+    if not last_raw:
+        return True
+    try:
+        last = datetime.fromisoformat(last_raw.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    elapsed = (datetime.now(timezone.utc) - last).total_seconds()
+    return elapsed >= interval_days * 86400
+
+
+def collect_backup_config_contents(db) -> dict[str, str] | None:
+    try:
+        adapter = get_active_adapter(db)
+        return {
+            fname: adapter.read_config_file(fname)
+            for fname in BackupManager.CONFIG_FILES
+        }
+    except Exception as exc:
+        logger.warning("Could not read AntiZapret lists for auto-backup: %s", exc)
+        return None
+
+
+def collect_awg2_backup_archive(db) -> bytes | None:
+    if not get_feature_service().is_enabled("awg2"):
+        return None
+    try:
+        adapter = get_active_adapter(db)
+        health = adapter.get_awg2_health()
+        if not isinstance(health, dict) or not health.get("installed"):
+            return None
+        return adapter.export_awg2_backup()
+    except Exception as exc:
+        logger.warning("Could not export AZ-AWG2 overlay for backup: %s", exc)
+        return None
+
+
+async def run_backup_scheduler_loop(
+    app_root: Path,
+    backup_root: Path,
+    db_path: Path,
+    env_path: Path,
+    cidr_db_path: Path | None = None,
+):
+    """Background loop: check every hour if auto-backup should run."""
+    while True:
+        try:
+            await asyncio.sleep(3600)
+            if not _is_backups_enabled():
+                logger.debug("backup_scheduler skipped — backups disabled")
+                continue
+            db = SessionLocal()
+            try:
+                if _get_setting(db, "backup_auto_enabled", "false") != "true":
+                    continue
+                days = int(_get_setting(db, "backup_auto_days", "7") or "7")
+                if not _should_run("backup_auto_last_run", days, db):
+                    continue
+                manager = BackupManager(
+                    app_root=app_root,
+                    backup_root=backup_root,
+                    db_path=db_path,
+                    env_path=env_path,
+                    cidr_db_path=cidr_db_path,
+                )
+                retention = int(_get_setting(db, "backup_retention", "5") or "5")
+                config_contents = collect_backup_config_contents(db)
+                awg2_archive = None
+                if _get_setting(db, "backup_awg2_enabled", "true") == "true":
+                    awg2_archive = collect_awg2_backup_archive(db)
+                result = manager.create_backup(
+                    include_configs=bool(config_contents),
+                    config_contents=config_contents,
+                    retention=retention,
+                    awg2_archive=awg2_archive,
+                )
+                row = db.query(AppSetting).filter(AppSetting.key == "backup_auto_last_run").first()
+                now_str = datetime.now(timezone.utc).isoformat()
+                if row:
+                    row.value = now_str
+                else:
+                    db.add(AppSetting(key="backup_auto_last_run", value=now_str))
+                if _get_setting(db, "backup_telegram_enabled", "false") == "true":
+                    from app.services.feature_guards import get_feature_service
+
+                    if get_feature_service().is_enabled("telegram"):
+                        token = _get_setting(db, "telegram_bot_token")
+                        chat_ids = get_setting_chat_ids(lambda key, default="": _get_setting(db, key, default))
+                        if token and chat_ids:
+                            backup_path = str(manager.get_backup_path(result["file_name"]))
+                            for chat_id in chat_ids:
+                                sent = send_tg_document(
+                                    token,
+                                    chat_id,
+                                    backup_path,
+                                    caption=f"Авто-бэкап: {result['file_name']}",
+                                    run_async=False,
+                                )
+                                if not sent:
+                                    logger.warning(
+                                        "Auto-backup Telegram send failed: chat_id=%s file=%s",
+                                        chat_id,
+                                        backup_path,
+                                    )
+                if _get_setting(db, "backup_az_enabled", "true") == "true":
+                    try:
+                        adapter = get_active_adapter(db)
+                        az_result = adapter.create_antizapret_backup()
+                        if _get_setting(db, "backup_telegram_enabled", "false") == "true":
+                            from app.services.feature_guards import get_feature_service
+
+                            if get_feature_service().is_enabled("telegram"):
+                                token = _get_setting(db, "telegram_bot_token")
+                                chat_ids = get_setting_chat_ids(
+                                    lambda key, default="": _get_setting(db, key, default)
+                                )
+                                if token and chat_ids and az_result.get("archive_path"):
+                                    for chat_id in chat_ids:
+                                        sent = send_tg_document(
+                                            token,
+                                            chat_id,
+                                            az_result["archive_path"],
+                                            caption=f"Авто-бэкап AntiZapret: {az_result.get('archive_name', '')}",
+                                            run_async=False,
+                                        )
+                                        if not sent:
+                                            logger.warning(
+                                                "Auto AntiZapret backup Telegram send failed: chat_id=%s file=%s",
+                                                chat_id,
+                                                az_result["archive_path"],
+                                            )
+                    except Exception as exc:
+                        logger.warning("Auto AntiZapret backup (client.sh 8) failed: %s", exc)
+                db.commit()
+                logger.info("Auto-backup created: %s", result["file_name"])
+            finally:
+                db.close()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Auto-backup scheduler error: %s", exc)
+
+
+async def run_runtime_backup_cleanup_loop(env_path: Path):
+    """Background loop: prune stale CIDR runtime backup directories hourly."""
+    toggles = FeatureToggleService(env_path)
+    while True:
+        try:
+            await asyncio.sleep(3600)
+            if not toggles.is_enabled("runtime_backup_cleanup"):
+                continue
+            removed = await asyncio.to_thread(_prune_runtime_backups)
+            if removed:
+                logger.info("Runtime backup cleanup removed %d director(ies)", len(removed))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Runtime backup cleanup error: %s", exc)

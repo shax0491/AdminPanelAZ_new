@@ -1,0 +1,869 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import type { LucideIcon } from 'lucide-react'
+import {
+  Archive,
+  ArchiveX,
+  CalendarClock,
+  Check,
+  Download,
+  LayoutDashboard,
+  ListTree,
+  RotateCcw,
+  Save,
+  Send,
+  Server,
+  Shield,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react'
+import {
+  ApiError,
+  createBackup,
+  deleteBackup,
+  downloadBackup,
+  getBackupSettings,
+  getBackups,
+  restoreBackup,
+  updateBackupSettings,
+  uploadBackup,
+} from '@/api/client'
+import { ConfirmDialogHost } from '@/components/shared/ConfirmDialog'
+import SettingsAlert from '@/components/settings/SettingsAlert'
+import {
+  SettingsCollapsible,
+  SettingsMetaLine,
+  SettingsToolbar,
+} from '@/components/settings/SettingsChrome'
+import Spinner from '@/components/ui/Spinner'
+import { InlineProgressBar } from '@/components/ui/ProgressBar'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { useConfirmDialog } from '@/hooks/useConfirmDialog'
+import { useNotifications } from '@/context/NotificationContext'
+import { useFeatureModules } from '@/context/FeatureModulesContext'
+import { useProgress } from '@/context/ProgressContext'
+import { formatDateTime } from '@/lib/datetime'
+import { cn } from '@/lib/utils'
+import type { BackupEntry, BackupSettings } from '@/types'
+
+function formatSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} Б`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`
+}
+
+const COMPONENT_LABELS: Record<string, string> = {
+  db: 'База AdminPanel',
+  cidr_db: 'База CIDR',
+  env: '.env панели',
+  configs: 'Списки AntiZapret',
+  database: 'База AdminPanel',
+  antizapret_lists: 'Списки AntiZapret',
+  antizapret_backup: 'Архив AntiZapret',
+  awg2: 'Слой AZ-AWG2',
+}
+
+const RESTORE_WARNING =
+  'Текущие настройки и данные панели будут перезаписаны. Если в архиве есть слой AZ-AWG2, он тоже будет восстановлен на VPN-узле. После восстановления панель будет автоматически перезапущена — страница станет недоступна на несколько секунд. Данные портала и unlock восстанавливаются из БД; HTTPS/nginx портала нужно заново применить в Подписка.'
+
+const RESTORE_SUCCESS_MESSAGE =
+  'Восстановление выполнено. Панель будет перезапущена через несколько секунд.'
+
+const ADMIN_PANEL_ALWAYS_INCLUDED = [
+  'База данных — пользователи, роли, настройки, узлы, журналы, токены портала и unlock-коды',
+  'База CIDR — подсети для карты маршрутизации в панели',
+  'Файл .env — пароли, ключи и параметры запуска панели (PORTAL_DOMAIN синхронизируется из БД при restore)',
+] as const
+
+const INTERVAL_PRESETS = [1, 3, 7, 14] as const
+const RETENTION_PRESETS = [3, 5, 10] as const
+
+function ToggleRow({
+  id,
+  label,
+  description,
+  checked,
+  disabled,
+  onCheckedChange,
+}: {
+  id: string
+  label: string
+  description?: string
+  checked: boolean
+  disabled?: boolean
+  onCheckedChange: (checked: boolean) => void
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-start justify-between gap-4 rounded-xl border bg-card/50 p-4 transition-colors',
+        checked && !disabled && 'border-primary/20 bg-primary/5',
+        disabled && 'opacity-60',
+      )}
+    >
+      <div className="min-w-0 space-y-1">
+        <Label htmlFor={id} className={cn('font-medium', !disabled && 'cursor-pointer')}>
+          {label}
+        </Label>
+        {description && <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>}
+      </div>
+      <Switch id={id} checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} />
+    </div>
+  )
+}
+
+function BackupScopeBlock({
+  icon: Icon,
+  title,
+  subtitle,
+  children,
+}: {
+  icon: LucideIcon
+  title: string
+  subtitle: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="space-y-3 rounded-xl border bg-muted/15 p-4">
+      <div className="flex gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Icon size={18} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">{title}</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{subtitle}</p>
+        </div>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function IncludedItemsList({ items }: { items: readonly string[] }) {
+  return (
+    <ul className="space-y-1.5">
+      {items.map((item) => (
+        <li key={item} className="flex gap-2 text-xs leading-relaxed text-muted-foreground">
+          <Check size={14} className="mt-0.5 shrink-0 text-primary" strokeWidth={2.5} />
+          <span>{item}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function OptionCard({
+  icon: Icon,
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  icon: LucideIcon
+  label: string
+  description: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={`${label}: ${checked ? 'включено' : 'выключено'}`}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        'group flex w-full cursor-pointer items-start gap-3 rounded-xl border-2 p-4 text-left transition-all',
+        checked
+          ? 'border-primary bg-primary/10 shadow-sm ring-2 ring-primary/25'
+          : 'border-border bg-card hover:border-primary/50 hover:bg-muted/40',
+      )}
+    >
+      <div
+        className={cn(
+          'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors',
+          checked
+            ? 'border-primary bg-primary text-primary-foreground'
+            : 'border-muted-foreground/60 bg-background group-hover:border-primary/60',
+        )}
+        aria-hidden
+      >
+        {checked ? <Check size={14} strokeWidth={3} /> : null}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Icon size={16} className={cn('shrink-0', checked ? 'text-primary' : 'text-muted-foreground')} />
+            <span className="text-sm font-medium">{label}</span>
+          </div>
+          <Badge variant={checked ? 'default' : 'outline'} className="shrink-0 text-[10px]">
+            {checked ? 'Вкл.' : 'Выкл.'}
+          </Badge>
+        </div>
+        <span className="mt-1.5 block text-xs leading-relaxed text-muted-foreground">{description}</span>
+      </div>
+    </button>
+  )
+}
+
+export default function BackupTab() {
+  const { success, error: notifyError } = useNotifications()
+  const { withInline } = useProgress()
+  const { confirm, dialogProps } = useConfirmDialog()
+  const { isEnabled } = useFeatureModules()
+  const awg2Enabled = isEnabled('awg2')
+  const [backups, setBackups] = useState<BackupEntry[]>([])
+  const [settings, setSettings] = useState<BackupSettings | null>(null)
+  const [settingsDraft, setSettingsDraft] = useState<BackupSettings | null>(null)
+  const [includeConfigs, setIncludeConfigs] = useState(false)
+  const [includeAntizapretBackup, setIncludeAntizapretBackup] = useState(false)
+  const [includeAwg2Backup, setIncludeAwg2Backup] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const uploadInputRef = useRef<HTMLInputElement>(null)
+  const pendingRestoreRef = useRef(false)
+
+  const load = async () => {
+    const [list, cfg] = await Promise.all([getBackups(), getBackupSettings()])
+    setBackups(list)
+    setSettings(cfg)
+    setSettingsDraft(cfg)
+  }
+
+  useEffect(() => {
+    setLoading(true)
+    load()
+      .catch((err) => notifyError(err instanceof ApiError ? err.message : 'Не удалось загрузить резервные копии'))
+      .finally(() => setLoading(false))
+  }, [notifyError])
+
+  const patchDraft = (patch: Partial<BackupSettings>) => {
+    setSettingsDraft((prev) => (prev ? { ...prev, ...patch } : prev))
+  }
+
+  const isSettingsDirty = useMemo(() => {
+    if (!settings || !settingsDraft) return false
+    return (
+      settings.telegram_on_backup !== settingsDraft.telegram_on_backup ||
+      settings.auto_backup_enabled !== settingsDraft.auto_backup_enabled ||
+      settings.backup_az_enabled !== settingsDraft.backup_az_enabled ||
+      settings.backup_awg2_enabled !== settingsDraft.backup_awg2_enabled ||
+      settings.auto_backup_days !== settingsDraft.auto_backup_days ||
+      settings.retention_count !== settingsDraft.retention_count
+    )
+  }, [settings, settingsDraft])
+
+  const saveSettingsDraft = async () => {
+    if (!settingsDraft) return
+    setSavingSettings(true)
+    try {
+      const updated = await updateBackupSettings({
+        telegram_on_backup: settingsDraft.telegram_on_backup,
+        auto_backup_enabled: settingsDraft.auto_backup_enabled,
+        backup_az_enabled: settingsDraft.backup_az_enabled,
+        backup_awg2_enabled: settingsDraft.backup_awg2_enabled,
+        auto_backup_days: settingsDraft.auto_backup_days,
+        retention_count: settingsDraft.retention_count,
+      })
+      setSettings(updated)
+      setSettingsDraft(updated)
+      success('Настройки резервного копирования сохранены')
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : 'Ошибка сохранения')
+    } finally {
+      setSavingSettings(false)
+    }
+  }
+
+  const stats = useMemo(() => {
+    const totalBytes = backups.reduce((sum, b) => sum + b.size_bytes, 0)
+    const cfg = settingsDraft ?? settings
+    return {
+      count: backups.length,
+      totalSize: backups.length > 0 ? formatSize(totalBytes) : '—',
+      auto: cfg?.auto_backup_enabled ? 'Включена' : 'Выключена',
+      retention: cfg ? String(cfg.retention_count) : '—',
+    }
+  }, [backups, settings, settingsDraft])
+
+  const telegramDeliveryPlan = useMemo(() => {
+    const files = [
+      includeAwg2Backup
+        ? 'adminpanelaz_*.tar.gz — AdminPanel + слой AZ-AWG2'
+        : 'adminpanelaz_*.tar.gz — AdminPanel (всегда)',
+    ]
+    if (includeAntizapretBackup) {
+      files.push('backup-*.tar.gz — AntiZapret (отдельный файл в том же чате)')
+    }
+    return files
+  }, [includeAntizapretBackup, includeAwg2Backup])
+
+  const handleSendTelegram = async () => {
+    try {
+      await withInline(async () => {
+        await createBackup(includeConfigs, includeAntizapretBackup, true, includeAwg2Backup)
+        await load()
+      }, 'Создание и отправка в Telegram...')
+      success(
+        includeAntizapretBackup
+          ? 'В Telegram отправлены 2 файла: AdminPanel и AntiZapret'
+          : 'В Telegram отправлен 1 файл: AdminPanel',
+      )
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : 'Ошибка отправки в Telegram')
+    }
+  }
+
+  const handleCreate = async () => {
+    try {
+      await withInline(async () => {
+        await createBackup(includeConfigs, includeAntizapretBackup, false, includeAwg2Backup)
+        await load()
+      }, 'Создание копии...')
+      success('Резервная копия создана')
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : 'Не удалось создать копию')
+    }
+  }
+
+  const handleRestore = (fileName: string) => {
+    confirm({
+      title: 'Восстановить из копии?',
+      description: <>Содержимое архива «{fileName}» заменит текущие данные на сервере.</>,
+      alert: {
+        variant: 'danger',
+        title: 'Внимание',
+        children: RESTORE_WARNING,
+      },
+      confirmLabel: 'Восстановить и перезапустить',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          const resp = await withInline(async () => {
+            const result = await restoreBackup(fileName)
+            await load()
+            return result
+          }, 'Восстановление и перезапуск...')
+          const hint =
+            typeof resp.detail?.hint === 'string' && resp.detail.hint.trim()
+              ? ` ${resp.detail.hint.trim()}`
+              : ''
+          success(`${resp.message || RESTORE_SUCCESS_MESSAGE}${hint}`)
+        } catch (err) {
+          notifyError(err instanceof ApiError ? err.message : 'Ошибка восстановления')
+        }
+      },
+    })
+  }
+
+  const handleUpload = (restoreAfterUpload: boolean) => {
+    pendingRestoreRef.current = restoreAfterUpload
+    uploadInputRef.current?.click()
+  }
+
+  const handleUploadFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    const restoreAfterUpload = pendingRestoreRef.current
+    pendingRestoreRef.current = false
+    const runUpload = async () => {
+      try {
+        const uploaded = await withInline(async () => {
+          const entry = await uploadBackup(file, restoreAfterUpload)
+          await load()
+          return entry
+        }, restoreAfterUpload ? 'Загрузка, восстановление и перезапуск...' : 'Загрузка архива...')
+        if (restoreAfterUpload) {
+          const hint =
+            typeof uploaded.restore_detail?.hint === 'string' && uploaded.restore_detail.hint.trim()
+              ? ` ${uploaded.restore_detail.hint.trim()}`
+              : ''
+          success(`${uploaded.restore_message || RESTORE_SUCCESS_MESSAGE}${hint}`)
+        } else {
+          success('Архив загружен и добавлен в список')
+        }
+      } catch (err) {
+        notifyError(err instanceof ApiError ? err.message : 'Ошибка загрузки архива')
+      }
+    }
+
+    if (restoreAfterUpload) {
+      confirm({
+        title: 'Загрузить и восстановить?',
+        description: (
+          <>
+            Файл «{file.name}» заменит текущие данные панели на сервере после загрузки.
+          </>
+        ),
+        alert: {
+          variant: 'danger',
+          title: 'Внимание',
+          children:
+            'Используйте после переустановки или когда на сервере нет сохранённых копий. ' +
+            RESTORE_WARNING,
+        },
+        confirmLabel: 'Загрузить, восстановить и перезапустить',
+        destructive: true,
+        onConfirm: runUpload,
+      })
+      return
+    }
+
+    await runUpload()
+  }
+
+  const handleDelete = (fileName: string) => {
+    confirm({
+      title: 'Удалить архив?',
+      description: <>Архив «{fileName}» будет удалён без возможности восстановления.</>,
+      confirmLabel: 'Удалить',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await deleteBackup(fileName)
+          await load()
+          success('Архив удалён')
+        } catch (err) {
+          notifyError(err instanceof ApiError ? err.message : 'Ошибка удаления')
+        }
+      },
+    })
+  }
+
+  if (loading) {
+    return <Spinner label="Загрузка резервных копий..." className="py-12" />
+  }
+
+  return (
+    <div className="space-y-4">
+      <ConfirmDialogHost dialogProps={dialogProps} />
+      <InlineProgressBar active={savingSettings} label="Сохранение настроек..." />
+
+      <SettingsToolbar
+        title="Резервные копии"
+        meta={
+          <SettingsMetaLine
+            items={[
+              { label: 'архивов', value: stats.count },
+              { label: 'объём', value: stats.totalSize },
+              { label: 'авто-копия', value: stats.auto },
+              { label: 'хранить', value: `${stats.retention} шт.` },
+            ]}
+          />
+        }
+        actions={
+          <Button
+            type="button"
+            size="sm"
+            className="h-9 gap-1.5"
+            onClick={() => setCreateOpen((v) => !v)}
+            aria-expanded={createOpen}
+          >
+            <Archive size={15} />
+            Создать копию
+          </Button>
+        }
+      />
+
+      {createOpen && (
+        <Card className="border-primary/25 shadow-sm">
+          <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Archive size={16} />
+                Создать резервную копию
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Кнопка «Создать копию» всегда делает архив AdminPanel; опции ниже добавляют списки AntiZapret,
+                слой AZ-AWG2 и отдельный архив VPN
+              </CardDescription>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={() => setCreateOpen(false)}
+              aria-label="Скрыть форму"
+            >
+              <X size={16} />
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <BackupScopeBlock
+                icon={LayoutDashboard}
+                title="AdminPanel"
+                subtitle="Один файл adminpanelaz_*.tar.gz на сервере панели — отображается в списке «Архивы» ниже"
+              >
+                <div className="space-y-3">
+                  <p className="text-xs font-medium text-foreground">Всегда входит в копию:</p>
+                  <IncludedItemsList items={ADMIN_PANEL_ALWAYS_INCLUDED} />
+                  <p className="text-xs text-muted-foreground">
+                    Nginx/TLS портала в архив не входят. После restore откройте{' '}
+                    <Link to="/subscription" className="font-medium text-foreground underline-offset-2 hover:underline">
+                      Подписка
+                    </Link>{' '}
+                    → «Настроить под текущую публикацию».
+                  </p>
+                  <OptionCard
+                    icon={ListTree}
+                    label="Добавить списки маршрутизации AntiZapret"
+                    description="include/exclude-hosts и IP-списки с VPN-сервера — в тот же архив AdminPanel, не отдельный файл"
+                    checked={includeConfigs}
+                    onChange={setIncludeConfigs}
+                  />
+                  {awg2Enabled && (
+                    <OptionCard
+                      icon={Shield}
+                      label="Добавить слой AZ-AWG2"
+                      description="Узкий overlay AmneziaWG 2.0 в тот же архив AdminPanel, если слой установлен на VPN-узле"
+                      checked={includeAwg2Backup}
+                      onChange={setIncludeAwg2Backup}
+                    />
+                  )}
+                </div>
+              </BackupScopeBlock>
+
+              <BackupScopeBlock
+                icon={Server}
+                title="AntiZapret (VPN-сервер)"
+                subtitle={
+                  includeAntizapretBackup
+                    ? 'Отдельный файл на VPN-узле; при отправке в Telegram — второе вложение'
+                    : 'Отдельный файл на VPN-узле; сейчас не создаётся и в Telegram не уходит'
+                }
+              >
+                <OptionCard
+                  icon={Server}
+                  label="Создать полный архив VPN"
+                  description="Отдельный файл backup-*.tar.gz на VPN-узле (не в списке «Архивы» панели). Восстановление — на VPN-сервере, не через «Восстановить» panel-архива."
+                  checked={includeAntizapretBackup}
+                  onChange={setIncludeAntizapretBackup}
+                />
+              </BackupScopeBlock>
+            </div>
+
+            {settingsDraft && (
+              <div className="space-y-3 rounded-xl border border-dashed bg-muted/10 p-4">
+                <div>
+                  <p className="text-xs font-medium text-foreground">Telegram</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    В чат уходят <strong className="text-foreground">отдельные файлы</strong> — не один общий архив.
+                    Состав зависит от галочек выше.
+                  </p>
+                </div>
+                <ul className="space-y-1 rounded-lg border bg-card/60 px-3 py-2">
+                  {telegramDeliveryPlan.map((line) => (
+                    <li key={line} className="flex gap-2 text-xs text-muted-foreground">
+                      <Send size={12} className="mt-0.5 shrink-0 text-primary" />
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ul>
+                <OptionCard
+                  icon={Send}
+                  label="Дублировать в Telegram при «Создать копию»"
+                  description="Те же файлы, что и при ручной отправке. Нужно сохранить кнопкой «Сохранить настройки»"
+                  checked={settingsDraft.telegram_on_backup}
+                  onChange={(checked) => patchDraft({ telegram_on_backup: checked })}
+                />
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+              <Button
+                variant={isSettingsDirty ? 'default' : 'outline'}
+                className="gap-1.5 sm:mr-auto"
+                disabled={!isSettingsDirty || savingSettings}
+                onClick={() => void saveSettingsDraft()}
+              >
+                <Save size={16} />
+                {savingSettings ? 'Сохранение...' : 'Сохранить настройки'}
+              </Button>
+              <Button variant="outline" className="gap-1.5" onClick={() => void handleSendTelegram()}>
+                <Send size={16} />
+                {includeAntizapretBackup
+                  ? `Отправить в Telegram (${telegramDeliveryPlan.length} файла)`
+                  : 'Отправить в Telegram (1 файл)'}
+              </Button>
+              <Button onClick={() => void handleCreate()} className="gap-1.5">
+                <Archive size={16} />
+                Создать копию
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card className="shadow-sm">
+        <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-3">
+          <div>
+            <CardTitle className="text-base">Архивы AdminPanel</CardTitle>
+            <CardDescription className="mt-1.5">
+              {backups.length > 0
+                ? `${backups.length} файл${backups.length === 1 ? '' : backups.length < 5 ? 'а' : 'ов'} adminpanelaz_*.tar.gz — полные архивы AntiZapret хранятся на VPN-сервере`
+                : 'Только копии панели; архивы AntiZapret создаются на VPN-сервере отдельно'}
+            </CardDescription>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 lg:shrink-0">
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept=".tar.gz,.tgz,application/gzip,application/x-gzip"
+              className="hidden"
+              onChange={(event) => void handleUploadFileSelected(event)}
+            />
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleUpload(false)}>
+              <Upload size={14} />
+              Загрузить
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+              onClick={() => handleUpload(true)}
+            >
+              <RotateCcw size={14} />
+              Загрузить и восстановить
+            </Button>
+            {backups.length > 0 && (
+              <Badge variant="secondary" className="shrink-0">
+                {backups.length}
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {backups.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-muted-foreground/20 bg-muted/10 px-4 py-10 text-center">
+              <ArchiveX className="mb-2 h-8 w-8 text-muted-foreground/70" />
+              <p className="text-sm font-medium">Копий пока нет</p>
+              <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+                Создайте первую резервную копию или загрузите ранее скачанный архив adminpanelaz_*.tar.gz
+              </p>
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                <Button onClick={() => void handleCreate()} variant="outline" className="gap-1.5">
+                  <Archive size={16} />
+                  Создать копию
+                </Button>
+                <Button onClick={() => handleUpload(false)} variant="outline" className="gap-1.5">
+                  <Upload size={16} />
+                  Загрузить архив
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {backups.map((b) => (
+                <li
+                  key={b.file_name}
+                  className="rounded-xl border bg-card/50 p-3 transition-colors hover:bg-muted/30"
+                >
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate font-mono text-sm font-medium">{b.file_name}</p>
+                        <Badge variant="outline" className="text-[10px]">
+                          {formatSize(b.size_bytes)}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(b.created_at)}</p>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {b.components.map((c) => (
+                          <Badge key={c} variant="secondary" className="text-[10px]">
+                            {COMPONENT_LABELS[c] ?? c}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 lg:shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        title="Скачать"
+                        onClick={async () => {
+                          const res = await downloadBackup(b.file_name)
+                          if (!res.ok) return notifyError('Ошибка скачивания')
+                          const blob = await res.blob()
+                          const a = document.createElement('a')
+                          a.href = URL.createObjectURL(blob)
+                          a.download = b.file_name
+                          a.click()
+                        }}
+                      >
+                        <Download size={14} />
+                        Скачать
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() => handleRestore(b.file_name)}
+                      >
+                        <RotateCcw size={14} />
+                        Восстановить
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+                        onClick={() => handleDelete(b.file_name)}
+                      >
+                        <Trash2 size={14} />
+                        Удалить
+                      </Button>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      {settingsDraft && (
+        <SettingsCollapsible
+          open={scheduleOpen}
+          onOpenChange={setScheduleOpen}
+          icon={<CalendarClock size={16} />}
+          title="Автоматические копии"
+          description="Расписание и хранение — архив AdminPanel на сервере панели и при необходимости отдельный архив на VPN-сервере"
+        >
+          <div className="grid gap-4 md:grid-cols-2">
+            <ToggleRow
+              id="auto-backup"
+              label="Авто-копия AdminPanel"
+              description={
+                awg2Enabled
+                  ? 'База, CIDR, .env, при доступности списки AntiZapret и слой AZ-AWG2 — файл adminpanelaz_*.tar.gz'
+                  : 'База, CIDR, .env и при доступности списки AntiZapret — файл adminpanelaz_*.tar.gz'
+              }
+              checked={settingsDraft.auto_backup_enabled}
+              onCheckedChange={(checked) => patchDraft({ auto_backup_enabled: checked })}
+            />
+            <ToggleRow
+              id="backup-az"
+              label="Плюс полный архив AntiZapret"
+              description="Дополнительно client.sh 8 на VPN-сервере — отдельный файл, не в списке панели"
+              checked={settingsDraft.backup_az_enabled}
+              onCheckedChange={(checked) => patchDraft({ backup_az_enabled: checked })}
+            />
+            {awg2Enabled && (
+              <ToggleRow
+                id="backup-awg2"
+                label="Плюс слой AZ-AWG2"
+                description="Если слой установлен — overlay попадает в adminpanelaz_*.tar.gz, как списки маршрутизации"
+                checked={settingsDraft.backup_awg2_enabled}
+                onCheckedChange={(checked) => patchDraft({ backup_awg2_enabled: checked })}
+              />
+            )}
+          </div>
+
+          {settingsDraft.auto_backup_enabled && (
+            <div className="grid gap-4 rounded-xl border bg-muted/20 p-4 md:grid-cols-2">
+              <div className="space-y-3">
+                <Label className="text-xs text-muted-foreground">Интервал, дней</Label>
+                <div className="flex flex-wrap gap-2">
+                  {INTERVAL_PRESETS.map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => patchDraft({ auto_backup_days: d })}
+                      className={cn(
+                        'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
+                        settingsDraft.auto_backup_days === d
+                          ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary'
+                          : 'hover:border-muted-foreground/30 hover:bg-muted/50',
+                      )}
+                    >
+                      {d} дн.
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="backup-days"
+                    type="number"
+                    min={1}
+                    max={90}
+                    className="h-9 w-20"
+                    value={settingsDraft.auto_backup_days}
+                    onChange={(e) => patchDraft({ auto_backup_days: Number(e.target.value) })}
+                  />
+                  <span className="text-xs text-muted-foreground">дней</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label className="text-xs text-muted-foreground">Сколько копий хранить</Label>
+                <div className="flex flex-wrap gap-2">
+                  {RETENTION_PRESETS.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => patchDraft({ retention_count: n })}
+                      className={cn(
+                        'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
+                        settingsDraft.retention_count === n
+                          ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary'
+                          : 'hover:border-muted-foreground/30 hover:bg-muted/50',
+                      )}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="retention"
+                    type="number"
+                    min={1}
+                    max={30}
+                    className="h-9 w-20"
+                    value={settingsDraft.retention_count}
+                    onChange={(e) => patchDraft({ retention_count: Number(e.target.value) })}
+                  />
+                  <span className="text-xs text-muted-foreground">копий</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button
+              disabled={!isSettingsDirty || savingSettings}
+              onClick={() => void saveSettingsDraft()}
+              className="gap-1.5"
+            >
+              <Save size={16} />
+              {savingSettings ? 'Сохранение...' : 'Сохранить'}
+            </Button>
+          </div>
+        </SettingsCollapsible>
+      )}
+
+      <SettingsAlert variant="info" title="Что восстанавливается откуда">
+        <strong>AdminPanel</strong> — «Восстановить» в списке или «Загрузить и восстановить» для архива с
+        компьютера (после переустановки): база, CIDR, .env и при наличии списки маршрутизации и слой AZ-AWG2.{' '}
+        <strong>AntiZapret</strong> — полный архив VPN восстанавливается на VPN-сервере (не через этот список).
+      </SettingsAlert>
+
+      <SettingsAlert variant="danger" title="Перед восстановлением AdminPanel">
+        Текущие данные панели будут заменены содержимым выбранного архива. После восстановления панель
+        перезапустится сама через несколько секунд.
+      </SettingsAlert>
+    </div>
+  )
+}

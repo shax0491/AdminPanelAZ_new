@@ -1,0 +1,1931 @@
+from datetime import datetime
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.models import NodeStatus, SyncStatus, UserRole, VpnType
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    web_session_id: str | None = None
+
+
+class Login2FARequired(BaseModel):
+    requires_2fa: bool = True
+    temp_token: str
+    passkey_available: bool = False
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+    captcha_id: str | None = None
+    captcha_text: str | None = None
+
+
+class Login2FARequest(BaseModel):
+    temp_token: str
+    code: str = Field(min_length=6, max_length=16)
+
+
+class TelegramOidcTokenRequest(BaseModel):
+    id_token: str = Field(min_length=20)
+
+
+class TwoFASetupResponse(BaseModel):
+    secret: str
+    otpauth_uri: str
+    qr_data_url: str
+
+
+class TwoFAEnableRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=8)
+
+
+class TwoFADisableRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=16)
+
+
+class TwoFAStatusResponse(BaseModel):
+    enabled: bool
+    backup_codes_remaining: int = 0
+
+
+class TwoFABackupCodesResponse(BaseModel):
+    backup_codes: list[str]
+
+
+class PasskeyRegisterOptionsResponse(BaseModel):
+    options: dict[str, Any]
+
+
+class PasskeyRegisterVerifyRequest(BaseModel):
+    credential: dict[str, Any]
+    session_key: str
+    nickname: str | None = Field(default=None, max_length=128)
+
+
+class PasskeyAuthOptionsRequest(BaseModel):
+    temp_token: str
+
+
+class PasskeyAuthVerifyRequest(BaseModel):
+    temp_token: str
+    credential: dict[str, Any]
+    session_key: str
+
+
+class PasskeyCredentialResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nickname: str
+    created_at: datetime
+    last_used_at: datetime | None = None
+
+
+class PasskeyListResponse(BaseModel):
+    credentials: list[PasskeyCredentialResponse]
+    count: int
+
+
+class PasskeyRenameRequest(BaseModel):
+    nickname: str = Field(min_length=1, max_length=128)
+
+
+class NodeRotateKeyResponse(BaseModel):
+    message: str
+    node_id: int
+
+
+class NodeMtlsEnableResponse(BaseModel):
+    message: str
+    node_id: int
+    mtls_enabled: bool = True
+
+
+class NodeMtlsDisableResponse(BaseModel):
+    message: str
+    node_id: int
+    mtls_enabled: bool = False
+    warning: str | None = None
+
+
+class NodeMtlsStatusResponse(BaseModel):
+    ready: bool
+    writable: bool
+    mtls_dir: str
+    ca_cert: str
+    panel_cert: str
+    panel_key: str
+    agent_certs_count: int = 0
+
+
+class NodeTransportItem(BaseModel):
+    id: str
+    label: str
+    available: bool
+
+
+class NodeTransportsResponse(BaseModel):
+    items: list[NodeTransportItem]
+
+
+class NodeTransportUpdate(BaseModel):
+    transport: str
+    ssh_host: str | None = Field(default=None, max_length=255)
+    ssh_port: int | None = Field(default=None, ge=1, le=65535)
+    ssh_username: str | None = Field(default=None, max_length=128)
+    ssh_private_key: str | None = None
+    ssh_passphrase: str | None = None
+    ssh_remote_agent_host: str | None = Field(default=None, max_length=255)
+    ssh_remote_agent_port: int | None = Field(default=None, ge=1, le=65535)
+
+    @field_validator(
+        "transport",
+        "ssh_host",
+        "ssh_username",
+        "ssh_private_key",
+        "ssh_passphrase",
+        "ssh_remote_agent_host",
+        mode="before",
+    )
+    @classmethod
+    def _strip_transport_strings(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class NodeTransportPreflightResponse(BaseModel):
+    ok: bool
+    current: str
+    wanted: str
+    message: str
+    hint: str | None = None
+    probe_status: str | None = None
+    probe_error: str | None = None
+
+
+class NodeRemoteHostsBody(BaseModel):
+    hosts: list[str] = Field(default_factory=list)
+    apply_to_wireguard: bool = False
+
+
+class NodeRemoteHostsResponse(BaseModel):
+    hosts: list[str]
+    warnings: list[str] = Field(default_factory=list)
+    apply_to_wireguard: bool = False
+
+
+class NodeAllowFirstRemoteHostResponse(BaseModel):
+    added: bool
+    host: str
+    detail: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
+class NodeOpenVpnMultihomeBody(BaseModel):
+    enabled: bool = False
+
+
+class NodeOpenVpnMultihomeResponse(BaseModel):
+    enabled: bool
+    on_disk: bool | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
+class UserBase(BaseModel):
+    username: str
+    role: UserRole = UserRole.user
+    theme: str = "dark"
+    is_active: bool = True
+
+
+class UserCreate(UserBase):
+    password: str = Field(min_length=4)
+
+
+class UserUpdate(BaseModel):
+    role: UserRole | None = None
+    theme: str | None = None
+    is_active: bool | None = None
+    password: str | None = Field(default=None, min_length=4)
+    telegram_id: str | None = None
+    config_quota: int | None = Field(default=None, ge=0, le=1000)
+    can_create_configs: bool | None = None
+    visible_vpn_profiles: dict | None = None
+
+
+class UserResponse(UserBase):
+    id: int
+    must_change_password: bool
+    totp_enabled: bool = False
+    telegram_id: str | None = None
+    config_quota: int | None = None
+    can_create_configs: bool = True
+    visible_vpn_profiles: dict | None = None
+    timezone: str = ""
+    noc_daily_time: str = ""
+    noc_weekly_dow: str = ""
+    noc_weekly_time: str = ""
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @field_validator("visible_vpn_profiles", mode="before")
+    @classmethod
+    def _parse_visible_vpn_profiles(cls, value):
+        if value is None or value == "":
+            return None
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            import json
+
+            try:
+                parsed = json.loads(value)
+            except (ValueError, TypeError):
+                return None
+            return parsed if isinstance(parsed, dict) else None
+        return None
+
+
+class UserConfigAccessUpdate(BaseModel):
+    config_groups: list[str] = []
+
+
+class UserConfigAccessResponse(BaseModel):
+    user_id: int
+    config_groups: list[str] = []
+
+
+class SelfServiceQuotaResponse(BaseModel):
+    used: int
+    limit: int | None = None
+    remaining: int | None = None
+    unlimited: bool = False
+    can_create: bool = True
+    create_rate_max: int | None = None
+    create_rate_window_seconds: int | None = None
+
+
+class VisibleVpnProfilesPolicy(BaseModel):
+    routes: list[str] = Field(default_factory=list)
+    protocols: list[str] = Field(default_factory=list)
+    openvpn_groups: list[str] = Field(default_factory=list)
+
+
+class VisibleVpnProfilesDefaultResponse(BaseModel):
+    policy: VisibleVpnProfilesPolicy
+
+
+class VisibleVpnProfilesDefaultUpdate(BaseModel):
+    policy: VisibleVpnProfilesPolicy
+
+
+class EffectiveVisibleVpnProfilesResponse(BaseModel):
+    policy: VisibleVpnProfilesPolicy
+    inherited: bool = True
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=4)
+
+
+class VpnConfigCreate(BaseModel):
+    client_name: str = Field(min_length=1, max_length=32, pattern=r"^[a-zA-Z0-9_-]+$")
+    vpn_type: VpnType
+    cert_expire_days: int | None = Field(default=3650, ge=1, le=3650)
+    ttl: str | None = None
+    description: str | None = None
+    owner_id: int | None = None
+
+
+class VpnConfigUpdate(BaseModel):
+    description: str | None = None
+    cert_expire_days: int | None = Field(default=None, ge=1, le=3650)
+    owner_id: int | None = None
+
+
+class VpnConfigHaInfo(BaseModel):
+    sync_group_id: int
+    shared_domain: str
+    shared_domain_wireguard: str | None = None
+    node_count: int
+    sync_status: SyncStatus
+    sync_mode: str
+
+
+class VpnConfigResponse(BaseModel):
+    id: int
+    client_name: str
+    vpn_type: VpnType
+    owner_id: int
+    owner_username: str | None = None
+    cert_expire_days: int | None
+    cert_expires_at: datetime | None = None
+    expires_at: datetime | None = None
+    cert_days_left: int | None = None
+    description: str | None
+    created_at: datetime
+    updated_at: datetime
+    profile_files: list[dict[str, str]] = []
+    tags: list["ConfigTagResponse"] = []
+    ha: VpnConfigHaInfo | None = None
+    ha_replicate_warning: str | None = None
+    local_ip: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class ConfigTagCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    color: str | None = Field(default="#6366f1", max_length=16)
+
+
+class ConfigTagUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=64)
+    color: str | None = Field(default=None, max_length=16)
+
+
+class ConfigTagResponse(BaseModel):
+    id: int
+    name: str
+    color: str | None = None
+    config_count: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class ConfigTagsAssignRequest(BaseModel):
+    tag_ids: list[int] = Field(default_factory=list)
+
+
+class ClientTemplateCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    vpn_type: VpnType
+    cert_expire_days: int | None = Field(default=None, ge=1, le=3650)
+    traffic_limit_value: float | None = Field(default=None, gt=0)
+    traffic_limit_unit: str | None = Field(default=None, max_length=8)
+    traffic_limit_period_days: int | None = Field(default=None, ge=1, le=3650)
+    description_template: str | None = Field(default=None, max_length=255)
+    sort_order: int = 0
+
+
+class ClientTemplateUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=64)
+    cert_expire_days: int | None = Field(default=None, ge=1, le=3650)
+    traffic_limit_value: float | None = Field(default=None, gt=0)
+    traffic_limit_unit: str | None = Field(default=None, max_length=8)
+    traffic_limit_period_days: int | None = Field(default=None, ge=1, le=3650)
+    description_template: str | None = Field(default=None, max_length=255)
+    sort_order: int | None = None
+
+
+class ClientTemplateResponse(BaseModel):
+    id: int
+    name: str
+    vpn_type: VpnType
+    cert_expire_days: int | None
+    traffic_limit_value: float | None
+    traffic_limit_unit: str | None
+    traffic_limit_period_days: int | None
+    description_template: str | None
+    sort_order: int
+    is_builtin: bool
+
+    model_config = {"from_attributes": True}
+
+
+class ClientTemplateApplyRequest(BaseModel):
+    client_name: str = Field(min_length=1, max_length=32, pattern=r"^[a-zA-Z0-9_-]+$")
+    owner_id: int | None = None
+
+
+class BulkConfigOpRequest(BaseModel):
+    operation: Literal["block_temp", "block_perm", "unblock", "delete", "renew_cert", "change_owner"]
+    config_ids: list[int] = Field(default_factory=list)
+    tag_ids: list[int] = Field(default_factory=list)
+    block_days: int | None = Field(default=7, ge=1, le=3650)
+    renew_cert_days: int | None = Field(default=3650, ge=1, le=3650)
+    owner_id: int | None = None
+
+    @model_validator(mode="after")
+    def validate_change_owner(self) -> "BulkConfigOpRequest":
+        if self.operation == "change_owner" and self.owner_id is None:
+            raise ValueError("Для смены владельца укажите owner_id")
+        return self
+
+
+class ActiveWebSessionResponse(BaseModel):
+    session_id: str
+    username: str
+    remote_addr: str | None
+    user_agent: str | None
+    created_at: datetime
+    last_seen_at: datetime
+    is_current: bool = False
+
+    model_config = {"from_attributes": True}
+
+
+class BulkConfigOpQueuedResponse(BaseModel):
+    task_id: str
+    queued: bool = True
+    status_url: str
+
+
+class ProfileFile(BaseModel):
+    protocol: str
+    variant: str
+    filename: str
+    path: str
+    content: str | None = None
+
+
+class MonitoringService(BaseModel):
+    name: str
+    status: str
+    active: bool
+    description: str | None = None
+
+
+class HaNodePresence(BaseModel):
+    node_id: int
+    node_name: str
+    online: bool = True
+
+
+class OpenVpnClient(BaseModel):
+    common_name: str
+    real_address: str
+    virtual_address: str
+    bytes_received: int
+    bytes_sent: int
+    connected_since: str
+    connected_since_ts: int = 0
+    profile: str | None = None
+    data_source: str = "status_log"
+    display_address: str | None = None
+    client_ip: str | None = None
+    city: str | None = None
+    country: str | None = None
+    isp: str | None = None
+    location_label: str | None = None
+    geo_label: str | None = None
+    via_proxy: bool = False
+    proxy_resolved: bool = False
+    node_id: int | None = None
+    node_name: str | None = None
+    active_node_id: int | None = None
+    active_node_name: str | None = None
+    ha_nodes: list[HaNodePresence] = Field(default_factory=list)
+    ha: VpnConfigHaInfo | None = None
+
+
+class WireGuardPeer(BaseModel):
+    interface: str
+    public_key: str
+    endpoint: str | None = None
+    allowed_ips: str | None = None
+    latest_handshake: str | None = None
+    transfer_rx: int = 0
+    transfer_tx: int = 0
+    client_name: str | None = None
+    display_address: str | None = None
+    client_ip: str | None = None
+    city: str | None = None
+    country: str | None = None
+    isp: str | None = None
+    location_label: str | None = None
+    geo_label: str | None = None
+    via_proxy: bool = False
+    proxy_resolved: bool = False
+    node_id: int | None = None
+    node_name: str | None = None
+    active_node_id: int | None = None
+    active_node_name: str | None = None
+    ha_nodes: list[HaNodePresence] = Field(default_factory=list)
+    ha: VpnConfigHaInfo | None = None
+
+
+class MonitoringNodeSummary(BaseModel):
+    node_id: int
+    node_name: str
+    status: str
+    connected_openvpn: int = 0
+    connected_wireguard: int = 0
+    connected_amneziawg2: int = 0
+    active_services: int = 0
+    total_services: int = 0
+    cpu_percent: float | None = None
+    memory_percent: float | None = None
+    total_traffic_bytes: int | None = None
+    cidr_routes_count: int | None = None
+    error: str | None = None
+    health_score: int = 100
+    health_level: Literal["ok", "warn", "critical"] = "ok"
+
+
+class GeoRoutingNodeHint(BaseModel):
+    node_id: int
+    node_name: str
+    status: str
+    server_ip: str | None = None
+    country: str | None = None
+    city: str | None = None
+    geo_label: str | None = None
+    is_recommended: bool = False
+
+
+class GeoRoutingHintResponse(BaseModel):
+    client_ip: str | None = None
+    client_country: str | None = None
+    client_city: str | None = None
+    client_geo_label: str | None = None
+    recommended_node_id: int | None = None
+    recommended_node_name: str | None = None
+    hint_message: str | None = None
+    nodes: list[GeoRoutingNodeHint] = Field(default_factory=list)
+
+
+class GlobalDashboardSummary(BaseModel):
+    timestamp: datetime
+    nodes_summary: list[MonitoringNodeSummary] = Field(default_factory=list)
+    nodes_online: int = 0
+    nodes_total: int = 0
+    total_connected_openvpn: int = 0
+    total_connected_wireguard: int = 0
+    total_connected_amneziawg2: int = 0
+
+
+class MonitoringOverview(BaseModel):
+    services: list[MonitoringService]
+    openvpn_clients: list[OpenVpnClient]
+    wireguard_peers: list[WireGuardPeer]
+    amneziawg2_peers: list[WireGuardPeer] = Field(default_factory=list)
+    server_ip: str | None = None
+    timestamp: datetime
+    node_id: int | None = None
+    node_name: str | None = None
+    openvpn_data_source: str = "status_log"
+    scope: str = "node"
+    nodes_summary: list[MonitoringNodeSummary] = Field(default_factory=list)
+    nodes_online: int = 0
+    nodes_total: int = 0
+    total_connected_openvpn: int = 0
+    total_connected_wireguard: int = 0
+    total_connected_amneziawg2: int = 0
+    served_from_cache: bool = False
+    geoip_mode: Literal["local_mmdb", "ip_api", "none"] = "ip_api"
+    ha_mode: Literal["dedupe", "raw"] = "dedupe"
+
+
+class NocIncidentItem(BaseModel):
+    id: str
+    kind: str
+    severity: Literal["info", "warning", "danger"]
+    title: str
+    detail: str | None = None
+    at: datetime
+    href: str | None = None
+
+
+class NocIncidentsResponse(BaseModel):
+    items: list[NocIncidentItem]
+    generated_at: datetime
+
+
+class ConnectionHistoryPoint(BaseModel):
+    timestamp: datetime
+    openvpn: int
+    wireguard: int
+    amneziawg2: int = 0
+    total: int
+
+
+class ConnectionHistoryResponse(BaseModel):
+    period: str
+    sample_count: int
+    scope: str = "node"
+    points: list[ConnectionHistoryPoint]
+
+
+class ResourceHistoryPoint(BaseModel):
+    timestamp: datetime
+    cpu_percent: float
+    memory_percent: float
+    memory_used_mb: int
+    memory_total_mb: int
+    disk_percent: float
+    load_1: float | None = None
+    load_5: float | None = None
+    load_15: float | None = None
+
+
+class ResourceHistoryResponse(BaseModel):
+    node_id: int
+    node_name: str
+    period: str
+    sample_count: int
+    points: list[ResourceHistoryPoint]
+
+
+class PanelResourceHistoryPoint(BaseModel):
+    timestamp: datetime
+    backend_cpu_percent: float
+    backend_memory_mb: int
+    backend_workers: int
+    nginx_memory_mb: int | None = None
+    watchdog_memory_mb: int | None = None
+    frontend_dev_memory_mb: int | None = None
+    total_panel_memory_mb: int
+    local_node_memory_mb: int = 0
+    node_agent_memory_mb: int = 0
+    managed_vpn_memory_mb: int = 0
+    local_vpn_core_memory_mb: int = 0
+    legacy_antizapret_memory_mb: int = 0
+    total_stack_memory_mb: int = 0
+    host_cpu_percent: float = 0.0
+    host_memory_percent: float = 0.0
+    host_memory_used_mb: int = 0
+    host_memory_total_mb: int = 0
+    host_disk_percent: float = 0.0
+    host_load_1: float | None = None
+
+
+class PanelResourceHistoryResponse(BaseModel):
+    period: str
+    sample_count: int
+    points: list[PanelResourceHistoryPoint]
+
+
+class PanelResourceCurrentResponse(BaseModel):
+    timestamp: datetime
+    backend_cpu_percent: float
+    backend_memory_mb: int
+    backend_rss_mb: int
+    backend_workers: int
+    nginx_memory_mb: int | None = None
+    watchdog_memory_mb: int | None = None
+    frontend_dev_memory_mb: int | None = None
+    total_panel_memory_mb: int
+    local_node_memory_mb: int = 0
+    node_agent_memory_mb: int = 0
+    managed_vpn_memory_mb: int = 0
+    local_vpn_core_memory_mb: int = 0
+    legacy_antizapret_memory_mb: int = 0
+    total_stack_memory_mb: int = 0
+    local_node_on_host: bool = False
+    stack_note: str = ""
+    frontend_note: str
+    host_cpu_percent: float = 0.0
+    host_memory_percent: float = 0.0
+    host_memory_used_mb: int = 0
+    host_memory_total_mb: int = 0
+    host_disk_percent: float = 0.0
+    host_load_1: float | None = None
+    host_hostname: str = ""
+    host_uptime: str = ""
+
+
+class AppSettingsResponse(BaseModel):
+    theme: str
+    timezone: str = ""
+    noc_daily_time: str = ""
+    noc_weekly_dow: str = ""
+    noc_weekly_time: str = ""
+    app_name: str
+    antizapret_path: str
+    include_hosts: str = ""
+    exclude_hosts: str = ""
+    include_ips: str = ""
+    exclude_ips: str = ""
+    allow_ips: str = ""
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class AppSettingsUpdate(BaseModel):
+    theme: str | None = None
+    timezone: str | None = None
+    noc_daily_time: str | None = None
+    noc_weekly_dow: str | None = None
+    noc_weekly_time: str | None = None
+    include_hosts: str | None = None
+    exclude_hosts: str | None = None
+    include_ips: str | None = None
+    exclude_ips: str | None = None
+    allow_ips: str | None = None
+
+
+class DashboardSummary(BaseModel):
+    total_configs: int
+    openvpn_configs: int
+    wireguard_configs: int
+    connected_openvpn: int
+    connected_wireguard: int
+    active_services: int
+    total_services: int
+    server_ip: str | None = None
+    node_name: str | None = None
+
+
+class BackupEntry(BaseModel):
+    file_name: str
+    size_bytes: int
+    created_at: str
+    components: list[str] = []
+    summary: str = ""
+    restore_message: str | None = None
+    restore_detail: dict[str, Any] | None = None
+
+
+class BackupCreateRequest(BaseModel):
+    include_configs: bool = False
+    include_antizapret_backup: bool = False
+    include_awg2_backup: bool = False
+    send_to_telegram: bool = False
+
+
+class BackupTestTelegramRequest(BaseModel):
+    include_configs: bool = False
+    include_antizapret_backup: bool = False
+    include_awg2_backup: bool = False
+
+
+class BackupRestoreRequest(BaseModel):
+    file_name: str
+
+
+class BackupSettingsResponse(BaseModel):
+    auto_backup_enabled: bool = False
+    auto_backup_days: int = 7
+    telegram_on_backup: bool = False
+    backup_az_enabled: bool = True
+    backup_awg2_enabled: bool = True
+    retention_count: int = 5
+
+
+class BackupSettingsUpdate(BaseModel):
+    auto_backup_enabled: bool | None = None
+    auto_backup_days: int | None = Field(default=None, ge=1, le=90)
+    telegram_on_backup: bool | None = None
+    backup_az_enabled: bool | None = None
+    backup_awg2_enabled: bool | None = None
+    retention_count: int | None = Field(default=None, ge=1, le=30)
+
+
+class MonitorSettingsResponse(BaseModel):
+    cpu_threshold: int = 90
+    ram_threshold: int = 90
+    interval_seconds: int = 60
+    cooldown_minutes: int = 30
+    sustained_seconds: int = 180
+
+
+class MonitorSettingsUpdate(BaseModel):
+    cpu_threshold: int | None = Field(default=None, ge=1, le=100)
+    ram_threshold: int | None = Field(default=None, ge=1, le=100)
+    interval_seconds: int | None = Field(default=None, ge=10, le=3600)
+    cooldown_minutes: int | None = Field(default=None, ge=1, le=1440)
+    sustained_seconds: int | None = Field(default=None, ge=0, le=3600)
+
+
+class AlertMetricInfo(BaseModel):
+    id: str
+    label: str
+    requires_node: bool = False
+
+
+class AlertRuleResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    metric: str
+    operator: str
+    threshold: float
+    node_id: int | None = None
+    cooldown_minutes: int
+    enabled: bool
+    last_triggered_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AlertRuleCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    metric: str
+    operator: str = "gt"
+    threshold: float
+    node_id: int | None = None
+    cooldown_minutes: int = Field(default=30, ge=1, le=1440)
+    enabled: bool = True
+
+
+class AlertRuleUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    metric: str | None = None
+    operator: str | None = None
+    threshold: float | None = None
+    node_id: int | None = None
+    cooldown_minutes: int | None = Field(default=None, ge=1, le=1440)
+    enabled: bool | None = None
+
+
+class AlertRuleEvaluateResult(BaseModel):
+    rule_id: int
+    name: str
+    metric: str
+    value: float | None = None
+    threshold: float
+    operator: str
+    triggered: bool
+    skipped_reason: str | None = None
+
+
+class AlertRuleEvaluateResponse(BaseModel):
+    evaluated: int
+    triggered: int
+    results: list[AlertRuleEvaluateResult]
+
+
+class GeoIpStatusResponse(BaseModel):
+    loaded: bool
+    source: Literal["local", "ip-api"]
+    city_mmdb_path: str | None = None
+    asn_mmdb_path: str | None = None
+    city_mmdb_exists: bool = False
+    asn_mmdb_exists: bool = False
+
+
+class RetentionSettingsResponse(BaseModel):
+    enabled: bool = True
+    interval_hours: int = 24
+    traffic_sample_retention_days: int = 90
+    action_log_retention_days: int = 365
+    resource_metrics_retention_days: int = 30
+    panel_resource_metrics_retention_days: int = 30
+
+
+class RetentionSettingsUpdate(BaseModel):
+    enabled: bool | None = None
+    interval_hours: int | None = Field(default=None, ge=1, le=168)
+    traffic_sample_retention_days: int | None = Field(default=None, ge=1, le=3650)
+    action_log_retention_days: int | None = Field(default=None, ge=1, le=3650)
+    resource_metrics_retention_days: int | None = Field(default=None, ge=1, le=3650)
+    panel_resource_metrics_retention_days: int | None = Field(default=None, ge=1, le=3650)
+
+
+class CidrDbScheduleResponse(BaseModel):
+    enabled: bool = True
+    hour: int = 2
+    minute: int = 30
+    interval_days: int = 1
+    refresh_time: str = "02:30"
+    last_run_at: datetime | None = None
+    next_run_at: datetime | None = None
+    timezone: str = "UTC"
+
+
+class CidrDbScheduleUpdate(BaseModel):
+    enabled: bool | None = None
+    hour: int | None = Field(default=None, ge=0, le=23)
+    minute: int | None = Field(default=None, ge=0, le=59)
+    interval_days: int | None = Field(default=None, ge=1, le=90)
+    refresh_time: str | None = None
+
+
+class SecretRotationItemResponse(BaseModel):
+    secret_id: str
+    label: str
+    description: str
+    storage: str
+    env_key: str | None = None
+    env_path: str | None = None
+    configured: bool
+    masked_current: str
+    auto_generate: bool
+    requires_restart: bool
+    requires_relogin: bool
+
+
+class SecretRotationEnvChangePreview(BaseModel):
+    path: str
+    key: str
+    masked_new_value: str
+
+
+class SecretRotationPreviewResponse(BaseModel):
+    secret_id: str
+    label: str
+    new_value: str
+    masked_new_value: str
+    masked_current: str
+    preview_token: str
+    confirm_phrase: str
+    warnings: list[str]
+    env_change: SecretRotationEnvChangePreview | None = None
+    storage: str
+    requires_relogin: bool
+    requires_restart: bool
+
+
+class SecretRotationPreviewRequest(BaseModel):
+    secret_id: str
+    value: str | None = None
+
+
+class SecretRotationApplyRequest(BaseModel):
+    secret_id: str
+    new_value: str
+    preview_token: str
+    confirm: str = Field(min_length=1)
+
+
+class SecretRotationApplyResponse(BaseModel):
+    secret_id: str
+    label: str
+    message: str
+    requires_relogin: bool
+    next_steps: list[str]
+    reencrypt_stats: dict[str, int] | None = None
+
+
+class RouteBudgetInfo(BaseModel):
+    available: bool = False
+    limit: int | None = None
+    used: int | None = None
+    remaining: int | None = None
+    original_total: int | None = None
+    warning: str | None = None
+    strategy: str | None = None
+    task_id: str | None = None
+    finished_at: str | None = None
+    status: str | None = None
+    message: str | None = None
+
+
+class ChangelogSection(BaseModel):
+    title: str
+    items: list[str]
+
+
+class ChangelogBlockResponse(BaseModel):
+    version: str
+    date: str = ""
+    sections: list[ChangelogSection] = []
+
+
+class LatestChangelogResponse(BaseModel):
+    success: bool = True
+    version: str = ""
+    date: str = ""
+    sections: list[ChangelogSection] = []
+    message: str = ""
+    source: str = ""
+    latest_release: ChangelogBlockResponse | None = None
+    pending: ChangelogBlockResponse | None = None
+
+
+class TelegramSettingsResponse(BaseModel):
+    bot_token_set: bool = False
+    bot_username: str = ""
+    auth_max_age_seconds: int = 300
+    mini_app_url: str = ""
+    chat_id: str = ""
+    chat_ids: list[str] = Field(default_factory=list)
+    notify_enabled: bool = False
+    notify_on_backup: bool = False
+    interactive_enabled: bool = False
+    webhook_registered: bool = False
+    webhook_secret_set: bool = False
+    webhook_set_at: str = ""
+    oidc_enabled: bool = False
+    oidc_client_id: str = ""
+    oidc_client_secret_set: bool = False
+    oidc_callback_url: str = ""
+    oidc_trusted_origin: str = ""
+    legacy_login_enabled: bool = True
+    auth_method: Literal["oidc", "legacy", "none"] = "legacy"
+    login_ready: bool = False
+
+
+class TelegramSettingsUpdate(BaseModel):
+    bot_token: str | None = None
+    bot_username: str | None = None
+    auth_max_age_seconds: int | None = Field(default=None, ge=30, le=86400)
+    chat_id: str | None = None
+    chat_ids: list[str] | None = None
+    notify_enabled: bool | None = None
+    notify_on_backup: bool | None = None
+    interactive_enabled: bool | None = None
+    auth_method: Literal["oidc", "legacy"] | None = None
+    oidc_enabled: bool | None = None
+    oidc_client_id: str | None = None
+    oidc_client_secret: str | None = None
+    legacy_login_enabled: bool | None = None
+
+
+class TelegramLinkCodeResponse(BaseModel):
+    code: str
+    expires_in_seconds: int
+
+
+class TelegramBotInfoResponse(BaseModel):
+    bot_username: str = ""
+    bot_url: str = ""
+
+
+class AdminNotifyEventItem(BaseModel):
+    key: str
+    label: str
+    enabled: bool
+
+
+class AdminNotifySettingsResponse(BaseModel):
+    telegram_id: str = ""
+    recipient_user_ids: list[int] = Field(default_factory=list)
+    notify_enabled: bool = False
+    bot_token_set: bool = False
+    events: list[AdminNotifyEventItem]
+    node_offline_grace_seconds: int = 180
+
+
+class AdminNotifySettingsUpdate(BaseModel):
+    telegram_id: str | None = None
+    recipient_user_ids: list[int] | None = None
+    events: dict[str, bool] | None = None
+    node_offline_grace_seconds: int | None = None
+
+
+class NocReportPreviewRequest(BaseModel):
+    period: Literal["daily", "weekly"] = "daily"
+
+
+class AdminNotifyEventTestRequest(BaseModel):
+    event: str
+
+
+class VpnNetworkEnvRow(BaseModel):
+    label: str
+    value: str
+    mono: bool = True
+
+
+class VpnNetworkPublishModeInfo(BaseModel):
+    key: str
+    title: str
+    method: str | None = None
+    description: str
+    requires_domain: bool = False
+    requires_email: bool = False
+    requires_ssl_cert: bool = False
+    uses_nginx_ports: bool = False
+    uses_uvicorn_https_port: bool = False
+    warning: str | None = None
+
+
+class VpnNetworkSslCertSuggestion(BaseModel):
+    cert: str
+    key: str
+    label: str
+    source: str
+
+
+class VpnNetworkPublishRequest(BaseModel):
+    mode: str = Field(
+        pattern=r"^(http_direct|nginx_le|nginx_selfsigned|nginx_custom|uvicorn_le|uvicorn_selfsigned|uvicorn_custom)$"
+    )
+    backend_port: int = Field(default=8000, ge=1, le=65535)
+    domain: str | None = Field(default=None, max_length=255)
+    email: str | None = Field(default=None, max_length=255)
+    https_public_port: int = Field(default=443, ge=1, le=65535)
+    http_acme_port: int = Field(default=80, ge=1, le=65535)
+    ssl_cert: str | None = Field(default=None, max_length=1024)
+    ssl_key: str | None = Field(default=None, max_length=1024)
+    access_path: str | None = Field(default=None, max_length=255)
+    nginx_subpath_integrate: bool = False
+    configure_portal: bool = False
+    portal_domain: str | None = Field(default=None, max_length=255)
+
+
+class PortalPublishRequest(BaseModel):
+    portal_domain: str = Field(min_length=1, max_length=255)
+    email: str | None = Field(default=None, max_length=255)
+    save_domain: bool = True
+
+
+class PortalPublishStatusResponse(BaseModel):
+    portal_domain: str = ""
+    suggested_portal_domain: str = ""
+    panel_domain: str = ""
+    active_publish_mode: str | None = None
+    portal_vhost_ok: bool = False
+    portal_cert_ok: bool = False
+    portal_ready: bool = False
+    server_primary_ip: str | None = None
+    dns_hint: str = ""
+    warnings: list[str] = []
+    portal_access_url: str = ""
+
+
+class VpnNetworkSettingsResponse(BaseModel):
+    mode_key: str
+    mode_title: str
+    bullet_points: list[str]
+    internal_url: str
+    primary_urls: list[dict[str, str]]
+    env_rows: list[VpnNetworkEnvRow]
+    backend_port: str
+    nginx_setup_hint: str = "scripts/nginx-setup.sh"
+    publish_modes: list[VpnNetworkPublishModeInfo] = []
+    active_publish_mode: str | None = None
+    known_ssl_cert: str | None = None
+    known_ssl_key: str | None = None
+    ssl_cert_suggestions: list[VpnNetworkSslCertSuggestion] = []
+    nginx_installed: bool = False
+    panel_restart_command: str = "sudo systemctl restart adminpanelaz"
+    uvicorn_publish_warnings: list[str] = []
+    shared_domain_foreign_vhost: bool = False
+    shared_domain_status_openvpn: bool = False
+    server_primary_ip: str | None = None
+    az_vpn_hosts: list[str] = []
+    az_vpn_conflict_hint: str | None = None
+    suggested_portal_domain: str | None = None
+    portal_domain: str | None = None
+    portal_ready: bool | None = None
+    portal_dns_hint: str | None = None
+
+
+class VpnNetworkDomainSslStatusResponse(BaseModel):
+    domain: str
+    has_letsencrypt: bool
+    cert: str | None = None
+    key: str | None = None
+    shared_domain_foreign_vhost: bool = False
+    shared_domain_status_openvpn: bool = False
+    az_vpn_host_conflict: bool = False
+    az_vpn_hosts: list[str] = []
+    az_vpn_conflict_message: str | None = None
+
+
+class VpnNetworkPortStatusResponse(BaseModel):
+    port: int
+    status: str
+    in_use: bool
+    message: str
+    listener: str | None = None
+
+
+class CloudflareProxySettingsResponse(BaseModel):
+    enabled: bool = False
+    auto_update: bool = False
+    interval_days: int = 7
+    last_success_at: str | None = None
+    last_hash: str | None = None
+    last_error: str | None = None
+
+
+class CloudflareProxySettingsUpdate(BaseModel):
+    enabled: bool | None = None
+    auto_update: bool | None = None
+    interval_days: int | None = Field(default=None, ge=1, le=90)
+
+
+class CloudflareProxyRefreshRequest(BaseModel):
+    force: bool = False
+
+
+class CloudflareProxyRefreshResponse(BaseModel):
+    success: bool
+    applied: bool = False
+    forced: bool = False
+    changed: bool = False
+    hash: str | None = None
+    message: str | None = None
+    error: str | None = None
+    state: CloudflareProxySettingsResponse
+
+
+class DdnsSettingsResponse(BaseModel):
+    provider: str = "none"
+    domain: str = ""
+    subdomain: str = ""
+    hostname: str = ""
+    username: str = ""
+    token_configured: bool = False
+    password_configured: bool = False
+    token_masked: str = ""
+    password_masked: str = ""
+    timer_enabled: bool = False
+    timer_active: bool = False
+    timer_detail: str = ""
+    config_path: str = "/etc/adminpanelaz/ddns.env"
+    configured: bool = False
+
+
+class DdnsSettingsUpdateRequest(BaseModel):
+    provider: str = Field(pattern=r"^(none|duckdns|noip)$")
+    subdomain: str | None = Field(default=None, max_length=128)
+    token: str | None = Field(default=None, max_length=256)
+    hostname: str | None = Field(default=None, max_length=255)
+    username: str | None = Field(default=None, max_length=128)
+    password: str | None = Field(default=None, max_length=256)
+    enable_timer: bool = True
+    run_update: bool = True
+
+
+class DdnsActionResponse(BaseModel):
+    message: str
+    output: str | None = None
+    settings: DdnsSettingsResponse
+
+
+class ServiceRestartRequest(BaseModel):
+    service_name: str
+
+
+class ServerRebootRequest(BaseModel):
+    node_id: int
+    confirm: str
+
+
+class ServerRebootPendingItem(BaseModel):
+    reboot_id: str
+    node_id: int
+    node_name: str
+    scheduled_by: str
+    created_at: datetime
+    execute_at: datetime
+    delay_seconds: int
+    warning: str | None = None
+
+
+class ServerRebootScheduleResponse(ServerRebootPendingItem):
+    message: str = "Перезагрузка ОС запланирована"
+
+
+class ServerRebootPendingResponse(BaseModel):
+    items: list[ServerRebootPendingItem]
+
+
+class MessageResponse(BaseModel):
+    message: str
+    detail: Any | None = None
+
+
+class BackgroundTaskResponse(BaseModel):
+    success: bool = True
+    task_id: str
+    task_type: str
+    status: str
+    message: str | None = None
+    progress_percent: int = 0
+    progress_stage: str | None = None
+    output: str | None = None
+    error: str | None = None
+    result: Any | None = None
+    created_at: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    queued: bool | None = None
+    status_url: str | None = None
+
+
+class NodeBase(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    host: str = Field(min_length=1, max_length=255)
+    port: int = Field(default=9100, ge=1, le=65535)
+    node_kind: str = Field(default="vpn", max_length=16)
+
+
+class NodeCreate(NodeBase):
+    # Optional so proxy can default to 9101 when omitted (vpn keeps 9100).
+    port: int | None = Field(default=None, ge=1, le=65535)
+    api_key: str | None = Field(default=None, min_length=8)
+    destination_ip: str | None = Field(default=None, max_length=64)
+    linked_vpn_node_id: int | None = None
+    # Connection method at create time (default HTTP). SSH needs credentials below.
+    transport: str = Field(default="http", max_length=16)
+    ssh_host: str | None = Field(default=None, max_length=255)
+    ssh_port: int | None = Field(default=None, ge=1, le=65535)
+    ssh_username: str | None = Field(default=None, max_length=128)
+    ssh_private_key: str | None = None
+    ssh_passphrase: str | None = None
+    ssh_remote_agent_host: str | None = Field(default=None, max_length=255)
+    ssh_remote_agent_port: int | None = Field(default=None, ge=1, le=65535)
+
+    @field_validator(
+        "transport",
+        "ssh_host",
+        "ssh_username",
+        "ssh_private_key",
+        "ssh_passphrase",
+        "ssh_remote_agent_host",
+        mode="before",
+    )
+    @classmethod
+    def _strip_create_transport_strings(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class NodeUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    host: str | None = Field(default=None, min_length=1, max_length=255)
+    port: int | None = Field(default=None, ge=1, le=65535)
+    api_key: str | None = Field(default=None, min_length=8)
+    destination_ip: str | None = Field(default=None, max_length=64)
+    linked_vpn_node_id: int | None = None
+
+
+class NodeResponse(NodeBase):
+    id: int
+    status: NodeStatus
+    is_local: bool
+    transport: str = "http"
+    mtls_enabled: bool = False
+    ssh_host: str | None = None
+    ssh_port: int = 22
+    ssh_username: str | None = None
+    ssh_key_configured: bool = False
+    ssh_remote_agent_host: str | None = None
+    ssh_remote_agent_port: int | None = None
+    destination_ip: str | None = None
+    linked_vpn_node_id: int | None = None
+    last_seen_at: datetime | None = None
+    metadata: dict[str, Any] = {}
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class NodeHealthResponse(BaseModel):
+    node_id: int
+    status: NodeStatus
+    health: dict[str, Any] = {}
+    last_seen_at: datetime | None = None
+
+
+class ProxyDestinationBody(BaseModel):
+    destination_ip: str = Field(min_length=7, max_length=64)
+
+
+class ProxyStatusResponse(BaseModel):
+    installed: bool
+    destination_ip: str | None = None
+    detail: str | None = None
+
+
+class ProxyMappingItem(BaseModel):
+    client_ip: str
+    client_port: int | None = None
+    proxy_sport: int | None = None
+    dest_ip: str | None = None
+    dest_port: int | None = None
+
+
+class ProxyMappingsResponse(BaseModel):
+    mappings: list[ProxyMappingItem] = []
+
+
+class ActiveNodeResponse(BaseModel):
+    node: NodeResponse
+    active: bool = True
+    ha: "NodeHaContext | None" = None
+
+
+class NodeHaContext(BaseModel):
+    sync_group_id: int
+    group_name: str
+    shared_domain: str
+    shared_domain_wireguard: str | None = None
+    role: str
+    primary_node_id: int
+    primary_node_name: str | None = None
+    sync_mode: str
+    sync_status: SyncStatus
+
+
+class NodeUpdateRequest(BaseModel):
+    pass
+
+
+class NodeUpdateRollRequest(BaseModel):
+    node_ids: list[int]
+
+
+class NodeUpdatesResponse(BaseModel):
+    node_id: int
+    agent: dict[str, Any] = {}
+
+
+class NodeUpdateResult(BaseModel):
+    node_id: int
+    success: bool
+    message: str
+    restarting: bool = False
+    before: dict[str, Any] = {}
+    after: dict[str, Any] = {}
+    detail: dict[str, Any] = {}
+    errors: list[str] = []
+
+
+class NodeSyncGroupCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    shared_domain: str = Field(min_length=1, max_length=255)
+    # Empty / omitted → same as shared_domain (OPENVPN_HOST) for WIREGUARD_HOST.
+    shared_domain_wireguard: str | None = Field(default=None, max_length=255)
+    primary_node_id: int = Field(ge=1)
+    replica_node_ids: list[int] = Field(min_length=1)
+    sync_mode: str = Field(default="manual_full", max_length=32)
+
+
+class NodeSyncGroupUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    shared_domain: str | None = Field(default=None, min_length=1, max_length=255)
+    shared_domain_wireguard: str | None = Field(default=None, max_length=255)
+    primary_node_id: int | None = Field(default=None, ge=1)
+    replica_node_ids: list[int] | None = None
+    sync_mode: str | None = Field(default=None, max_length=32)
+
+
+class NodeSyncMismatch(BaseModel):
+    kind: str
+    only_primary: list[str] = []
+    only_replica: list[str] = []
+    changed_files: list[str] = []
+    path: str | None = None
+    primary: str | None = None
+    replica: str | None = None
+    detail: str | None = None
+
+
+class NodeSyncReplicaVerifyResult(BaseModel):
+    node_id: int
+    node_name: str | None = None
+    online: bool = True
+    mismatches: list[NodeSyncMismatch] = []
+
+
+class NodeSyncVerifyResponse(BaseModel):
+    ready: bool
+    shared_domain: str
+    shared_domain_wireguard: str | None = None
+    primary_node_id: int
+    replicas: list[NodeSyncReplicaVerifyResult] = []
+    summary: str = ""
+
+
+class NodeSyncGroupMember(BaseModel):
+    node_id: int
+    node_name: str | None = None
+    role: str
+    host: str | None = None
+    online: bool = False
+    status: str = "unknown"
+    client_count: int = 0
+
+
+class NodeSyncGroupResponse(BaseModel):
+    id: int
+    name: str
+    shared_domain: str
+    shared_domain_wireguard: str | None = None
+    primary_node_id: int
+    primary_node_name: str | None = None
+    replica_node_ids: list[int] = []
+    replica_node_names: list[str] = []
+    members: list[NodeSyncGroupMember] = []
+    ready: bool | None = None
+    warnings: list[str] = []
+    sync_mode: str
+    sync_status: SyncStatus
+    last_sync_at: datetime | None = None
+    last_verify_at: datetime | None = None
+    last_sync_task_id: str | None = None
+    last_sync_error: str | None = None
+    last_verify_result: NodeSyncVerifyResponse | dict[str, Any] | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class NodeSyncGroupStatusResponse(BaseModel):
+    group_id: int
+    sync_status: SyncStatus
+    last_sync_at: datetime | None = None
+    last_verify_at: datetime | None = None
+    last_sync_task_id: str | None = None
+    last_sync_error: str | None = None
+    progress_percent: int | None = None
+    progress_stage: str | None = None
+
+
+class NodeSyncPushFullResponse(BaseModel):
+    task_id: str
+    group_id: int
+    message: str
+    queued: bool = True
+    status_url: str | None = None
+
+
+class CidrProviderInfo(BaseModel):
+    filename: str
+    name: str
+    description: str = ""
+    category: str = ""
+    enabled: bool = False
+    has_source: bool = False
+    cidr_count: int = 0
+
+
+class RouteStatsInfo(BaseModel):
+    config_include_total: int = 0
+    config_include_per_file: dict[str, int] = {}
+    result_route_ips_count: int = 0
+    result_route_ips_exists: bool = False
+
+
+class RoutingOverview(BaseModel):
+    providers: list[CidrProviderInfo]
+    route_stats: RouteStatsInfo
+    list_dir: str = ""
+    config_dir: str = ""
+    timestamp: datetime | None = None
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class AntizapretSettingFieldSchema(BaseModel):
+    key: str
+    html_id: str
+    type: Literal["flag", "string"]
+    env: str
+    param_label: str = ""
+    title: str = ""
+    description: str = ""
+
+
+class AntizapretSettingsResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    settings: dict[str, str]
+    param_schema: list[AntizapretSettingFieldSchema] = Field(alias="schema")
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class AntizapretSettingsUpdateResponse(BaseModel):
+    success: bool = True
+    message: str
+    changes: int
+    needs_apply: bool
+    warnings: list[str] = Field(default_factory=list)
+
+
+class WarperHealthResponse(BaseModel):
+    installed: bool
+    active: bool = False
+    version: str | None = None
+    conflict_antizapret_warp: bool = False
+    health_error: str | None = None
+    warper_bin: bool | None = None
+    warper_script: bool | None = None
+    warper_api: bool | None = None
+    missing_components: list[str] = Field(default_factory=list)
+    node_id: int | None = None
+    node_name: str | None = None
+    node_host: str | None = None
+
+
+class WarperStatusResponse(BaseModel):
+    status: dict
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class WarperDomainItem(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    domain: str | None = None
+    name: str | None = None
+    type: str | None = None
+    status: str | None = None
+
+
+class WarperDomainCreate(BaseModel):
+    domain: str = Field(..., min_length=1)
+
+
+class WarperDomainListsStatus(BaseModel):
+    gemini: bool = False
+    chatgpt: bool = False
+
+
+class WarperDomainsResponse(BaseModel):
+    domains: list[WarperDomainItem | dict]
+    lists: WarperDomainListsStatus = Field(default_factory=WarperDomainListsStatus)
+    user_text: str | None = None
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class WarperDoctorResponse(BaseModel):
+    items: list[dict]
+    passed: bool | None = None
+    summary: dict[str, int] | None = None
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class WarperActionResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    message: str | None = None
+    success: bool | None = None
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class WarperDomainListToggle(BaseModel):
+    enable: bool
+
+
+class WarperIpRangeCreate(BaseModel):
+    cidr: str = Field(..., min_length=1)
+
+
+class WarperIpRangesResponse(BaseModel):
+    ranges: list[str | dict]
+    content: str | None = None
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class WarperIpRangeModeUpdate(BaseModel):
+    mode: str = Field(..., min_length=1)
+
+
+class WarperIpExportUpdate(BaseModel):
+    enable: bool
+
+
+class WarperTrafficResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    data: dict = Field(default_factory=dict)
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class WarperLogsResponse(BaseModel):
+    lines: list[str] = Field(default_factory=list)
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class WarperModeResponse(BaseModel):
+    mode: dict = Field(default_factory=dict)
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class WarperMtuUpdate(BaseModel):
+    mtu: int = Field(..., ge=1280, le=1500)
+
+
+class WarperLogLevelUpdate(BaseModel):
+    level: str = Field(..., min_length=1)
+
+
+class WarperTextContentResponse(BaseModel):
+    content: str = ""
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class WarperTextSaveRequest(BaseModel):
+    text: str = ""
+
+
+class WarperSettingsOptionsResponse(BaseModel):
+    warp_keys: list[str] = Field(default_factory=list)
+    wg_configs: list[str] = Field(default_factory=list)
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class WarperModeWarpUpdate(BaseModel):
+    key_source: str | None = None
+
+
+class WarperModeSlaveUpdate(BaseModel):
+    host: str = Field(..., min_length=1)
+    port: int = Field(..., ge=1, le=65535)
+    key: str = Field(..., min_length=1)
+
+
+class WarperModeWgUpdate(BaseModel):
+    config_path: str = Field(..., min_length=1)
+
+
+class WarperFullVpnUpdate(BaseModel):
+    enable: bool
+
+
+class WarperSubnetUpdate(BaseModel):
+    subnet: str = Field(..., min_length=1)
+
+
+class WarperCatalogNameRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+
+
+class WarperCatalogSearchResponse(BaseModel):
+    items: list[dict] = Field(default_factory=list)
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class WarperCatalogShowResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    name: str = ""
+    count: int = 0
+    domains: list[str] = Field(default_factory=list)
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class WarperCatalogInstalledResponse(BaseModel):
+    items: list[dict] = Field(default_factory=list)
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class WarperUpdatesCheckResponse(BaseModel):
+    current: str | None = None
+    remote: str | None = None
+    update_available: bool = False
+    error: str | None = None
+    message: str | None = None
+    node_id: int | None = None
+    node_name: str | None = None
+    node_host: str | None = None
+
+
+class TrafficHaNodeBreakdown(BaseModel):
+    node_id: int
+    node_name: str
+    total_bytes: int = 0
+    traffic_period: int = 0
+    is_active: bool = False
+
+
+class TrafficClientRow(BaseModel):
+    common_name: str
+    protocol_type: str
+    total_received: int = 0
+    total_sent: int = 0
+    total_bytes: int = 0
+    total_received_vpn: int = 0
+    total_sent_vpn: int = 0
+    total_bytes_vpn: int = 0
+    total_received_antizapret: int = 0
+    total_sent_antizapret: int = 0
+    total_bytes_antizapret: int = 0
+    traffic_period: int = 0
+    total_sessions: int = 0
+    first_seen_at: str | None = None
+    last_seen_at: str | None = None
+    is_active: bool = False
+    ha: VpnConfigHaInfo | None = None
+    ha_aggregated: bool = False
+    ha_node_breakdown: list[TrafficHaNodeBreakdown] | None = None
+
+
+class TrafficSummary(BaseModel):
+    users_count: int = 0
+    active_users_count: int = 0
+    total_received: int = 0
+    total_sent: int = 0
+    total_received_vpn: int = 0
+    total_sent_vpn: int = 0
+    total_received_antizapret: int = 0
+    total_sent_antizapret: int = 0
+    latest_sample_at: str | None = None
+    db_age_seconds: int | None = None
+    db_is_stale: bool = False
+
+
+class TrafficHaContext(BaseModel):
+    sync_group_id: int
+    group_name: str
+    shared_domain: str
+    node_count: int
+    member_node_ids: list[int]
+    aggregation_mode: str = "sum"
+
+
+class TrafficOverview(BaseModel):
+    rows: list[TrafficClientRow]
+    summary: TrafficSummary
+    timestamp: datetime
+    node_id: int | None = None
+    node_name: str | None = None
+    ha_context: TrafficHaContext | None = None
+    period_mode: str = "preset"
+    period: str | None = "30d"
+    from_date: str | None = None
+    to_date: str | None = None
+    retention_days: int = 90
+
+
+class TrafficNeverConnectedRow(BaseModel):
+    common_name: str
+    protocol_type: str
+    created_at: str | None = None
+    config_id: int | None = None
+
+
+class TrafficNeverConnectedSummary(BaseModel):
+    users_count: int = 0
+    rows_count: int = 0
+
+
+class TrafficNeverConnectedResponse(BaseModel):
+    rows: list[TrafficNeverConnectedRow]
+    summary: TrafficNeverConnectedSummary
+    timestamp: datetime
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class TrafficSessionSourceRow(BaseModel):
+    client_ip: str
+    display_address: str | None = None
+    city: str | None = None
+    country: str | None = None
+    isp: str | None = None
+    location_label: str | None = None
+    geo_label: str | None = None
+    sessions_count: int = 0
+    virtual_addresses: list[str] = Field(default_factory=list)
+    total_bytes: int = 0
+    first_seen_at: str | None = None
+    last_seen_at: str | None = None
+    is_active: bool = False
+    share_percent: float = 0.0
+
+
+class TrafficSessionItem(BaseModel):
+    profile: str = "unknown"
+    real_address: str | None = None
+    virtual_address: str | None = None
+    connected_since_at: str | None = None
+    last_seen_at: str | None = None
+    ended_at: str | None = None
+    duration_seconds: int | None = None
+    bytes_received: int = 0
+    bytes_sent: int = 0
+    total_bytes: int = 0
+    is_active: bool = False
+    node_id: int | None = None
+    node_name: str | None = None
+
+
+class TrafficSessionNodeSummary(BaseModel):
+    node_id: int
+    node_name: str
+    sessions_count: int = 0
+    total_bytes: int = 0
+    is_active: bool = False
+
+
+class TrafficClientSessionsResponse(BaseModel):
+    client: str
+    total_sessions: int = 0
+    unique_sources: int = 0
+    unique_virtual_addresses: int = 0
+    by_source: list[TrafficSessionSourceRow] = Field(default_factory=list)
+    recent_sessions: list[TrafficSessionItem] = Field(default_factory=list)
+    node_id: int | None = None
+    node_name: str | None = None
+    ha_aggregated: bool = False
+    nodes: list[TrafficSessionNodeSummary] | None = None
+
+
+class Awg2ObfuscationApply(BaseModel):
+    preset: Literal["router", "low", "medium", "high", "paranoid"]
+    template: Literal["quic", "tls", "web", "voip", "dns", "mixed"]
+    mtu: int | None = Field(default=None, ge=576, le=1500)
+    host: str | None = Field(default=None, max_length=253)
+    fp: Literal["chrome", "firefox", "safari"] | None = None

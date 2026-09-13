@@ -1,0 +1,134 @@
+"""SHA256 fingerprints of AntiZapret HA-critical paths."""
+
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+
+# HA-local config files under {antizapret}/config/ — excluded from parity verify and
+# from blind full-directory push to replicas (node-specific state must not fail Verify
+# or overwrite peer nodes).
+#
+# Current entries:
+# - warper-include-ips.txt — WARPER slave routing on a single node (AZ-WARP); other
+#   replicas may omit this file or keep a different copy.
+#
+# Add new filenames here when a path is intentionally per-node in HA auto-sync.
+CONFIG_FINGERPRINT_EXCLUDE: frozenset[str] = frozenset({"warper-include-ips.txt"})
+CONFIG_FP_PREFIX = "antizapret/config"
+
+
+def _sha256_file(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _sha256_directory_tree(directory: Path) -> str | None:
+    if not directory.is_dir():
+        return None
+    files = sorted(path for path in directory.rglob("*") if path.is_file())
+    if not files:
+        return None
+    hasher = hashlib.sha256()
+    for file_path in files:
+        rel = file_path.relative_to(directory).as_posix()
+        hasher.update(rel.encode())
+        with file_path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(65536), b""):
+                hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _sha256_directory_glob(
+    directory: Path,
+    pattern: str,
+    *,
+    exclude_names: frozenset[str] | None = None,
+) -> str | None:
+    if not directory.is_dir():
+        return None
+    files = sorted(directory.glob(pattern))
+    if not files:
+        return None
+    hasher = hashlib.sha256()
+    included = False
+    for file_path in files:
+        if not file_path.is_file():
+            continue
+        if exclude_names and file_path.name in exclude_names:
+            continue
+        included = True
+        hasher.update(file_path.name.encode())
+        with file_path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(65536), b""):
+                hasher.update(chunk)
+    if not included:
+        return None
+    return hasher.hexdigest()
+
+
+def collect_config_file_fingerprints(
+    config_dir: Path,
+    *,
+    exclude_names: frozenset[str] | None = None,
+) -> dict[str, str]:
+    """Return filename → sha256 for each file in config/ (parity scope)."""
+    if not config_dir.is_dir():
+        return {}
+    result: dict[str, str] = {}
+    for file_path in sorted(config_dir.glob("*")):
+        if not file_path.is_file():
+            continue
+        if exclude_names and file_path.name in exclude_names:
+            continue
+        digest = _sha256_file(file_path)
+        if digest:
+            result[file_path.name] = digest
+    return result
+
+
+def collect_antizapret_fingerprints(install_dir: str | Path = "/root/antizapret") -> dict[str, str]:
+    """Return stable path keys → sha256 hex for parity verify."""
+    base = Path(install_dir or "/root/antizapret").resolve()
+    entries: list[tuple[str, Path]] = [
+        ("easyrsa3/pki/ca.crt", Path("/etc/openvpn/easyrsa3/pki/ca.crt")),
+        ("easyrsa3/pki/crl.pem", Path("/etc/openvpn/easyrsa3/pki/crl.pem")),
+        ("easyrsa3/pki/index.txt", Path("/etc/openvpn/easyrsa3/pki/index.txt")),
+        ("easyrsa3/pki/serial", Path("/etc/openvpn/easyrsa3/pki/serial")),
+    ]
+    fingerprints: dict[str, str] = {}
+    for key, path in entries:
+        digest = _sha256_file(path)
+        if digest:
+            fingerprints[key] = digest
+
+    wg_hash = _sha256_directory_glob(Path("/etc/wireguard"), "*.conf")
+    if wg_hash:
+        fingerprints["wireguard/conf_files"] = wg_hash
+
+    ovpn_hash = _sha256_directory_tree(base / "client" / "openvpn")
+    if ovpn_hash:
+        fingerprints["openvpn/client_profiles"] = ovpn_hash
+
+    config_dir = base / "config"
+    config_file_hashes = collect_config_file_fingerprints(
+        config_dir,
+        exclude_names=CONFIG_FINGERPRINT_EXCLUDE,
+    )
+    for filename, digest in config_file_hashes.items():
+        fingerprints[f"{CONFIG_FP_PREFIX}/{filename}"] = digest
+
+    config_hash = _sha256_directory_glob(
+        config_dir,
+        "*",
+        exclude_names=CONFIG_FINGERPRINT_EXCLUDE,
+    )
+    if config_hash:
+        fingerprints[CONFIG_FP_PREFIX] = config_hash
+
+    return fingerprints

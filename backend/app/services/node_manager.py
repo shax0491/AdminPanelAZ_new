@@ -1,0 +1,544 @@
+import ipaddress
+import json
+import socket
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import urlparse
+
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session, object_session
+
+from app.auth import get_password_hash, verify_password
+from app.config import get_settings
+from app.models import (
+    AmneziaWg2AccessPolicy,
+    AlertRule,
+    AppSetting,
+    ClientTemplate,
+    ConfigTag,
+    ConnectionCountSample,
+    Node,
+    NodeResourceSample,
+    NodeStatus,
+    OpenVpnAccessPolicy,
+    TrafficSessionState,
+    UserTrafficSample,
+    UserTrafficStatProtocol,
+    VpnConfig,
+    WgAccessPolicy,
+)
+from app.services.crypto import decrypt_secret, encrypt_secret
+from app.services.antizapret import AntiZapretService
+from app.services.node_adapter import LocalNodeAdapter, NodeAdapter, RemoteNodeAdapter
+from app.services.node_health import HEALTH_METADATA_KEYS
+from app.services.node_transport import TRANSPORT_SSH, get_transport, node_uses_tls, resolve_transport_id
+from app.services.proxy_node_adapter import ProxyNodeAdapter
+
+settings = get_settings()
+ACTIVE_NODE_KEY = "active_node_id"
+NODE_KIND_VPN = "vpn"
+NODE_KIND_PROXY = "proxy"
+
+
+def _get_setting(db: Session, key: str, default: str = "") -> str:
+    row = db.query(AppSetting).filter(AppSetting.key == key).first()
+    return row.value if row else default
+
+
+def _set_setting(db: Session, key: str, value: str) -> None:
+    row = db.query(AppSetting).filter(AppSetting.key == key).first()
+    if row:
+        row.value = value
+    else:
+        db.add(AppSetting(key=key, value=value))
+
+
+def validate_node_host(host: str) -> str:
+    host = host.strip()
+    if not host:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Хост не может быть пустым")
+    if len(host) > 255:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Слишком длинный хост")
+
+    forbidden_schemes = ("http://", "https://", "ftp://", "file://")
+    if host.lower().startswith(forbidden_schemes):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Укажите хост без схемы URL")
+
+    # Bare IPv6 ("::1") breaks urlparse("//::1"); bracket form "[::1]" / "[::1]:port" is fine.
+    if host.startswith("[") and "]" in host:
+        literal_or_name = host[1 : host.index("]")]
+    else:
+        literal_or_name = host
+
+    try:
+        hostname = str(ipaddress.ip_address(literal_or_name))
+    except ValueError:
+        try:
+            parsed = urlparse(f"//{host}" if "://" not in host else host)
+            if parsed.scheme and parsed.scheme not in ("http", "https"):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Недопустимая схема URL")
+            hostname = parsed.hostname or host.split(":")[0]
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Некорректный хост") from exc
+
+    if not hostname:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Некорректный хост")
+
+    if not settings.allow_internal_nodes:
+        blocked = "Внутренние IP-адреса запрещены (ALLOW_INTERNAL_NODES=true для разрешения)"
+
+        def _reject_if_internal(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:
+            if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=blocked)
+
+        # Literal IP first — gethostbyname is IPv4-only and fails on ::1
+        try:
+            _reject_if_internal(ipaddress.ip_address(hostname))
+        except ValueError:
+            try:
+                for info in socket.getaddrinfo(hostname, None):
+                    _reject_if_internal(ipaddress.ip_address(info[4][0]))
+            except socket.gaierror:
+                if hostname.lower() in ("localhost", "127.0.0.1", "::1"):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="localhost запрещён для удалённых узлов",
+                    )
+    return hostname
+
+
+def hash_api_key(api_key: str) -> str:
+    return get_password_hash(api_key)
+
+
+def store_api_key(db_key_hash: str, api_key: str) -> tuple[str, str]:
+    return hash_api_key(api_key), encrypt_secret(api_key, settings.secret_key)
+
+
+def get_api_key_plain(node: Node) -> str | None:
+    if node.is_local or not node.api_key_encrypted:
+        return None
+    try:
+        return decrypt_secret(node.api_key_encrypted, settings.secret_key)
+    except Exception:
+        return None
+
+
+def node_metadata_dict(node: Node) -> dict:
+    try:
+        return json.loads(node.node_metadata or "{}")
+    except json.JSONDecodeError:
+        return {}
+
+
+def get_active_node_id(db: Session) -> int | None:
+    raw = _get_setting(db, ACTIVE_NODE_KEY)
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _is_vpn_node(node: Node) -> bool:
+    return (getattr(node, "node_kind", None) or NODE_KIND_VPN).strip().lower() == NODE_KIND_VPN
+
+
+def list_vpn_nodes(db: Session) -> list[Node]:
+    """All nodes that speak node_agent (OpenVPN/WG). Excludes proxy_agent cards."""
+    return [node for node in db.query(Node).order_by(Node.id.asc()).all() if _is_vpn_node(node)]
+
+
+def proxy_is_not_vpn_message(node: Node) -> str:
+    name = getattr(node, "name", None) or "без имени"
+    return (
+        f"«{name}» — прокси-узел (российский вход, proxy_agent), а не VPN-сервер. "
+        "OpenVPN и WireGuard на нём не запускаются. "
+        "Статус и DESTINATION смотрите в карточке прокси."
+    )
+
+
+def vpn_is_not_proxy_message(node: Node) -> str:
+    name = getattr(node, "name", None) or "без имени"
+    return (
+        f"«{name}» — VPN-узел (node_agent), а не прокси. "
+        "DESTINATION и таблица прокси-подключений доступны только у прокси-узлов."
+    )
+
+
+def set_active_node_id(db: Session, node_id: int) -> None:
+    """Set active VPN node. Rejects ``node_kind=proxy`` for all callers (HTTP, TG, mini)."""
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if node is not None and not _is_vpn_node(node):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Прокси-узел нельзя сделать активным для VPN: у него нет OpenVPN/WireGuard.",
+        )
+    _set_setting(db, ACTIVE_NODE_KEY, str(node_id))
+
+
+def clear_active_node_id(db: Session) -> None:
+    _set_setting(db, ACTIVE_NODE_KEY, "")
+
+
+def get_active_node(db: Session) -> Node:
+    """Return the active VPN node. Never returns ``node_kind=proxy``."""
+    node_id = get_active_node_id(db)
+    if node_id:
+        node = db.query(Node).filter(Node.id == node_id).first()
+        if node:
+            if not _is_vpn_node(node):
+                _set_setting(db, ACTIVE_NODE_KEY, "")
+                db.commit()
+            elif node.is_local and not settings.local_antizapret_enabled:
+                _set_setting(db, ACTIVE_NODE_KEY, "")
+                db.commit()
+            else:
+                return node
+
+    if settings.local_antizapret_enabled:
+        local = (
+            db.query(Node)
+            .filter(Node.is_local.is_(True), Node.node_kind == "vpn")
+            .first()
+        )
+        if local:
+            set_active_node_id(db, local.id)
+            db.commit()
+            return local
+
+    remote = (
+        db.query(Node)
+        .filter(Node.is_local.is_(False), Node.node_kind == "vpn")
+        .order_by(Node.id)
+        .first()
+    )
+    if remote:
+        set_active_node_id(db, remote.id)
+        db.commit()
+        return remote
+
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Нет активного узла. Добавьте удалённый VPN-узел (node agent).",
+    )
+
+
+def _node_kind(node: Node) -> str:
+    return (getattr(node, "node_kind", None) or NODE_KIND_VPN).strip().lower()
+
+
+def _remote_http_endpoint(node: Node) -> tuple[str, int, bool]:
+    if resolve_transport_id(node) == TRANSPORT_SSH:
+        from app.services.ssh_tunnel_pool import SshTunnelPool, get_ssh_tunnel_pool
+
+        ensured = get_ssh_tunnel_pool().ensure(node)
+        local_port = ensured.local_port if hasattr(ensured, "local_port") else int(ensured)
+        discovered_host_key_text = (
+            ensured.discovered_host_key_text if hasattr(ensured, "discovered_host_key_text") else None
+        )
+        if discovered_host_key_text and SshTunnelPool.store_expected_host_key_text(node, discovered_host_key_text):
+            session = object_session(node)
+            if session is not None:
+                session.add(node)
+                session.commit()
+                session.refresh(node)
+        return "127.0.0.1", local_port, False
+    transport = get_transport(node)
+    return node.host, node.port, transport.is_tls
+
+
+def get_proxy_adapter(node: Node, api_key_override: str | None = None) -> ProxyNodeAdapter:
+    """HTTP adapter for ``node_kind=proxy`` (proxy_agent). Not a NodeAdapter."""
+    if _node_kind(node) != NODE_KIND_PROXY:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=vpn_is_not_proxy_message(node),
+        )
+    if node.is_local:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Прокси-узел не может быть локальным",
+        )
+    api_key = api_key_override or get_api_key_plain(node)
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"API-ключ узла '{node.name}' недоступен",
+        )
+    host, port, mtls_enabled = _remote_http_endpoint(node)
+    return ProxyNodeAdapter(
+        host=host,
+        port=port,
+        api_key=api_key,
+        mtls_enabled=mtls_enabled,
+    )
+
+
+def get_adapter_for_node(node: Node) -> NodeAdapter:
+    if _node_kind(node) == NODE_KIND_PROXY:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=proxy_is_not_vpn_message(node),
+        )
+    if node.is_local:
+        meta = node_metadata_dict(node)
+        raw_path = meta.get("antizapret_path")
+        base_path = Path(str(raw_path)) if raw_path else settings.antizapret_path
+        return LocalNodeAdapter(AntiZapretService(base_path=base_path))
+    api_key = get_api_key_plain(node)
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"API-ключ узла '{node.name}' недоступен",
+        )
+    host, port, mtls_enabled = _remote_http_endpoint(node)
+    return RemoteNodeAdapter(
+        host=host,
+        port=port,
+        api_key=api_key,
+        mtls_enabled=mtls_enabled,
+    )
+
+
+def get_active_adapter(db: Session) -> NodeAdapter:
+    return get_adapter_for_node(get_active_node(db))
+
+
+def get_node_antizapret_path(db: Session) -> Path:
+    node = get_active_node(db)
+    meta = node_metadata_dict(node)
+    raw = meta.get("antizapret_path")
+    if raw:
+        return Path(str(raw))
+    return settings.antizapret_path
+
+
+def purge_node_related(db: Session, node_id: int) -> None:
+    # Clear proxy→VPN ownership links before deleting the VPN (or proxy) node.
+    db.query(Node).filter(Node.linked_vpn_node_id == node_id).update(
+        {Node.linked_vpn_node_id: None},
+        synchronize_session=False,
+    )
+
+    config_ids = [
+        row[0] for row in db.query(VpnConfig.id).filter(VpnConfig.node_id == node_id).all()
+    ]
+    if config_ids:
+        db.query(VpnConfig).filter(VpnConfig.ha_primary_config_id.in_(config_ids)).update(
+            {VpnConfig.ha_primary_config_id: None},
+            synchronize_session=False,
+        )
+
+    for model in (
+        VpnConfig,
+        TrafficSessionState,
+        UserTrafficStatProtocol,
+        WgAccessPolicy,
+        OpenVpnAccessPolicy,
+        AmneziaWg2AccessPolicy,
+        NodeResourceSample,
+        UserTrafficSample,
+        ConnectionCountSample,
+        ConfigTag,
+        ClientTemplate,
+        AlertRule,
+    ):
+        db.query(model).filter(model.node_id == node_id).delete(synchronize_session=False)
+
+
+def _remove_local_node(db: Session, local: Node) -> None:
+    active_id = get_active_node_id(db)
+    node_id = local.id
+    purge_node_related(db, node_id)
+    db.delete(local)
+    db.commit()
+    if active_id == node_id:
+        remote = (
+            db.query(Node)
+            .filter(Node.is_local.is_(False), Node.node_kind == "vpn")
+            .order_by(Node.id)
+            .first()
+        )
+        if remote:
+            set_active_node_id(db, remote.id)
+        else:
+            _set_setting(db, ACTIVE_NODE_KEY, "")
+        db.commit()
+
+
+def ensure_local_node(db: Session) -> Node:
+    local = db.query(Node).filter(Node.is_local.is_(True)).first()
+    if local:
+        return local
+
+    hostname = socket.gethostname()
+    local = Node(
+        name="Локальный сервер",
+        host="127.0.0.1",
+        port=9100,
+        api_key_hash="",
+        api_key_encrypted="",
+        is_local=True,
+        status=NodeStatus.unknown,
+        node_metadata=json.dumps({"hostname": hostname, "antizapret_path": str(settings.antizapret_path)}),
+    )
+    db.add(local)
+    db.commit()
+    db.refresh(local)
+
+    if not get_active_node_id(db):
+        set_active_node_id(db, local.id)
+        db.commit()
+    return local
+
+
+def sync_local_node(db: Session) -> Node | None:
+    """Создать или удалить локальный узел в соответствии с LOCAL_ANTIZAPRET_ENABLED."""
+    local = db.query(Node).filter(Node.is_local.is_(True)).first()
+    if settings.local_antizapret_enabled:
+        return local if local else ensure_local_node(db)
+
+    if local:
+        _remove_local_node(db, local)
+    return None
+
+
+def check_node_health(node: Node, api_key_override: str | None = None) -> dict:
+    try:
+        if _node_kind(node) == NODE_KIND_PROXY:
+            adapter = get_proxy_adapter(node, api_key_override=api_key_override)
+            health = adapter.health()
+            health["status"] = "online"
+            return health
+        if node.is_local:
+            adapter = LocalNodeAdapter()
+        else:
+            api_key = api_key_override or get_api_key_plain(node)
+            if not api_key:
+                return {
+                    "status": "offline",
+                    "error": "API-ключ не задан",
+                    "error_code": "node_auth",
+                    "link_error": {
+                        "code": "node_auth",
+                        "message": "API-ключ не задан",
+                        "hint": "Задайте API-ключ узла.",
+                    },
+                }
+            host, port, mtls_enabled = _remote_http_endpoint(node)
+            adapter = RemoteNodeAdapter(
+                host=host,
+                port=port,
+                api_key=api_key,
+                mtls_enabled=mtls_enabled,
+            )
+        health = adapter.health_check()
+        health["status"] = "online"
+        return health
+    except ValueError as exc:
+        from app.services.node_link_errors import classify_ssh_error, link_error_detail
+
+        ssh_error = classify_ssh_error(exc)
+        if ssh_error:
+            code, message = ssh_error
+            return {
+                "status": "offline",
+                "error": message,
+                "error_code": code,
+                "link_error": link_error_detail(code, message),
+            }
+        # Unsupported/corrupt transport — fail closed without killing the health loop.
+        return {
+            "status": "offline",
+            "error": str(exc),
+            "error_code": "node_error",
+            "link_error": {
+                "code": "node_error",
+                "message": str(exc),
+                "hint": "Проверьте поле transport узла (http/mtls).",
+            },
+        }
+    except HTTPException as exc:
+        from app.services.node_link_errors import parse_link_error_from_http_detail
+
+        parsed = parse_link_error_from_http_detail(exc.detail)
+        if parsed:
+            return {
+                "status": "offline",
+                "error": parsed["message"],
+                "error_code": parsed["code"],
+                "link_error": parsed,
+            }
+        return {"status": "offline", "error": str(exc.detail)}
+    except Exception as exc:
+        return {"status": "offline", "error": str(exc)}
+
+
+def update_node_from_health(node: Node, health: dict, db: Session) -> None:
+    from app.services.node_status_notify import evaluate_node_offline_notify
+
+    prev_status = node.status
+    status_str = health.get("status", "offline")
+    new_status = NodeStatus.online if status_str == "online" else NodeStatus.offline
+    node.status = new_status
+    now_iso = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    if status_str == "online":
+        node.last_seen_at = datetime.utcnow()
+        meta = node_metadata_dict(node)
+        for key in HEALTH_METADATA_KEYS:
+            if key in health and health[key] is not None:
+                meta[key] = health[key]
+        meta["last_health_ok_at"] = now_iso
+        meta.pop("last_link_error", None)
+        if health.get("error"):
+            meta["last_error"] = health["error"]
+        elif "last_error" in meta:
+            meta.pop("last_error", None)
+        expected_tls = node_uses_tls(node)
+        meta["expected_tls"] = expected_tls
+        if "listen_tls" in health and health["listen_tls"] is not None:
+            meta["tls_mismatch"] = bool(expected_tls) != bool(health["listen_tls"])
+        else:
+            meta.pop("tls_mismatch", None)
+        node.node_metadata = json.dumps(meta)
+    elif health.get("error") or health.get("link_error"):
+        meta = node_metadata_dict(node)
+        link_error = health.get("link_error")
+        if isinstance(link_error, dict) and link_error.get("code"):
+            meta["last_link_error"] = {
+                "code": str(link_error.get("code")),
+                "message": str(link_error.get("message") or health.get("error") or ""),
+                "hint": str(link_error.get("hint") or ""),
+                "at": now_iso,
+            }
+            meta["last_error"] = meta["last_link_error"]["message"]
+        else:
+            message = str(health.get("error") or "offline")
+            meta["last_error"] = message
+            meta["last_link_error"] = {
+                "code": str(health.get("error_code") or "node_error"),
+                "message": message,
+                "hint": "",
+                "at": now_iso,
+            }
+        node.node_metadata = json.dumps(meta)
+    node.updated_at = datetime.utcnow()
+    db.add(node)
+    db.commit()
+    db.refresh(node)
+    error = health.get("error") if isinstance(health.get("error"), str) else None
+    evaluate_node_offline_notify(
+        db,
+        node,
+        prev_status=prev_status,
+        new_status=new_status,
+        error=error,
+    )
+
+
+def verify_node_api_key(node: Node, api_key: str) -> bool:
+    if not node.api_key_hash:
+        return False
+    return verify_password(api_key, node.api_key_hash)

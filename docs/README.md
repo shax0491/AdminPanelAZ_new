@@ -1,0 +1,93 @@
+# Руководства пользователя AdminPanelAZ
+
+Здесь собраны простые инструкции по работе с веб-панелью. Написано для администраторов и обычных пользователей VPN — без технического жаргона.
+
+---
+
+## Роли в панели
+
+| Роль | Кто это | Что может |
+|------|---------|-----------|
+| **Администратор** | Владелец сервера | Всё: клиенты, узлы, настройки, бэкапы, маршрутизация |
+| **Пользователь** | Клиент VPN / self-service | Свои конфиги; по настройкам админа — создание, квота, доп. доступ к чужим клиентам (только просмотр/скачивание) |
+
+Некоторые разделы видны не всем — зависит от роли и от того, какие модули включил администратор.
+
+---
+
+## Основные разделы меню
+
+| Раздел в панели | Инструкция | Для кого |
+|-----------------|------------|----------|
+| Конфигурации | [konfiguracii.md](konfiguracii.md) | Все (создание — админ) |
+| NOC Мониторинг | [noc-monitoring.md](noc-monitoring.md) | Только админ |
+| Мониторинг трафика | [traffic-monitoring.md](traffic-monitoring.md) | Все |
+| Маршрутизация / CIDR | [routing-cidr.md](routing-cidr.md) | Только админ |
+| Конфиг AntiZapret | [antizapret-config.md](antizapret-config.md) | Только админ |
+| Прокси | [proxy-nodes.md](proxy-nodes.md) | Только админ (меню **Конфигурация → Прокси**, модуль `proxy_nodes`) |
+| AZ-WARP | [warper.md](warper.md) | Только админ |
+| AZ-AWG2 | [awg2.md](awg2.md) | Админ (страница); пользователи — свои конфиги на Конфигурациях |
+| Telegram | [Telegram.md](Telegram.md) | Только админ |
+| Редактор файлов | [edit-files.md](edit-files.md) | Только админ |
+| Журналы | [logs.md](logs.md) | Только админ |
+| Сервер | [server-monitor.md](server-monitor.md) | Только админ |
+| Узлы | [uzly.md](uzly.md) | Только админ |
+| SSH-транспорт узлов | [node-ssh-transport.md](node-ssh-transport.md) | Только админ (модуль `node_ssh_transport`) |
+| proxy_agent (установка на RU) | [proxy-agent.md](proxy-agent.md) | Только админ |
+| Подписка | [podpiska.md](podpiska.md) | Только админ (модули `client_portal` / `unlock_codes`) |
+| Настройки | [nastrojki/README.md](nastrojki/README.md) | Все (часть — только админ) |
+
+---
+
+## Настройки (подразделы)
+
+Полный список: [nastrojki/README.md](nastrojki/README.md)
+
+| Раздел | Файл |
+|--------|------|
+| Профиль | [profil.md](nastrojki/profil.md) |
+| Пользователи | [polzovateli.md](nastrojki/polzovateli.md) |
+| Доступ к панели | [bezopasnost.md](nastrojki/bezopasnost.md) |
+| Раздача конфигов | [razdacha-konfigov.md](nastrojki/razdacha-konfigov.md) |
+| Обслуживание | [obsluzhivanie.md](nastrojki/obsluzhivanie.md) |
+| Адрес сайта и HTTPS | [set-i-publikaciya.md](nastrojki/set-i-publikaciya.md) |
+| Резервные копии | [rezervnye-kopii.md](nastrojki/rezervnye-kopii.md) |
+| Мониторинг и алерты | [monitoring-i-alerty.md](nastrojki/monitoring-i-alerty.md) |
+| Модули | [moduli.md](nastrojki/moduli.md) |
+| Обновления | [obnovleniya.md](nastrojki/obnovleniya.md) |
+| Перезапуск и пересборка | [perezapusk-i-peresborka.md](nastrojki/perezapusk-i-peresborka.md) |
+| Диагностика | [diagnostika.md](nastrojki/diagnostika.md) |
+
+---
+
+## Дополнительно
+
+| Тема | Файл |
+|------|------|
+| Локальная геолокация (GeoIP) | [GeoIP.md](GeoIP.md) |
+| Telegram (бот, Mini App, уведомления) | [Telegram.md](Telegram.md) |
+| Карта проекта (для разработчиков) | [PROJECT_MAP.md](PROJECT_MAP.md) |
+
+---
+
+## Пожелания и баги
+
+Что-то не работает или хотите новую функцию — **[доска обратной связи AdminPanelAZ](https://claymore0098.fider.io/)**.
+
+1. **Поищите** похожие записи.
+2. Если нашли — **проголосуйте** или уточните в комментарии.
+3. Если нет — создайте новую с тегом: **ошибка**, **пожелание** или **вопрос**.
+
+GitHub для этого не нужен.
+
+---
+
+## С чего начать после установки
+
+После `install.sh` панель открывается по `http://IP:порт/` (HTTPS — позже в UI). Авто-бэкап уже включён (каждые 7 дней).
+
+1. Смените пароль и включите двухфакторную защиту — [profil.md](nastrojki/profil.md)
+2. Настройте домен и HTTPS — [set-i-publikaciya.md](nastrojki/set-i-publikaciya.md)
+3. Если VPN на другом сервере — добавьте узел — [uzly.md](uzly.md)
+4. На **Конфигурации** нажмите **Синхронизировать** — [konfiguracii.md](konfiguracii.md)
+5. Telegram (token в UI) и бэкапы — [Telegram.md](Telegram.md), [rezervnye-kopii.md](nastrojki/rezervnye-kopii.md)

@@ -1,0 +1,267 @@
+"""Propagate Sync Group shared domains into setup hosts on every member node.
+
+Writes ``OPENVPN_HOST`` from ``shared_domain`` and ``WIREGUARD_HOST`` from
+``shared_domain_wireguard`` (falling back to ``shared_domain`` when empty) to
+``/root/antizapret/setup`` on the primary and all replicas, then runs
+``doall.sh`` (apply_config_changes) and ``client.sh 7`` (recreate_profiles) on
+each node so the new hosts land in regenerated client profiles.
+
+On replicas the locally regenerated ``.ovpn`` files are then replaced with a
+byte-copy from the primary: ``client.sh 7`` rebuilds profiles from the
+*replica-local* PKI, which breaks byte-parity with the primary (and produces
+broken profiles if the replica PKI drifted). The primary is processed first,
+so its profiles already contain the new shared domain when they are copied.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime
+from typing import Any, Callable
+
+from sqlalchemy.orm import Session
+
+from app.models import Node, NodeSyncGroup, SyncStatus
+from app.services.node_manager import get_adapter_for_node
+from app.services.node_sync.groups import (
+    effective_openvpn_domain,
+    effective_wireguard_domain,
+    format_shared_domains_label,
+    parse_replica_node_ids,
+)
+from app.services.node_sync.openvpn_restart import restart_all_openvpn_servers
+from app.services.node_sync.vpn_state_sync import copy_openvpn_profiles_from_primary
+from app.services.openvpn_remote_hosts import parse_hosts_json
+from app.services.profile_delivery import patch_openvpn_profiles_on_node
+
+logger = logging.getLogger(__name__)
+
+ProgressCallback = Callable[[int, str, str | None], None]
+
+
+def get_member_nodes(db: Session, group: NodeSyncGroup) -> list[Node]:
+    """Return primary + replica nodes (in order, deduplicated, existing only)."""
+    node_ids = [group.primary_node_id, *parse_replica_node_ids(group.replica_node_ids)]
+    nodes: list[Node] = []
+    seen: set[int] = set()
+    for node_id in node_ids:
+        if node_id is None or node_id in seen:
+            continue
+        seen.add(node_id)
+        node = db.get(Node, node_id)
+        if node is not None:
+            nodes.append(node)
+    return nodes
+
+
+def _shared_domain_success_message(result: dict[str, Any]) -> str:
+    domain = str(result.get("domain") or "").strip()
+    openvpn = str(result.get("openvpn_host") or "").strip()
+    wireguard = str(result.get("wireguard_host") or "").strip()
+    if openvpn and wireguard and openvpn != wireguard:
+        domain_part = f"Домены OpenVPN={openvpn}, WG/AWG={wireguard} записаны в setup"
+    else:
+        domain_part = f"Домен {domain or openvpn or wireguard} записан в setup"
+    nodes = [str(item.get("node_name") or item.get("node_id") or "") for item in result.get("updated") or []]
+    nodes = [name for name in nodes if name]
+    restarted = [
+        str(item.get("node_name") or item.get("node_id") or "")
+        for item in result.get("openvpn_restart") or []
+        if item.get("restarted")
+    ]
+    restarted = [name for name in restarted if name]
+    parts = [domain_part]
+    if nodes:
+        parts.append(f"узлы: {', '.join(nodes)}")
+    parts.append("выполнены doall.sh и client.sh 7")
+    if restarted:
+        parts.append(f"OpenVPN перезапущен на: {', '.join(restarted)}")
+    return ". ".join(parts) + "."
+
+
+def apply_shared_domain_to_members(
+    db: Session,
+    group: NodeSyncGroup,
+    *,
+    run_apply: bool = True,
+    progress_callback: ProgressCallback | None = None,
+) -> dict[str, Any]:
+    """Write shared domain hosts to setup on all members, then doall.sh + client.sh 7.
+
+    Errors on one node are recorded but never abort the rest (partial failure is
+    reflected via ``success=False`` and the ``errors`` list).
+    """
+    openvpn_host = effective_openvpn_domain(group)
+    wireguard_host = effective_wireguard_domain(group)
+    updates = {"openvpn_host": openvpn_host, "wireguard_host": wireguard_host}
+    nodes = get_member_nodes(db, group)
+
+    def progress(percent: int, stage: str, message: str | None = None) -> None:
+        if progress_callback:
+            progress_callback(percent, stage, message)
+
+    result: dict[str, Any] = {
+        "domain": format_shared_domains_label(group),
+        "openvpn_host": openvpn_host,
+        "wireguard_host": wireguard_host,
+        "updated": [],
+        "applied": [],
+        "openvpn_restart": [],
+        "errors": [],
+    }
+
+    if not openvpn_host:
+        result["success"] = False
+        result["errors"].append({"error": "shared_domain (OpenVPN) пуст"})
+        return result
+    if not nodes:
+        result["success"] = False
+        result["errors"].append({"error": "В группе нет доступных узлов"})
+        return result
+
+    total = len(nodes)
+
+    progress(5, "Запись OPENVPN_HOST / WIREGUARD_HOST в setup…")
+    for index, node in enumerate(nodes):
+        percent = 5 + int((index / total) * 35)
+        progress(percent, f"{node.name}: запись хостов в setup…")
+        try:
+            get_adapter_for_node(node).update_antizapret_settings(updates)
+            result["updated"].append({"node_id": node.id, "node_name": node.name})
+        except Exception as exc:
+            logger.warning("Shared domain setup write failed on %s: %s", node.name, exc)
+            result["errors"].append(
+                {"node_id": node.id, "node_name": node.name, "stage": "setup", "error": str(exc)}
+            )
+
+    if run_apply:
+        primary_adapter = None
+        for index, node in enumerate(nodes):
+            percent = 45 + int((index / total) * 50)
+            progress(percent, f"{node.name}: doall.sh + client.sh 7…")
+            adapter = get_adapter_for_node(node)
+            is_primary = node.id == group.primary_node_id
+            try:
+                doall_output = adapter.apply_config_changes()
+                recreate_output = adapter.recreate_profiles()
+                hosts = parse_hosts_json(node.openvpn_remote_hosts)
+                if is_primary:
+                    primary_adapter = adapter
+                    # Patch primary remotes before replicas copy profiles.
+                    if hosts:
+                        patch_openvpn_profiles_on_node(adapter, hosts)
+                elif primary_adapter is not None:
+                    # Replace locally regenerated .ovpn with a byte-copy from
+                    # primary to preserve profile parity (same as Push full).
+                    progress(percent, f"{node.name}: копия .ovpn с основного узла…")
+                    copy_openvpn_profiles_from_primary(primary_adapter, adapter)
+                    # Then apply this replica's own remote-hosts list.
+                    if hosts:
+                        patch_openvpn_profiles_on_node(adapter, hosts)
+                else:
+                    result["errors"].append(
+                        {
+                            "node_id": node.id,
+                            "node_name": node.name,
+                            "stage": "profile_copy",
+                            "error": (
+                                "Копия .ovpn с основного узла пропущена: "
+                                "apply на основном узле не выполнен"
+                            ),
+                        }
+                    )
+                progress(percent, f"{node.name}: перезапуск OpenVPN…")
+                if bool(node.openvpn_multihome):
+                    from app.services.openvpn_multihome import maybe_ensure_node_openvpn_multihome
+
+                    mh = maybe_ensure_node_openvpn_multihome(adapter, node) or {}
+                    restart_result = mh.get("restart") or {
+                        "restarted": [],
+                        "skipped": [],
+                        "failed": [],
+                        "success": True,
+                    }
+                else:
+                    restart_result = restart_all_openvpn_servers(adapter)
+                result["openvpn_restart"].append(
+                    {
+                        "node_id": node.id,
+                        "node_name": node.name,
+                        **restart_result,
+                    }
+                )
+                if restart_result.get("failed"):
+                    result["errors"].append(
+                        {
+                            "node_id": node.id,
+                            "node_name": node.name,
+                            "stage": "openvpn_restart",
+                            "error": "; ".join(
+                                f"{item.get('unit')}: {item.get('error')}"
+                                for item in restart_result.get("failed", [])
+                            ),
+                        }
+                    )
+                result["applied"].append(
+                    {
+                        "node_id": node.id,
+                        "node_name": node.name,
+                        "doall": (doall_output or "")[:500],
+                        "recreate": (recreate_output or "")[:500],
+                        "openvpn_restarted": list(restart_result.get("restarted") or []),
+                    }
+                )
+            except Exception as exc:
+                logger.warning("Shared domain apply failed on %s: %s", node.name, exc)
+                result["errors"].append(
+                    {"node_id": node.id, "node_name": node.name, "stage": "apply", "error": str(exc)}
+                )
+
+    progress(100, "Готово")
+    result["success"] = not result["errors"]
+    return result
+
+
+def make_shared_domain_callable(group_id: int) -> Callable[..., dict[str, Any]]:
+    """Background-task callable: apply shared_domain on a group in a fresh session."""
+    captured_group_id = int(group_id)
+
+    def _callable(progress_updater: ProgressCallback | None = None) -> dict[str, Any]:
+        from app.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            group = db.get(NodeSyncGroup, captured_group_id)
+            if group is None:
+                raise RuntimeError("Sync group не найдена")
+
+            result = apply_shared_domain_to_members(
+                db, group, run_apply=True, progress_callback=progress_updater
+            )
+
+            group.last_sync_at = datetime.utcnow()
+            if result.get("success"):
+                if group.sync_status == SyncStatus.pending:
+                    group.sync_status = SyncStatus.synced
+                group.last_sync_error = None
+            else:
+                group.sync_status = SyncStatus.failed
+                group.last_sync_error = "; ".join(
+                    str(item.get("error")) for item in result.get("errors", [])
+                )[:1000]
+            db.commit()
+
+            return {
+                "message": (
+                    _shared_domain_success_message(result)
+                    if result.get("success")
+                    else "Применение shared domain завершилось с ошибками"
+                ),
+                "output": json.dumps(result, ensure_ascii=False),
+                "success": bool(result.get("success")),
+            }
+        finally:
+            db.close()
+
+    return _callable
