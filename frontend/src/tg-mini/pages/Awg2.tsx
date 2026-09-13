@@ -25,7 +25,7 @@ import type { TgMiniAwg2Status } from '@/types'
 
 function Awg2Skeleton() {
   return (
-    <div className="tg-mini-dashboard space-y-4" aria-busy="true" aria-label="Загрузка AZ-AWG2">
+    <div className="tg-mini-dashboard space-y-4" aria-busy="true" aria-label="Загрузка AmneziaWG 2.0">
       <div className="tg-mini-skeleton" style={{ height: '2.5rem' }} />
       <div className="tg-mini-skeleton tg-mini-skeleton-summary" />
       <div className="tg-mini-cards">
@@ -63,7 +63,7 @@ function CopyInstallCommand({ command }: { command: string }) {
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Install/обфускация из Mini App недоступны — используйте веб-панель → AZ-AWG2.
+        Устанавливается только по SSH через setup.sh — часть базового VPN-стека, из панели недоступно.
       </p>
     </div>
   )
@@ -122,8 +122,8 @@ export default function Awg2() {
   return (
     <div className="tg-mini-dashboard space-y-4">
       <MiniPageHeader
-        title="AZ-AWG2"
-        subtitle="AmneziaWG 2.0 на активном узле (только просмотр)"
+        title="AmneziaWG 2.0"
+        subtitle="Нативный AmneziaWG 2.0 на активном узле (только просмотр)"
         onRefresh={() => void load({ silent: true })}
         refreshing={refreshing}
       />
@@ -243,9 +243,9 @@ export default function Awg2() {
           {!installed && (
             <div className="tg-mini-filter-empty">
               <ShieldOff size={24} className="text-muted-foreground" aria-hidden />
-              <p className="text-sm font-medium">AZ-AWG2 не установлен</p>
+              <p className="text-sm font-medium">AmneziaWG 2.0 не найден</p>
               <p className="max-w-sm text-xs text-muted-foreground">
-                На узле <strong>{data.node_name}</strong> нет слоя AmneziaWG 2.0.
+                На узле <strong>{data.node_name}</strong> нет нативного AmneziaWG 2.0 (бинарь awg отсутствует).
                 {data.missing_components.length > 0 && (
                   <> Не хватает: {data.missing_components.join(', ')}.</>
                 )}
@@ -261,8 +261,7 @@ export default function Awg2() {
             <div className="tg-mini-feedback is-info" role="status">
               <Network size={18} className="shrink-0 opacity-70" aria-hidden />
               <p className="text-sm leading-snug">
-                Установка, обфускация и бэкап — только в веб-панели → AZ-AWG2. Конфиги создавайте во вкладке
-                «Конфиги».
+                Установка — только по SSH через setup.sh. Конфиги создавайте во вкладке «Конфиги».
               </p>
             </div>
           )}
