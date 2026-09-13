@@ -164,10 +164,16 @@ class AntiZapretService:
         # single unified add that creates OpenVPN + WireGuard + AmneziaWG 1.5 + AmneziaWG 2.0
         # profiles together. See _client_already_provisioned for why a second call for the
         # same name must not reach client.sh again.
+        #
+        # addClient() in client.sh unconditionally runs addOpenVPN() too (no protocol
+        # selection inside the script), which reads $3 into CLIENT_CERT_EXPIRE. Omitting it
+        # leaves that empty, so for a brand-new client name askClientCertExpire() falls into
+        # an interactive `read` that dies on closed stdin under `set -e` — must always pass a
+        # valid days value here even though this call is "just" adding WireGuard.
         self.validate_client_name(client_name)
         if self._client_already_provisioned(client_name):
             return f"Клиент '{client_name}' уже существует на сервере — профиль WireGuard/AmneziaWG уже создан"
-        return self._run_client_script("1", client_name)
+        return self._run_client_script("1", client_name, "3650")
 
     def delete_wireguard_client(self, client_name: str) -> str:
         self.validate_client_name(client_name)
@@ -193,7 +199,10 @@ class AntiZapretService:
             # not have gone through the override pass yet.
             self._apply_native_awg2_overrides(client_name)
             return f"Клиент '{client_name}' уже существует на сервере — профиль AmneziaWG 2.0 уже создан"
-        output = self._run_client_script("1", client_name)
+        # Same reason as add_wireguard_client: addClient() always runs addOpenVPN() too, which
+        # needs a valid $3 (CLIENT_CERT_EXPIRE) or it hangs on an interactive prompt for a new
+        # client name and dies on closed stdin.
+        output = self._run_client_script("1", client_name, "3650")
         self._apply_native_awg2_overrides(client_name)
         return output
 

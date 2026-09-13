@@ -165,7 +165,7 @@ def test_add_amneziawg2_client_applies_overrides_to_generated_files(tmp_path, mo
 
     output = service.add_amneziawg2_client("testclient")
 
-    assert calls == [["1", "testclient"]]  # unified add option, not the stale "4"
+    assert calls == [["1", "testclient", "3650"]]  # unified add option, not the stale "4"
     assert "testclient" in output
 
     generated = fake_profile.read_text(encoding="utf-8")
@@ -192,7 +192,7 @@ def test_client_sh_option_numbers_match_unified_menu(tmp_path, monkeypatch):
     service.list_wireguard_clients()
     service.recreate_profiles()
 
-    assert calls[0] == ["1", "alice"]
+    assert calls[0] == ["1", "alice", "3650"]
     assert calls[1] == ["2", "alice"]
     assert calls[2] == ["3"]
     assert calls[3] == ["4"]
