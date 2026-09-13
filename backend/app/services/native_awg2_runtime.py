@@ -23,6 +23,24 @@ NATIVE_AWG2_CONFIG_FILES = {
     "vpn": Path("/etc/amneziawg/vpn2.conf"),
 }
 
+# The `awg`/`awg-quick` binaries need the REAL kernel/systemd interface name — set up by
+# client.sh's own `awg syncconf antizapret2`/`awg syncconf vpn2` calls and the
+# amneziawg@antizapret2.service/amneziawg@vpn2.service units — which is NOT the same as the
+# short "antizapret"/"vpn" labels this module otherwise uses everywhere (config file dict keys
+# above, ifaces[].name in /awg2/monitoring, the frontend's lookup keys), kept for parity with
+# WireGuard 1.5's actual antizapret/vpn interface names. Passing the label straight to `awg`
+# silently no-ops against a nonexistent interface (empty/error output, swallowed) — this used
+# to make monitoring always report 0 peers and made block/unblock always fail.
+NATIVE_AWG2_IFACE_NAMES = {
+    "antizapret": "antizapret2",
+    "vpn": "vpn2",
+}
+
+
+def _real_iface_name(label: str) -> str:
+    return NATIVE_AWG2_IFACE_NAMES.get(label, label)
+
+
 COMMAND_TIMEOUT_SECONDS = 10
 ONLINE_WINDOW_S = 180
 
@@ -79,7 +97,7 @@ def _peer_specs_for_client(client_name: str, *, config_files: dict[str, Path] | 
     specs: list[dict] = []
     files = config_files or NATIVE_AWG2_CONFIG_FILES
     for iface, path in files.items():
-        specs.extend(_parse_peers(path, iface, client_name))
+        specs.extend(_parse_peers(path, _real_iface_name(iface), client_name))
     return specs
 
 
@@ -221,7 +239,7 @@ def get_monitoring() -> dict[str, Any]:
     ifaces: list[dict[str, Any]] = []
 
     for interface_name in sorted(NATIVE_AWG2_CONFIG_FILES):
-        dump_text = _awg_show_dump(interface_name)
+        dump_text = _awg_show_dump(_real_iface_name(interface_name))
         peer_count = 0
         for i, raw in enumerate(dump_text.splitlines()):
             if i == 0:
@@ -353,7 +371,7 @@ def sync_all_native_awg2_interfaces(*, timeout: int = COMMAND_TIMEOUT_SECONDS) -
     synced: list[str] = []
     errors: list[dict] = []
     for interface_name in sorted(NATIVE_AWG2_CONFIG_FILES):
-        ok, stderr = _sync_interface_from_stripped_config(interface_name, timeout=timeout)
+        ok, stderr = _sync_interface_from_stripped_config(_real_iface_name(interface_name), timeout=timeout)
         if ok:
             synced.append(interface_name)
         else:
@@ -391,13 +409,10 @@ def unblock_client_runtime(client_name: str) -> dict:
     peers = _collect_client_peers(client_name, config_files=config_files)
     interfaces = sorted({iface for iface, _ in peers if iface})
     if not interfaces:
-        interfaces = sorted(config_files.keys())
+        interfaces = sorted(_real_iface_name(label) for label in config_files)
 
     synced: list[str] = []
     for interface_name in interfaces:
-        config_path = config_files.get(interface_name)
-        if config_path is None or not str(config_path).strip():
-            continue
         ok, stderr = _sync_interface_from_stripped_config(interface_name)
         if ok:
             synced.append(interface_name)
