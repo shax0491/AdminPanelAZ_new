@@ -210,11 +210,11 @@ def test_delete_amneziawg2_calls_replicate_and_awg2():
     replicate.assert_called_once()
 
 
-def test_delete_refuses_when_other_protocols_remain_for_same_client():
-    """client.sh has no per-protocol delete — option 2 removes OpenVPN + WireGuard +
-    AmneziaWG 1.5 + native AmneziaWG 2.0 for a name all at once. Deleting just the AWG2 row
-    while an OpenVPN row for the same client_name still exists must NOT silently kill the
-    OpenVPN client's access too."""
+def test_delete_one_protocol_leaves_other_protocol_rows_for_same_client_untouched():
+    """client.sh options 7/8/9 delete exactly one protocol for a client name (see
+    AntiZapretService.delete_openvpn_client/delete_wireguard_client/delete_amneziawg2_client) —
+    deleting the AWG2 row for a client that also has an OpenVPN row must succeed and must not
+    touch that sibling OpenVPN config/adapter call at all."""
     other_config = SimpleNamespace(id=12, node_id=1, client_name="awg2user", vpn_type=VpnType.openvpn)
     db = _FakeDb(existing=other_config)
     current_user = SimpleNamespace(id=1, username="admin", role=UserRole.admin)
@@ -226,12 +226,16 @@ def test_delete_refuses_when_other_protocols_remain_for_same_client():
         patch.object(configs_router, "_can_mutate_config", return_value=True),
         patch.object(configs_router, "require_ha_primary_for_client_ops"),
         patch.object(configs_router, "get_active_adapter", return_value=adapter),
+        patch.object(configs_router, "get_active_node", return_value=SimpleNamespace(id=1, name="node-1")),
+        patch.object(configs_router, "find_sync_group_for_primary", return_value=None),
+        patch.object(configs_router, "purge_ha_shadow_configs"),
+        patch.object(configs_router.admin_notify_service, "send_config_delete"),
+        patch.object(configs_router, "get_client_timezone_from_request", return_value="UTC"),
     ):
-        with pytest.raises(HTTPException) as exc:
-            configs_router.delete_config(11, SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")), db, current_user)
+        result = configs_router.delete_config(11, SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")), db, current_user)
 
-    assert exc.value.status_code == 409
-    adapter.awg2_delete_client.assert_not_called()
+    assert result.message == "Клиент 'awg2user' удалён"
+    adapter.awg2_delete_client.assert_called_once_with("awg2user")
     adapter.delete_openvpn_client.assert_not_called()
     adapter.delete_wireguard_client.assert_not_called()
 

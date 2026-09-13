@@ -723,31 +723,9 @@ def delete_config(
 
     require_ha_primary_for_client_ops(db)
 
-    # client.sh has no per-protocol delete anymore — option 2 removes OpenVPN + WireGuard +
-    # AmneziaWG 1.5 + native AmneziaWG 2.0 for a name all at once. If this client still has
-    # OTHER protocol rows, calling it here would silently kill their access too; only safe
-    # once this is the last protocol left for the name.
-    other_protocols_remain = (
-        db.query(VpnConfig)
-        .filter(
-            VpnConfig.node_id == config.node_id,
-            VpnConfig.client_name == config.client_name,
-            VpnConfig.id != config.id,
-        )
-        .first()
-        is not None
-    )
-    if other_protocols_remain:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                f"У клиента '{config.client_name}' есть другие протоколы (OpenVPN/WireGuard/"
-                "AmneziaWG 2.0) — client.sh удаляет все протоколы клиента разом, поэтому "
-                "сначала удалите остальные конфигурации этого клиента, либо удалите их все "
-                "вместе."
-            ),
-        )
-
+    # client.sh options 7/8/9 delete exactly one protocol (OpenVPN/WireGuard-AmneziaWG1.5/
+    # AmneziaWG2) for this client name without touching the others, so deleting one config row
+    # here is safe even when sibling-protocol rows exist for the same client_name.
     adapter = get_active_adapter(db)
     if config.vpn_type == VpnType.openvpn:
         adapter.delete_openvpn_client(config.client_name)
