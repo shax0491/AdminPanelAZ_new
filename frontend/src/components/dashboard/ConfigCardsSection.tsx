@@ -793,7 +793,7 @@ export default function ConfigCardsSection({
                           connectionMap,
                           tab === 'openvpn' ? openvpnGroup : null,
                         )}
-                        localIp={getConfigLocalIp(config.client_name, connectionMap, config.local_ip)}
+                        localIp={getConfigLocalIp(config.client_name, connectionMap, config.local_ip, tab)}
                         viewPrefs={viewPrefs}
                       />
                     ))}

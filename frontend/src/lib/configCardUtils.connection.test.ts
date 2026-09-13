@@ -4,6 +4,7 @@ import type { OpenVpnClient, WireGuardPeer } from '@/types'
 
 import {
   buildClientConnectionMap,
+  getConfigLocalIp,
   isConfigConnected,
   openvpnTransportFromProfile,
   resolveDisplayedTraffic,
@@ -88,6 +89,42 @@ describe('buildClientConnectionMap / isConfigConnected', () => {
     )
     expect(map.alice?.localIp).toBe('10.0.0.2')
     expect(map.bob?.localIp).toBe('10.8.0.5')
+  })
+
+  it('keeps native AmneziaWG 2.0 IP/status separate from WireGuard 1.5 for the same client name', () => {
+    // Regression: a client created with both WireGuard 1.5 and AmneziaWG 2.0 has two peers
+    // under the same name, on different subnets — the AWG2 card must not show the WG 1.5 IP
+    // (or vice versa), and its online status must reflect the AWG2 peer, not the WG one.
+    const wgPeers: WireGuardPeer[] = [
+      {
+        client_name: 'dave',
+        interface: 'vpn',
+        public_key: 'wg-key',
+        endpoint: null,
+        allowed_ips: '10.29.8.3/32',
+        latest_handshake: null,
+        transfer_rx: 0,
+        transfer_tx: 0,
+      },
+    ]
+    const awg2Peers: WireGuardPeer[] = [
+      {
+        client_name: 'dave',
+        interface: 'antizapret2',
+        public_key: 'awg2-key',
+        endpoint: '5.6.7.8:51821',
+        allowed_ips: '10.29.9.3/32',
+        latest_handshake: new Date().toISOString(),
+        transfer_rx: 10,
+        transfer_tx: 20,
+      },
+    ]
+    const map = buildClientConnectionMap([], wgPeers, awg2Peers)
+
+    expect(getConfigLocalIp('dave', map, null, 'wireguard')).toBe('10.29.8.3')
+    expect(getConfigLocalIp('dave', map, null, 'amneziawg2')).toBe('10.29.9.3')
+    expect(isConfigConnected('dave', 'wireguard', map)).toBe(false)
+    expect(isConfigConnected('dave', 'amneziawg2', map)).toBe(true)
   })
 })
 

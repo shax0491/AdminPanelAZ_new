@@ -417,8 +417,12 @@ export type ClientConnectionEntry = {
   openvpnUdp: boolean
   openvpnTcp: boolean
   wireguard: boolean
-  /** Issued/live tunnel IP (OpenVPN virtual_address / WG AllowedIPs). */
+  amneziawg2: boolean
+  /** Issued/live tunnel IP (OpenVPN virtual_address / WireGuard 1.5 AllowedIPs). */
   localIp?: string | null
+  /** Native AmneziaWG 2.0 AllowedIPs — kept separate: a client can hold both a WireGuard
+   * 1.5 peer and a native AWG2 peer at once, on different subnets, under the same name. */
+  amneziawg2Ip?: string | null
 }
 
 export type ClientConnectionMap = Record<string, ClientConnectionEntry>
@@ -457,12 +461,21 @@ function mergeLocalIp(prev: string | null | undefined, next: string | null): str
 }
 
 function emptyConnectionEntry(): ClientConnectionEntry {
-  return { openvpn: false, openvpnUdp: false, openvpnTcp: false, wireguard: false, localIp: null }
+  return {
+    openvpn: false,
+    openvpnUdp: false,
+    openvpnTcp: false,
+    wireguard: false,
+    amneziawg2: false,
+    localIp: null,
+    amneziawg2Ip: null,
+  }
 }
 
 export function buildClientConnectionMap(
   openvpnClients: OpenVpnClient[],
   wireguardPeers: WireGuardPeer[],
+  amneziawg2Peers: WireGuardPeer[] = [],
 ): ClientConnectionMap {
   const map: ClientConnectionMap = {}
 
@@ -493,6 +506,18 @@ export function buildClientConnectionMap(
     }
   }
 
+  for (const peer of amneziawg2Peers) {
+    const name = (peer.client_name || '').trim()
+    if (!name) continue
+    const key = name.toLowerCase()
+    const prev = map[key] ?? emptyConnectionEntry()
+    map[key] = {
+      ...prev,
+      amneziawg2: isWireGuardOnline(peer) || prev.amneziawg2,
+      amneziawg2Ip: mergeLocalIp(prev.amneziawg2Ip, normalizeTunnelIp(peer.allowed_ips)),
+    }
+  }
+
   return map
 }
 
@@ -500,8 +525,10 @@ export function getConfigLocalIp(
   clientName: string,
   connectionMap?: ClientConnectionMap | null,
   fallback?: string | null,
+  tab?: ProtocolTab,
 ): string | null {
-  const fromMap = connectionMap?.[clientName.trim().toLowerCase()]?.localIp
+  const entry = connectionMap?.[clientName.trim().toLowerCase()]
+  const fromMap = tab === 'amneziawg2' ? entry?.amneziawg2Ip : entry?.localIp
   const value = (fromMap || fallback || '').trim()
   return value || null
 }
@@ -515,6 +542,7 @@ export function isConfigConnected(
   if (!connectionMap) return null
   const entry = connectionMap[clientName.trim().toLowerCase()]
   if (!entry) return false
+  if (tab === 'amneziawg2') return entry.amneziawg2
   if (tab !== 'openvpn') return entry.wireguard
   if (openvpnGroup === 'GROUP_UDP') return entry.openvpnUdp
   if (openvpnGroup === 'GROUP_TCP') return entry.openvpnTcp
