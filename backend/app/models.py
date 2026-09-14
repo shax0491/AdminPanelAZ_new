@@ -752,6 +752,110 @@ class AlertRule(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class FailoverPoolMode(str, enum.Enum):
+    auto = "auto"
+    manual = "manual"
+
+
+class FailoverPool(Base):
+    """A lightweight, independent set of candidate servers for client-side failover.
+
+    Deliberately NOT the HA Sync Group model: no wipe-and-replace lifecycle, no
+    "disband destroys everything" behavior — removing a pool only removes the pool
+    rows themselves (members/links cascade), never touches the nodes or their configs.
+    The actual switch decision stays on the client device (Android app / router
+    watchdog) — this table only tracks which servers are candidates, in what order,
+    and (via FailoverClientLink) which peers must stay in sync across them.
+    """
+
+    __tablename__ = "failover_pools"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128))
+    vpn_type: Mapped[VpnType] = mapped_column(Enum(VpnType), default=VpnType.amneziawg2)
+    mode: Mapped[FailoverPoolMode] = mapped_column(Enum(FailoverPoolMode), default=FailoverPoolMode.auto)
+    health_check_target: Mapped[str] = mapped_column(String(255), default="1.1.1.1")
+    health_check_interval_s: Mapped[int] = mapped_column(Integer, default=15)
+    health_check_timeout_s: Mapped[int] = mapped_column(Integer, default=5)
+    down_threshold: Mapped[int] = mapped_column(Integer, default=3)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    members: Mapped[list["FailoverPoolMember"]] = relationship(
+        back_populates="pool",
+        cascade="all, delete-orphan",
+        order_by="FailoverPoolMember.priority",
+    )
+    clients: Mapped[list["FailoverClientLink"]] = relationship(
+        back_populates="pool",
+        cascade="all, delete-orphan",
+    )
+
+
+class FailoverPoolMember(Base):
+    """One candidate server in a pool. Backed by a real Node (reuses the panel's
+    already-working HTTP/mTLS/SSH-tunnel connectivity) — but membership itself is
+    pool-scoped metadata, not a change to how that Node behaves elsewhere in the panel."""
+
+    __tablename__ = "failover_pool_members"
+    __table_args__ = (UniqueConstraint("pool_id", "node_id", name="uq_failover_pool_member_node"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pool_id: Mapped[int] = mapped_column(ForeignKey("failover_pools.id", ondelete="CASCADE"), index=True)
+    node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), index=True)
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    pool: Mapped["FailoverPool"] = relationship(back_populates="members")
+    node: Mapped["Node"] = relationship()
+
+
+class FailoverClientLink(Base):
+    """A client (by name) registered into a pool — the unit peer-sync and the
+    device-facing server-list API operate on. `access_token` is what the Android
+    app / router watchdog uses to fetch its server list and post status, without
+    needing full panel admin credentials (same shape as ClientPortalToken)."""
+
+    __tablename__ = "failover_client_links"
+    __table_args__ = (UniqueConstraint("pool_id", "client_name", name="uq_failover_client_pool_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pool_id: Mapped[int] = mapped_column(ForeignKey("failover_pools.id", ondelete="CASCADE"), index=True)
+    client_name: Mapped[str] = mapped_column(String(32), index=True)
+    primary_node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"))
+    access_token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    pool: Mapped["FailoverPool"] = relationship(back_populates="clients")
+
+
+class FailoverStatusReport(Base):
+    """Latest self-reported status from one client device (Android app / router
+    watchdog) — the dashboard's "as seen from the client" column, deliberately kept
+    separate from any panel-side ping (panel and client can see different reality —
+    a server blocked for a Russian ISP can be perfectly reachable from the panel's
+    own hosting, so only the device's own vantage point is trustworthy for its own
+    switch decisions; the panel-side check is informational only)."""
+
+    __tablename__ = "failover_status_reports"
+    __table_args__ = (
+        UniqueConstraint("pool_id", "client_name", "device_label", name="uq_failover_status_device"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pool_id: Mapped[int] = mapped_column(ForeignKey("failover_pools.id", ondelete="CASCADE"), index=True)
+    client_name: Mapped[str] = mapped_column(String(32), index=True)
+    device_label: Mapped[str] = mapped_column(String(128))
+    active_node_id: Mapped[int | None] = mapped_column(ForeignKey("nodes.id"), nullable=True)
+    healthy: Mapped[bool] = mapped_column(Boolean, default=True)
+    detail: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reported_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class WebhookDelivery(Base):
     __tablename__ = "webhook_delivery"
 

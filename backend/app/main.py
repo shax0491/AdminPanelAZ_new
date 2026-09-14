@@ -27,6 +27,7 @@ from app.routers import (
     configs,
     configs_bulk,
     edit_files,
+    failover_pools,
     ip_blocked,
     logs,
     maintenance,
@@ -229,6 +230,8 @@ app.include_router(settings_cloudflare.router, prefix=_API_PREFIX)
 app.include_router(backups.router, prefix=_API_PREFIX)
 app.include_router(node_sync.router, prefix=_API_PREFIX)
 app.include_router(nodes.router, prefix=_API_PREFIX)
+app.include_router(failover_pools.router, prefix=_API_PREFIX)
+app.include_router(failover_pools.public_router, prefix=_API_PREFIX)
 app.include_router(routing.router, prefix=_API_PREFIX)
 app.include_router(warper.router, prefix=_API_PREFIX)
 app.include_router(awg2.router, prefix=_API_PREFIX)

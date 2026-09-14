@@ -211,6 +211,22 @@ FEATURE_TOGGLES: tuple[FeatureToggleDefinition, ...] = (
         frontend_paths=("/awg2",),
     ),
     FeatureToggleDefinition(
+        key="failover_pools",
+        env_key="FEATURE_FAILOVER_POOLS_ENABLED",
+        label="Автопереключение (пулы серверов)",
+        description=(
+            "Группы серверов для клиентского автопереключения AmneziaWG 2.0 (Android/роутер) — "
+            "синхронизация пиров между узлами и раздача списка серверов устройствам."
+        ),
+        icon="🔀",
+        disable_hint="Пулы автопереключения и связанные API станут недоступны.",
+        resource_impact_level="minimal",
+        default=False,
+        group="app_module",
+        api_prefixes=("/api/failover-pools", "/api/public/failover"),
+        frontend_paths=("/failover",),
+    ),
+    FeatureToggleDefinition(
         key="edit_files",
         env_key="FEATURE_EDIT_FILES_ENABLED",
         label="Редактор файлов",

@@ -1280,6 +1280,104 @@ class MessageResponse(BaseModel):
     detail: Any | None = None
 
 
+class FailoverPoolMemberCreate(BaseModel):
+    node_id: int
+    priority: int = Field(default=100, ge=0, le=10000)
+    label: str | None = Field(default=None, max_length=128)
+
+
+class FailoverPoolMemberResponse(BaseModel):
+    id: int
+    node_id: int
+    node_name: str
+    node_host: str
+    priority: int
+    label: str | None = None
+
+
+class FailoverPoolCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    vpn_type: str = "amneziawg2"
+    mode: str = Field(default="auto", pattern="^(auto|manual)$")
+    health_check_target: str = Field(default="1.1.1.1", max_length=255)
+    health_check_interval_s: int = Field(default=15, ge=5, le=3600)
+    health_check_timeout_s: int = Field(default=5, ge=1, le=60)
+    down_threshold: int = Field(default=3, ge=1, le=20)
+
+
+class FailoverPoolUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    mode: str | None = Field(default=None, pattern="^(auto|manual)$")
+    health_check_target: str | None = Field(default=None, max_length=255)
+    health_check_interval_s: int | None = Field(default=None, ge=5, le=3600)
+    health_check_timeout_s: int | None = Field(default=None, ge=1, le=60)
+    down_threshold: int | None = Field(default=None, ge=1, le=20)
+    enabled: bool | None = None
+
+
+class FailoverPoolResponse(BaseModel):
+    id: int
+    name: str
+    vpn_type: str
+    mode: str
+    health_check_target: str
+    health_check_interval_s: int
+    health_check_timeout_s: int
+    down_threshold: int
+    enabled: bool
+    members: list[FailoverPoolMemberResponse] = Field(default_factory=list)
+    client_names: list[str] = Field(default_factory=list)
+
+
+class FailoverClientLinkCreate(BaseModel):
+    client_name: str = Field(min_length=1, max_length=32, pattern=r"^[a-zA-Z0-9_-]+$")
+
+
+class FailoverClientLinkResponse(BaseModel):
+    id: int
+    client_name: str
+    primary_node_id: int
+    access_token: str
+    last_synced_at: str | None = None
+    last_sync_error: str | None = None
+
+
+class FailoverSyncResult(BaseModel):
+    synced_nodes: list[str]
+    errors: list[str]
+
+
+class FailoverServerEntry(BaseModel):
+    name: str
+    priority: int
+    conf: str
+
+
+class FailoverDeviceConfigResponse(BaseModel):
+    client_name: str
+    mode: str
+    health_check_target: str
+    health_check_interval_s: int
+    health_check_timeout_s: int
+    down_threshold: int
+    servers: list[FailoverServerEntry]
+
+
+class FailoverStatusCheckIn(BaseModel):
+    device_label: str = Field(min_length=1, max_length=128)
+    active_node_name: str | None = None
+    healthy: bool = True
+    detail: str | None = Field(default=None, max_length=255)
+
+
+class FailoverStatusEntry(BaseModel):
+    device_label: str
+    active_node_name: str | None = None
+    healthy: bool
+    detail: str | None = None
+    reported_at: str
+
+
 class BackgroundTaskResponse(BaseModel):
     success: bool = True
     task_id: str
