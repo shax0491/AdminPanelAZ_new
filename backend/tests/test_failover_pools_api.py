@@ -6,6 +6,8 @@ several real queries/joins.
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -14,11 +16,12 @@ import pytest
 from fastapi import HTTPException
 
 from app.database import Base
-from app.models import Node, User, UserRole, VpnConfig, VpnType
+from app.models import Node, NodeStatus, User, UserRole, VpnConfig, VpnType
 from app.routers import failover_pools as router
 from app.schemas import (
     FailoverClientLinkCreate,
     FailoverPoolCreate,
+    FailoverPoolFrontUpdate,
     FailoverPoolMemberCreate,
     FailoverStatusCheckIn,
 )
@@ -207,3 +210,89 @@ def test_delete_pool_does_not_touch_nodes_or_configs(db, admin):
         router.get_pool(pool.id, db=db, _=admin)
     # ...but the node itself is untouched.
     assert db.query(Node).filter(Node.id == node.id).first() is not None
+
+
+# --- dnat_front strategy: front assignment / identity mirror / switch-check ---
+
+
+def test_set_front_requires_proxy_kind_node(db, admin):
+    pool = router.create_pool(FailoverPoolCreate(name="P", strategy="dnat_front"), db=db, _=admin)
+    vpn_node = Node(name="vpn-node", host="1.1.1.1", is_local=False, node_kind="vpn")
+    db.add(vpn_node)
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        router.set_front(pool.id, FailoverPoolFrontUpdate(front_node_id=vpn_node.id, front_port=39001), db=db, _=admin)
+    assert exc.value.status_code == 400
+
+
+def test_set_front_accepts_proxy_kind_node(db, admin):
+    pool = router.create_pool(FailoverPoolCreate(name="P", strategy="dnat_front"), db=db, _=admin)
+    front_node = Node(name="front", host="9.9.9.9", is_local=False, node_kind="proxy")
+    db.add(front_node)
+    db.commit()
+
+    updated = router.set_front(
+        pool.id, FailoverPoolFrontUpdate(front_node_id=front_node.id, front_port=39001), db=db, _=admin
+    )
+    assert updated.front_node_id == front_node.id
+    assert updated.front_port == 39001
+
+
+def test_mirror_identity_endpoint_stamps_member(db, admin, monkeypatch):
+    pool = router.create_pool(FailoverPoolCreate(name="P", strategy="dnat_front"), db=db, _=admin)
+    primary_node = Node(name="primary", host="1.1.1.1", is_local=False)
+    replica_node = Node(name="replica", host="2.2.2.2", is_local=False)
+    db.add_all([primary_node, replica_node])
+    db.commit()
+    router.add_member(pool.id, FailoverPoolMemberCreate(node_id=primary_node.id, priority=1), db=db, _=admin)
+    updated = router.add_member(
+        pool.id, FailoverPoolMemberCreate(node_id=replica_node.id, priority=2), db=db, _=admin
+    )
+    replica_member_id = [m.id for m in updated.members if m.node_id == replica_node.id][0]
+
+    monkeypatch.setattr("app.services.failover_front.get_adapter_for_node", lambda node: MagicMock())
+    monkeypatch.setattr("app.services.failover_front.sync_amneziawg2_state_from_primary", MagicMock())
+
+    result = router.mirror_identity(pool.id, replica_member_id, db=db, _=admin)
+    mirrored = [m for m in result.members if m.id == replica_member_id][0]
+    assert mirrored.identity_mirrored_at is not None
+
+
+def test_mirror_identity_unknown_member_404(db, admin):
+    pool = router.create_pool(FailoverPoolCreate(name="P", strategy="dnat_front"), db=db, _=admin)
+    with pytest.raises(HTTPException) as exc:
+        router.mirror_identity(pool.id, 999, db=db, _=admin)
+    assert exc.value.status_code == 404
+
+
+def test_switch_check_endpoint_switches_to_primary(db, admin, monkeypatch):
+    pool = router.create_pool(FailoverPoolCreate(name="P", strategy="dnat_front"), db=db, _=admin)
+    primary_node = Node(name="primary", host="1.1.1.1", is_local=False, status=NodeStatus.online)
+    front_node = Node(name="front", host="9.9.9.9", is_local=False, node_kind="proxy")
+    db.add_all([primary_node, front_node])
+    db.commit()
+    router.add_member(pool.id, FailoverPoolMemberCreate(node_id=primary_node.id, priority=1), db=db, _=admin)
+    router.set_front(pool.id, FailoverPoolFrontUpdate(front_node_id=front_node.id, front_port=39001), db=db, _=admin)
+
+    adapter = MagicMock()
+    adapter.failover_status.return_value = {"destination_ip": None, "installed": False}
+    monkeypatch.setattr("app.services.failover_front.get_proxy_adapter", lambda node: adapter)
+
+    result = router.switch_check(pool.id, db=db, _=admin)
+    assert result.switched is True
+    adapter.failover_set_destination.assert_called_once()
+
+
+def test_delete_dnat_front_pool_tears_down_front_rule(db, admin, monkeypatch):
+    pool = router.create_pool(FailoverPoolCreate(name="P", strategy="dnat_front"), db=db, _=admin)
+    front_node = Node(name="front", host="9.9.9.9", is_local=False, node_kind="proxy")
+    db.add(front_node)
+    db.commit()
+    router.set_front(pool.id, FailoverPoolFrontUpdate(front_node_id=front_node.id, front_port=39001), db=db, _=admin)
+
+    adapter = MagicMock()
+    monkeypatch.setattr("app.services.failover_front.get_proxy_adapter", lambda node: adapter)
+
+    router.delete_pool(pool.id, db=db, _=admin)
+    adapter.failover_teardown.assert_called_once_with(f"pool{pool.id}", 39001)

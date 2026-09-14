@@ -133,3 +133,17 @@ class ProxyNodeAdapter:
     def mappings(self) -> dict[str, Any]:
         """GET /proxy/mappings → { mappings: [...] }."""
         return self._request("GET", "/proxy/mappings")
+
+    def failover_status(self, label: str, port: int) -> dict[str, Any]:
+        """GET /failover/{label}/status?port=N — независимо от proxy.sh DESTINATION."""
+        return self._request("GET", f"/failover/{label}/status", params={"port": port})
+
+    def failover_set_destination(self, label: str, port: int, ip: str) -> dict[str, Any]:
+        """PUT /failover/{label}/destination → переключить фронт пула на другой узел."""
+        return self._request(
+            "PUT", f"/failover/{label}/destination", json={"destination_ip": ip, "port": port}
+        )
+
+    def failover_teardown(self, label: str, port: int) -> dict[str, Any]:
+        """DELETE /failover/{label} — снять правила (пул удалён / фронт отвязан)."""
+        return self._request("DELETE", f"/failover/{label}", params={"port": port})

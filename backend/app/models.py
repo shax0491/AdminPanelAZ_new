@@ -757,15 +757,32 @@ class FailoverPoolMode(str, enum.Enum):
     manual = "manual"
 
 
+class FailoverPoolStrategy(str, enum.Enum):
+    # Client (Android app / router watchdog) holds N configs and switches itself —
+    # the original mechanism, for platforms that can run custom automation.
+    client_sync = "client_sync"
+    # Client holds ONE static config pointing at a dedicated front node; the panel
+    # flips a DNAT rule on the front (proxy_agent) to change which pool member
+    # actually receives the traffic — client never reconfigures. Requires pool
+    # members to share an identical AmneziaWG 2.0 server identity (see
+    # failover_front.py) so the client's handshake succeeds against whichever
+    # member is currently live.
+    dnat_front = "dnat_front"
+
+
 class FailoverPool(Base):
     """A lightweight, independent set of candidate servers for client-side failover.
 
     Deliberately NOT the HA Sync Group model: no wipe-and-replace lifecycle, no
     "disband destroys everything" behavior — removing a pool only removes the pool
     rows themselves (members/links cascade), never touches the nodes or their configs.
-    The actual switch decision stays on the client device (Android app / router
-    watchdog) — this table only tracks which servers are candidates, in what order,
-    and (via FailoverClientLink) which peers must stay in sync across them.
+
+    Two switching strategies (``strategy``):
+    - ``client_sync``: the switch decision stays on the client device (Android app /
+      router watchdog) — this table only tracks which servers are candidates, in
+      what order, and (via FailoverClientLink) which peers must stay in sync.
+    - ``dnat_front``: the switch happens server-side on ``front_node`` via
+      proxy_agent DNAT (see failover_front.py) — client config never changes.
     """
 
     __tablename__ = "failover_pools"
@@ -774,11 +791,24 @@ class FailoverPool(Base):
     name: Mapped[str] = mapped_column(String(128))
     vpn_type: Mapped[VpnType] = mapped_column(Enum(VpnType), default=VpnType.amneziawg2)
     mode: Mapped[FailoverPoolMode] = mapped_column(Enum(FailoverPoolMode), default=FailoverPoolMode.auto)
+    strategy: Mapped[FailoverPoolStrategy] = mapped_column(
+        Enum(FailoverPoolStrategy), default=FailoverPoolStrategy.client_sync
+    )
     health_check_target: Mapped[str] = mapped_column(String(255), default="1.1.1.1")
     health_check_interval_s: Mapped[int] = mapped_column(Integer, default=15)
     health_check_timeout_s: Mapped[int] = mapped_column(Integer, default=5)
     down_threshold: Mapped[int] = mapped_column(Integer, default=3)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # dnat_front only, all nullable:
+    front_node_id: Mapped[int | None] = mapped_column(ForeignKey("nodes.id"), nullable=True, default=None)
+    front_port: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    active_member_id: Mapped[int | None] = mapped_column(
+        ForeignKey("failover_pool_members.id", use_alter=True, name="fk_failover_pools_active_member_id"),
+        nullable=True,
+        default=None,
+    )
+    last_switch_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_switch_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -786,11 +816,13 @@ class FailoverPool(Base):
         back_populates="pool",
         cascade="all, delete-orphan",
         order_by="FailoverPoolMember.priority",
+        foreign_keys="FailoverPoolMember.pool_id",
     )
     clients: Mapped[list["FailoverClientLink"]] = relationship(
         back_populates="pool",
         cascade="all, delete-orphan",
     )
+    front_node: Mapped["Node | None"] = relationship(foreign_keys=[front_node_id])
 
 
 class FailoverPoolMember(Base):
@@ -807,8 +839,13 @@ class FailoverPoolMember(Base):
     priority: Mapped[int] = mapped_column(Integer, default=100)
     label: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # dnat_front only: when this member's AmneziaWG 2.0 server identity (key +
+    # obfuscation + client profiles) was last mirrored from the pool's primary
+    # member. None = never mirrored — not yet safe to switch DESTINATION here,
+    # the client's handshake would fail against a different server key.
+    identity_mirrored_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
 
-    pool: Mapped["FailoverPool"] = relationship(back_populates="members")
+    pool: Mapped["FailoverPool"] = relationship(back_populates="members", foreign_keys=[pool_id])
     node: Mapped["Node"] = relationship()
 
 

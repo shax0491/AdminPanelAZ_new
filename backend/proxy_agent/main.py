@@ -22,9 +22,14 @@ from proxy_agent.iptables_dest import (
     IptablesApplyError,
     apply_iptables_plan,
     detect_proxy_destination,
+    failover_status_from_rules,
     is_proxy_installed,
     plan_destination_rewrite,
+    plan_failover_switch,
+    plan_failover_teardown,
     validate_destination_ip,
+    validate_failover_label,
+    validate_failover_port,
 )
 
 PROXY_AGENT_API_KEY = os.environ.get("PROXY_AGENT_API_KEY", "change-me-proxy-agent-key")
@@ -216,6 +221,72 @@ def proxy_destination(payload: DestinationBody, _: None = Depends(verify_api_key
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
     return _status_from_rules(_run_iptables_save_nat())
+
+
+class FailoverDestinationBody(BaseModel):
+    destination_ip: str = Field(..., min_length=7, max_length=64)
+    port: int = Field(..., ge=1, le=65535)
+
+
+@app.get("/failover/{label}/status")
+def failover_status(label: str, port: int, _: None = Depends(verify_api_key)):
+    try:
+        label = validate_failover_label(label)
+        port = validate_failover_port(port)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    rules = _run_iptables_save_nat()
+    return failover_status_from_rules(rules, label, port)
+
+
+@app.put("/failover/{label}/destination")
+def failover_set_destination(label: str, payload: FailoverDestinationBody, _: None = Depends(verify_api_key)):
+    try:
+        label = validate_failover_label(label)
+        new_ip = validate_destination_ip(payload.destination_ip)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    rules = _run_iptables_save_nat()
+    plan = plan_failover_switch(rules, label, payload.port, new_ip)
+    if plan:
+        _apply_iptables_plan(plan)
+        try:
+            subprocess.run(
+                ["netfilter-persistent", "save"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+    return failover_status_from_rules(_run_iptables_save_nat(), label, payload.port)
+
+
+@app.delete("/failover/{label}")
+def failover_teardown(label: str, port: int, _: None = Depends(verify_api_key)):
+    try:
+        label = validate_failover_label(label)
+        port = validate_failover_port(port)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    rules = _run_iptables_save_nat()
+    plan = plan_failover_teardown(rules, label, port)
+    if plan:
+        _apply_iptables_plan(plan)
+        try:
+            subprocess.run(
+                ["netfilter-persistent", "save"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+    return {"label": label, "port": port, "installed": False, "destination_ip": None}
 
 
 @app.get("/proxy/mappings")

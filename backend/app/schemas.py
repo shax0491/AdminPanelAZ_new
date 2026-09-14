@@ -1293,12 +1293,14 @@ class FailoverPoolMemberResponse(BaseModel):
     node_host: str
     priority: int
     label: str | None = None
+    identity_mirrored_at: str | None = None
 
 
 class FailoverPoolCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     vpn_type: str = "amneziawg2"
     mode: str = Field(default="auto", pattern="^(auto|manual)$")
+    strategy: str = Field(default="client_sync", pattern="^(client_sync|dnat_front)$")
     health_check_target: str = Field(default="1.1.1.1", max_length=255)
     health_check_interval_s: int = Field(default=15, ge=5, le=3600)
     health_check_timeout_s: int = Field(default=5, ge=1, le=60)
@@ -1315,18 +1317,36 @@ class FailoverPoolUpdate(BaseModel):
     enabled: bool | None = None
 
 
+class FailoverPoolFrontUpdate(BaseModel):
+    front_node_id: int
+    front_port: int = Field(ge=1, le=65535)
+
+
 class FailoverPoolResponse(BaseModel):
     id: int
     name: str
     vpn_type: str
     mode: str
+    strategy: str = "client_sync"
     health_check_target: str
     health_check_interval_s: int
     health_check_timeout_s: int
     down_threshold: int
     enabled: bool
+    front_node_id: int | None = None
+    front_port: int | None = None
+    active_member_id: int | None = None
+    last_switch_at: str | None = None
+    last_switch_error: str | None = None
     members: list[FailoverPoolMemberResponse] = Field(default_factory=list)
     client_names: list[str] = Field(default_factory=list)
+
+
+class FailoverSwitchResult(BaseModel):
+    pool_id: int
+    switched: bool
+    active_member_id: int | None = None
+    errors: list[str] = Field(default_factory=list)
 
 
 class FailoverClientLinkCreate(BaseModel):

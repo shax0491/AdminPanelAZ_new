@@ -199,6 +199,117 @@ def invert_iptables_argv(argv: list[str]) -> list[str]:
     raise ValueError(f"Нет -A/-D в команде: {argv}")
 
 
+
+# --- Failover-front rules (AmneziaWG 2.0 pool switching) ---
+#
+# Полностью отдельный от proxy.sh механизм: правила помечаются уникальным
+# iptables-комментарием "az-failover:<label>" и находятся/удаляются только по
+# этому тегу — никогда не пересекается с DNAT/SNAT правилами proxy.sh (у тех
+# нет такого комментария вообще), поэтому один и тот же фронт-узел может
+# одновременно обслуживать и личный RU-прокси (proxy.sh), и произвольное
+# число пулов автопереключения, без риска что один код случайно тронет
+# правила другого.
+#
+# DNAT (PREROUTING) меняет получателя UDP-пакетов с клиента; MASQUERADE
+# (POSTROUTING) — чтобы обратные пакеты от бэкенда всегда шли через этот же
+# фронт (бэкенд не обязан ничего знать о клиенте), а не напрямую клиенту.
+
+_FAILOVER_LABEL_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def validate_failover_label(label: str) -> str:
+    normalized = (label or "").strip().lower()
+    if not _FAILOVER_LABEL_RE.match(normalized):
+        raise ValueError(
+            "Недопустимая метка фронта: только a-z, 0-9, '-', '_', до 64 символов"
+        )
+    return normalized
+
+
+def validate_failover_port(port: int) -> int:
+    if not isinstance(port, int) or not (1 <= port <= 65535):
+        raise ValueError("Недопустимый порт фронта (1-65535)")
+    return port
+
+
+def _failover_comment(label: str) -> str:
+    return f"az-failover:{label}"
+
+
+def detect_failover_destination(rules_text: str, label: str) -> str | None:
+    """Return current DESTINATION IPv4 for this label's DNAT rule, else None."""
+    comment = _failover_comment(label)
+    quoted = f'"{comment}"'
+    for line in _iter_rule_lines(rules_text):
+        if "PREROUTING" not in line or "DNAT" not in line.upper():
+            continue
+        if quoted not in line and comment not in line:
+            continue
+        m = _DNAT_TO_RE.search(line)
+        if m:
+            return m.group(1)
+    return None
+
+
+def failover_status_from_rules(rules_text: str, label: str, port: int) -> dict:
+    ip = detect_failover_destination(rules_text, label)
+    return {"label": label, "port": port, "destination_ip": ip, "installed": ip is not None}
+
+
+def _failover_dnat_argv(action: str, label: str, port: int, ip: str) -> list[str]:
+    return [
+        "iptables", "-w", "-t", "nat", action, "PREROUTING",
+        "-p", "udp", "--dport", str(port),
+        "-m", "comment", "--comment", _failover_comment(label),
+        "-j", "DNAT", "--to-destination", f"{ip}:{port}",
+    ]
+
+
+def _failover_masq_argv(action: str, label: str, port: int, ip: str) -> list[str]:
+    return [
+        "iptables", "-w", "-t", "nat", action, "POSTROUTING",
+        "-p", "udp", "-d", ip, "--dport", str(port),
+        "-m", "comment", "--comment", _failover_comment(label),
+        "-j", "MASQUERADE",
+    ]
+
+
+def plan_failover_switch(rules_text: str, label: str, port: int, new_ip: str) -> list[list[str]]:
+    """Argv plan to point label's DNAT+MASQUERADE at new_ip.
+
+    No existing rule for this label → just INSERT (-A) a fresh pair. A rule
+    already exists → -D the old pair first, then -A the new one, so exactly
+    one destination is ever live for a given label at a time.
+    """
+    label = validate_failover_label(label)
+    port = validate_failover_port(port)
+    new = _parse_ipv4(new_ip)
+    old_ip = detect_failover_destination(rules_text, label)
+    if old_ip == new:
+        return []
+
+    plan: list[list[str]] = []
+    if old_ip:
+        plan.append(_failover_dnat_argv("-D", label, port, old_ip))
+        plan.append(_failover_masq_argv("-D", label, port, old_ip))
+    plan.append(_failover_dnat_argv("-A", label, port, new))
+    plan.append(_failover_masq_argv("-A", label, port, new))
+    return plan
+
+
+def plan_failover_teardown(rules_text: str, label: str, port: int) -> list[list[str]]:
+    """Argv plan to remove label's rules entirely (pool deleted / front detached)."""
+    label = validate_failover_label(label)
+    port = validate_failover_port(port)
+    old_ip = detect_failover_destination(rules_text, label)
+    if not old_ip:
+        return []
+    return [
+        _failover_dnat_argv("-D", label, port, old_ip),
+        _failover_masq_argv("-D", label, port, old_ip),
+    ]
+
+
 class IptablesApplyError(RuntimeError):
     """Raised when a plan step fails (after best-effort rollback of prior steps)."""
 

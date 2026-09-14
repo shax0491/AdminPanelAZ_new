@@ -27,6 +27,7 @@ from app.schemas import (
     FailoverClientLinkResponse,
     FailoverDeviceConfigResponse,
     FailoverPoolCreate,
+    FailoverPoolFrontUpdate,
     FailoverPoolMemberCreate,
     FailoverPoolMemberResponse,
     FailoverPoolResponse,
@@ -34,8 +35,15 @@ from app.schemas import (
     FailoverServerEntry,
     FailoverStatusCheckIn,
     FailoverStatusEntry,
+    FailoverSwitchResult,
     FailoverSyncResult,
     MessageResponse,
+)
+from app.services.failover_front import (
+    FailoverFrontError,
+    evaluate_and_switch,
+    mirror_member_identity,
+    teardown_front,
 )
 from app.services.failover_pool import (
     FailoverPoolError,
@@ -43,6 +51,7 @@ from app.services.failover_pool import (
     new_device_token,
     sync_client_peer_to_pool,
 )
+from app.services.node_manager import NODE_KIND_PROXY
 
 router = APIRouter(prefix="/failover-pools", tags=["failover-pools"])
 public_router = APIRouter(prefix="/public/failover", tags=["failover-pools-device"])
@@ -57,6 +66,7 @@ def _pool_response(pool: FailoverPool) -> FailoverPoolResponse:
             node_host=m.node.host if m.node else "?",
             priority=m.priority,
             label=m.label,
+            identity_mirrored_at=m.identity_mirrored_at.isoformat() if m.identity_mirrored_at else None,
         )
         for m in sorted(pool.members, key=lambda m: m.priority)
     ]
@@ -65,11 +75,17 @@ def _pool_response(pool: FailoverPool) -> FailoverPoolResponse:
         name=pool.name,
         vpn_type=pool.vpn_type.value if hasattr(pool.vpn_type, "value") else str(pool.vpn_type),
         mode=pool.mode.value if hasattr(pool.mode, "value") else str(pool.mode),
+        strategy=pool.strategy.value if hasattr(pool.strategy, "value") else str(pool.strategy),
         health_check_target=pool.health_check_target,
         health_check_interval_s=pool.health_check_interval_s,
         health_check_timeout_s=pool.health_check_timeout_s,
         down_threshold=pool.down_threshold,
         enabled=pool.enabled,
+        front_node_id=pool.front_node_id,
+        front_port=pool.front_port,
+        active_member_id=pool.active_member_id,
+        last_switch_at=pool.last_switch_at.isoformat() if pool.last_switch_at else None,
+        last_switch_error=pool.last_switch_error,
         members=members,
         client_names=[c.client_name for c in pool.clients],
     )
@@ -96,6 +112,7 @@ def create_pool(payload: FailoverPoolCreate, db: Session = Depends(get_db), _: U
         name=payload.name,
         vpn_type=VpnType.amneziawg2,
         mode=payload.mode,
+        strategy=payload.strategy,
         health_check_target=payload.health_check_target,
         health_check_interval_s=payload.health_check_interval_s,
         health_check_timeout_s=payload.health_check_timeout_s,
@@ -129,11 +146,73 @@ def update_pool(
 @router.delete("/{pool_id}", response_model=MessageResponse)
 def delete_pool(pool_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     """Removes only the pool's own rows (members/client links cascade) — never
-    touches the referenced nodes or any peer already synced onto them."""
+    touches the referenced nodes or any peer already synced onto them. For
+    dnat_front pools also best-effort removes the front's DNAT rule (never
+    blocks deletion if the front is unreachable)."""
     pool = _get_pool_or_404(db, pool_id)
+    teardown_front(pool)
     db.delete(pool)
     db.commit()
     return MessageResponse(message=f"Пул '{pool.name}' удалён (узлы и уже синхронизированные пиры не затронуты)")
+
+
+@router.put("/{pool_id}/front", response_model=FailoverPoolResponse)
+def set_front(
+    pool_id: int, payload: FailoverPoolFrontUpdate, db: Session = Depends(get_db), _: User = Depends(require_admin)
+):
+    """Assign the dedicated front node (a Proxy Node running proxy_agent) +
+    UDP port for dnat_front switching. Does not itself install any rule —
+    that happens on the first successful switch-check."""
+    pool = _get_pool_or_404(db, pool_id)
+    node = db.query(Node).filter(Node.id == payload.front_node_id).first()
+    if node is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Узел не найден")
+    if node.node_kind != NODE_KIND_PROXY:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Фронтом может быть только узел типа «Прокси» (там установлен proxy_agent)",
+        )
+    pool.front_node_id = node.id
+    pool.front_port = payload.front_port
+    pool.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(pool)
+    return _pool_response(pool)
+
+
+@router.post("/{pool_id}/members/{member_id}/mirror-identity", response_model=FailoverPoolResponse)
+def mirror_identity(
+    pool_id: int, member_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)
+):
+    """Clone the pool's primary member AmneziaWG 2.0 server identity (key +
+    obfuscation) + ALL its client profiles onto this member. Required once per
+    member before it can ever be switched to — invasive by design (overwrites
+    the member's own AWG2 server config), only use on nodes dedicated to this
+    pool."""
+    pool = _get_pool_or_404(db, pool_id)
+    member = (
+        db.query(FailoverPoolMember)
+        .filter(FailoverPoolMember.id == member_id, FailoverPoolMember.pool_id == pool_id)
+        .first()
+    )
+    if member is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Участник пула не найден")
+    try:
+        mirror_member_identity(db, pool, member)
+    except FailoverFrontError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    db.refresh(pool)
+    return _pool_response(pool)
+
+
+@router.post("/{pool_id}/switch-check", response_model=FailoverSwitchResult)
+def switch_check(pool_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """Evaluate member health and flip the front's DNAT if the top-priority
+    healthy, identity-ready member differs from what's live now. Manual
+    trigger for now — call periodically (cron) for real automatic failover."""
+    pool = _get_pool_or_404(db, pool_id)
+    result = evaluate_and_switch(db, pool)
+    return FailoverSwitchResult(**result)
 
 
 @router.post("/{pool_id}/members", response_model=FailoverPoolResponse, status_code=status.HTTP_201_CREATED)
