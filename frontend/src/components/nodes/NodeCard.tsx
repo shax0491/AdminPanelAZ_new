@@ -1,4 +1,5 @@
 import { Check, Globe, Server } from 'lucide-react'
+import FailoverFrontRoleCard from '@/components/nodes/FailoverFrontRoleCard'
 import ProxyNodePanel from '@/components/nodes/ProxyNodePanel'
 import ProxyLinkBadge from '@/components/proxy/ProxyLinkBadge'
 import { NodeStatusBadge } from '@/components/NodeSelector'
@@ -198,12 +199,15 @@ export default function NodeCard({
           <NodeConnectionErrorAlert node={node} lastError={meta.lastError} />
         )}
         {showProxyAffordance && (
-          <ProxyNodePanel
-            node={node}
-            nodes={nodes}
-            syncGroups={syncGroups}
-            onUpdated={onProxyUpdated}
-          />
+          <>
+            <FailoverFrontRoleCard node={node} />
+            <ProxyNodePanel
+              node={node}
+              nodes={nodes}
+              syncGroups={syncGroups}
+              onUpdated={onProxyUpdated}
+            />
+          </>
         )}
         <NodeActions
           node={node}
