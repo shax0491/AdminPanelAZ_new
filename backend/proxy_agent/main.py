@@ -239,6 +239,29 @@ def failover_status(label: str, port: int, _: None = Depends(verify_api_key)):
     return failover_status_from_rules(rules, label, port)
 
 
+def _flush_conntrack_for_port(port: int) -> None:
+    """Delete existing UDP conntrack entries for this port — without this, a
+    client with an already-established session keeps sending to the OLD
+    destination for as long as the kernel's conntrack entry survives (Linux
+    default: up to ~180s for an [ASSURED] UDP flow), completely ignoring the
+    DNAT rule we just changed. Confirmed live: a real AmneziaWG 2.0 client's
+    packets kept reaching the old backend after a destination switch until
+    this ran, and started reaching the new one within one keepalive interval
+    right after. Best-effort — a host without conntrack-tools installed just
+    keeps the old ~180s worst case instead of failing the switch outright.
+    """
+    try:
+        subprocess.run(
+            ["conntrack", "-D", "-p", "udp", "--dport", str(port)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+
 @app.put("/failover/{label}/destination")
 def failover_set_destination(label: str, payload: FailoverDestinationBody, _: None = Depends(verify_api_key)):
     try:
@@ -261,6 +284,7 @@ def failover_set_destination(label: str, payload: FailoverDestinationBody, _: No
             )
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
+        _flush_conntrack_for_port(payload.port)
     return failover_status_from_rules(_run_iptables_save_nat(), label, payload.port)
 
 
