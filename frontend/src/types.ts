@@ -438,6 +438,7 @@ export interface MonitoringOverview {
 }
 
 export type FailoverPoolMode = 'auto' | 'manual'
+export type FailoverPoolStrategy = 'client_sync' | 'dnat_front'
 
 export interface FailoverPoolMember {
   id: number
@@ -446,6 +447,7 @@ export interface FailoverPoolMember {
   node_host: string
   priority: number
   label?: string | null
+  identity_mirrored_at?: string | null
 }
 
 export interface FailoverPool {
@@ -453,11 +455,17 @@ export interface FailoverPool {
   name: string
   vpn_type: string
   mode: FailoverPoolMode
+  strategy: FailoverPoolStrategy
   health_check_target: string
   health_check_interval_s: number
   health_check_timeout_s: number
   down_threshold: number
   enabled: boolean
+  front_node_id?: number | null
+  front_port?: number | null
+  active_member_id?: number | null
+  last_switch_at?: string | null
+  last_switch_error?: string | null
   members: FailoverPoolMember[]
   client_names: string[]
 }
@@ -466,6 +474,7 @@ export interface FailoverPoolCreate {
   name: string
   vpn_type?: string
   mode?: FailoverPoolMode
+  strategy?: FailoverPoolStrategy
   health_check_target?: string
   health_check_interval_s?: number
   health_check_timeout_s?: number
@@ -480,6 +489,18 @@ export interface FailoverPoolUpdate {
   health_check_timeout_s?: number
   down_threshold?: number
   enabled?: boolean
+}
+
+export interface FailoverPoolFrontUpdate {
+  front_node_id: number
+  front_port: number
+}
+
+export interface FailoverSwitchResult {
+  pool_id: number
+  switched: boolean
+  active_member_id?: number | null
+  errors: string[]
 }
 
 export interface FailoverClientLink {

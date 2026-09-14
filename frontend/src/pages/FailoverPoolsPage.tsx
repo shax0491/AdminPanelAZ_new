@@ -8,8 +8,11 @@ import {
   getNodes,
   linkFailoverClient,
   listFailoverPools,
+  mirrorFailoverMemberIdentity,
   removeFailoverPoolMember,
   resyncFailoverClient,
+  setFailoverFront,
+  switchCheckFailoverPool,
   unlinkFailoverClient,
   updateFailoverPool,
 } from '@/api/client'
@@ -20,12 +23,24 @@ import { Label } from '@/components/ui/label'
 import EmptyState from '@/components/ui/EmptyState'
 import SettingsAlert from '@/components/settings/SettingsAlert'
 import { useNotifications } from '@/context/NotificationContext'
-import type { FailoverPool, FailoverStatusEntry, Node } from '@/types'
+import type { FailoverPool, FailoverPoolStrategy, FailoverStatusEntry, Node } from '@/types'
 
 function ModeBadge({ mode }: { mode: string }) {
   return (
     <Badge variant={mode === 'auto' ? 'success' : 'secondary'}>
       {mode === 'auto' ? 'Авто' : 'Ручное'}
+    </Badge>
+  )
+}
+
+function StrategyBadge({ strategy }: { strategy: FailoverPoolStrategy }) {
+  return strategy === 'dnat_front' ? (
+    <Badge variant="outline" title="Один статический конфиг у клиента, переключает панель на фронте">
+      Фронт (DNAT)
+    </Badge>
+  ) : (
+    <Badge variant="outline" title="Несколько конфигов, переключается само устройство">
+      На устройстве
     </Badge>
   )
 }
@@ -144,6 +159,189 @@ function ClientLinkPanel({
   )
 }
 
+function FrontPanel({
+  pool,
+  nodes,
+  onChanged,
+}: {
+  pool: FailoverPool
+  nodes: Node[]
+  onChanged: () => void
+}) {
+  const { success, error: notifyError } = useNotifications()
+  const [frontNodeId, setFrontNodeId] = useState<string>(pool.front_node_id ? String(pool.front_node_id) : '')
+  const [frontPort, setFrontPort] = useState<string>(pool.front_port ? String(pool.front_port) : '')
+  const [checking, setChecking] = useState(false)
+  const [mirroringId, setMirroringId] = useState<number | null>(null)
+
+  const proxyNodes = nodes.filter((n) => n.node_kind === 'proxy')
+  const activeMember = pool.members.find((m) => m.id === pool.active_member_id)
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border/70 p-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Фронт — клиент указывает конфигом только сюда, этот адрес никогда не меняется
+      </p>
+      {pool.front_node_id ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <Badge variant="outline">
+            {nodes.find((n) => n.id === pool.front_node_id)?.name ?? `#${pool.front_node_id}`}
+          </Badge>
+          <span className="text-muted-foreground">порт {pool.front_port}</span>
+          <span className="ml-auto text-muted-foreground">
+            активен: {activeMember ? activeMember.label || activeMember.node_name : '— ещё не переключалось'}
+          </span>
+        </div>
+      ) : (
+        <p className="text-xs text-amber-600 dark:text-amber-400">Фронт ещё не назначен.</p>
+      )}
+
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={async (e) => {
+          e.preventDefault()
+          if (!frontNodeId || !frontPort) return
+          try {
+            await setFailoverFront(pool.id, {
+              front_node_id: Number(frontNodeId),
+              front_port: Number(frontPort),
+            })
+            success('Фронт назначен')
+            onChanged()
+          } catch (err) {
+            notifyError(err instanceof Error ? err.message : 'Ошибка')
+          }
+        }}
+      >
+        <div className="space-y-1">
+          <Label className="text-xs">Фронт-узел (тип «Прокси»)</Label>
+          <select
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+            value={frontNodeId}
+            onChange={(e) => setFrontNodeId(e.target.value)}
+          >
+            <option value="">Выберите узел…</option>
+            {proxyNodes.map((n) => (
+              <option key={n.id} value={n.id}>
+                {n.name} ({n.host})
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">UDP-порт AmneziaWG 2.0</Label>
+          <Input
+            className="h-9 w-32 text-sm"
+            type="number"
+            min={1}
+            max={65535}
+            placeholder="напр. 39001"
+            value={frontPort}
+            onChange={(e) => setFrontPort(e.target.value)}
+          />
+        </div>
+        <Button size="sm" type="submit" disabled={!frontNodeId || !frontPort}>
+          {pool.front_node_id ? 'Сохранить' : 'Назначить фронт'}
+        </Button>
+        {pool.front_node_id && (
+          <Button
+            size="sm"
+            variant="outline"
+            type="button"
+            disabled={checking}
+            onClick={async () => {
+              setChecking(true)
+              try {
+                const result = await switchCheckFailoverPool(pool.id)
+                if (result.errors.length > 0) {
+                  notifyError(result.errors.join('; '))
+                } else if (result.switched) {
+                  success('Переключено')
+                } else {
+                  success('Проверено — переключение не требуется')
+                }
+                onChanged()
+              } catch (err) {
+                notifyError(err instanceof Error ? err.message : 'Ошибка')
+              } finally {
+                setChecking(false)
+              }
+            }}
+          >
+            <RefreshCw size={14} className={checking ? 'animate-spin' : ''} />
+            Проверить и переключить
+          </Button>
+        )}
+      </form>
+
+      {proxyNodes.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          Нет ни одного узла типа «Прокси» — добавьте выделенный фронт-сервер на странице «Узлы»
+          (с установленным proxy_agent), прежде чем назначать его сюда.
+        </p>
+      )}
+      {pool.last_switch_error && (
+        <p className="text-xs text-destructive">Последняя ошибка переключения: {pool.last_switch_error}</p>
+      )}
+      {pool.last_switch_at && (
+        <p className="text-xs text-muted-foreground">
+          Последнее переключение: {new Date(pool.last_switch_at).toLocaleString('ru-RU')}
+        </p>
+      )}
+
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Identity узлов — должна совпадать с основным (первым по приоритету), иначе хендшейк
+          клиента на этом узле не пройдёт
+        </p>
+        {pool.members.length === 0 && (
+          <p className="text-xs text-muted-foreground">Сначала добавьте узлы в пул выше.</p>
+        )}
+        {pool.members.map((m, idx) => (
+          <div
+            key={m.id}
+            className="flex flex-wrap items-center gap-2 rounded-lg border bg-card/40 px-3 py-2 text-sm"
+          >
+            <span className="font-medium">{m.label || m.node_name}</span>
+            {idx === 0 ? (
+              <Badge variant="success">основной — источник identity</Badge>
+            ) : m.identity_mirrored_at ? (
+              <Badge variant="success">
+                клонирована {new Date(m.identity_mirrored_at).toLocaleString('ru-RU')}
+              </Badge>
+            ) : (
+              <Badge variant="warning">не клонирована</Badge>
+            )}
+            {idx !== 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="ml-auto"
+                disabled={mirroringId === m.id}
+                onClick={async () => {
+                  setMirroringId(m.id)
+                  try {
+                    await mirrorFailoverMemberIdentity(pool.id, m.id)
+                    success(`Identity склонирована на ${m.node_name}`)
+                    onChanged()
+                  } catch (err) {
+                    notifyError(err instanceof Error ? err.message : 'Ошибка клонирования')
+                  } finally {
+                    setMirroringId(null)
+                  }
+                }}
+              >
+                <RefreshCw size={14} className={mirroringId === m.id ? 'animate-spin' : ''} />
+                {m.identity_mirrored_at ? 'Обновить' : 'Клонировать identity'}
+              </Button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function PoolCard({
   pool,
   nodes,
@@ -167,6 +365,7 @@ function PoolCard({
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-base font-semibold">{pool.name}</h3>
+            <StrategyBadge strategy={pool.strategy} />
             <ModeBadge mode={pool.mode} />
             {!pool.enabled && <Badge variant="warning">Выключен</Badge>}
           </div>
@@ -293,57 +492,61 @@ function PoolCard({
         </form>
       </div>
 
-      <div>
-        <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Клиенты в пуле
-        </p>
-        {linkedClients.length === 0 && (
-          <p className="mb-2 text-xs text-muted-foreground">
-            Привяжите клиента по имени (у него уже должен быть конфиг AmneziaWG 2.0 на одном из узлов) —
-            пир сразу синхронизируется на остальные узлы пула.
+      {pool.strategy === 'dnat_front' ? (
+        <FrontPanel pool={pool} nodes={nodes} onChanged={onChanged} />
+      ) : (
+        <div>
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Клиенты в пуле
           </p>
-        )}
-        <div className="space-y-2">
-          {linkedClients.map((name) => (
-            <ClientLinkPanel key={name} pool={pool} clientName={name} onUnlinked={onChanged} />
-          ))}
-        </div>
-        <form
-          className="mt-2 flex flex-wrap items-end gap-2"
-          onSubmit={async (e) => {
-            e.preventDefault()
-            const name = clientName.trim()
-            if (!name) return
-            try {
-              await linkFailoverClient(pool.id, name)
-              success(`Клиент «${name}» привязан и синхронизирован`)
-              setClientName('')
-              onChanged()
-            } catch (err) {
-              notifyError(err instanceof Error ? err.message : 'Ошибка')
-            }
-          }}
-        >
-          <div className="space-y-1">
-            <Label className="text-xs">Имя клиента</Label>
-            <Input
-              className="h-9 w-56 text-sm"
-              placeholder="например AT_Keenetic"
-              value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
-            />
+          {linkedClients.length === 0 && (
+            <p className="mb-2 text-xs text-muted-foreground">
+              Привяжите клиента по имени (у него уже должен быть конфиг AmneziaWG 2.0 на одном из узлов) —
+              пир сразу синхронизируется на остальные узлы пула.
+            </p>
+          )}
+          <div className="space-y-2">
+            {linkedClients.map((name) => (
+              <ClientLinkPanel key={name} pool={pool} clientName={name} onUnlinked={onChanged} />
+            ))}
           </div>
-          <Button size="sm" type="submit" disabled={pool.members.length < 2}>
-            <Plus size={14} />
-            Привязать клиента
-          </Button>
-        </form>
-        {pool.members.length < 2 && (
-          <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-            Добавьте минимум 2 узла в пул, прежде чем привязывать клиентов.
-          </p>
-        )}
-      </div>
+          <form
+            className="mt-2 flex flex-wrap items-end gap-2"
+            onSubmit={async (e) => {
+              e.preventDefault()
+              const name = clientName.trim()
+              if (!name) return
+              try {
+                await linkFailoverClient(pool.id, name)
+                success(`Клиент «${name}» привязан и синхронизирован`)
+                setClientName('')
+                onChanged()
+              } catch (err) {
+                notifyError(err instanceof Error ? err.message : 'Ошибка')
+              }
+            }}
+          >
+            <div className="space-y-1">
+              <Label className="text-xs">Имя клиента</Label>
+              <Input
+                className="h-9 w-56 text-sm"
+                placeholder="например AT_Keenetic"
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+              />
+            </div>
+            <Button size="sm" type="submit" disabled={pool.members.length < 2}>
+              <Plus size={14} />
+              Привязать клиента
+            </Button>
+          </form>
+          {pool.members.length < 2 && (
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              Добавьте минимум 2 узла в пул, прежде чем привязывать клиентов.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -355,6 +558,7 @@ export default function FailoverPoolsPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [newPoolName, setNewPoolName] = useState('')
+  const [newPoolStrategy, setNewPoolStrategy] = useState<FailoverPoolStrategy>('client_sync')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -379,10 +583,11 @@ export default function FailoverPoolsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Автопереключение</h1>
         <p className="text-sm text-muted-foreground">
-          Пулы серверов AmneziaWG 2.0 для клиентского автопереключения (Android/роутер). Решение
-          «текущий сервер недоступен → переключиться» принимает само устройство — здесь только
-          синхронизация ключей между узлами пула, раздача списка серверов устройствам и то, что
-          они сами о себе сообщают.
+          Пулы серверов AmneziaWG 2.0 для автопереключения между узлами. Два способа: «На
+          устройстве» — приложение/роутер сами хранят несколько конфигов и решают, на какой
+          переключиться; «На фронт-сервере» — у клиента один статический конфиг (годится для
+          штатного AmneziaWG в прошивке роутера, без стороннего приложения), а куда реально идёт
+          трафик решает панель через выделенный фронт-узел.
         </p>
       </div>
 
@@ -399,7 +604,7 @@ export default function FailoverPoolsPage() {
           const name = newPoolName.trim()
           if (!name) return
           try {
-            await createFailoverPool({ name })
+            await createFailoverPool({ name, strategy: newPoolStrategy })
             setNewPoolName('')
             success(`Пул «${name}» создан`)
             void load()
@@ -416,6 +621,17 @@ export default function FailoverPoolsPage() {
             value={newPoolName}
             onChange={(e) => setNewPoolName(e.target.value)}
           />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Как переключается</Label>
+          <select
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+            value={newPoolStrategy}
+            onChange={(e) => setNewPoolStrategy(e.target.value as FailoverPoolStrategy)}
+          >
+            <option value="client_sync">На устройстве (приложение/роутер, несколько конфигов)</option>
+            <option value="dnat_front">На фронт-сервере (один статический конфиг у клиента)</option>
+          </select>
         </div>
         <Button size="sm" type="submit" disabled={!newPoolName.trim()}>
           <Plus size={14} />

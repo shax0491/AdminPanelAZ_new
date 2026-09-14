@@ -3,8 +3,10 @@ import type {
   FailoverClientLink,
   FailoverPool,
   FailoverPoolCreate,
+  FailoverPoolFrontUpdate,
   FailoverPoolUpdate,
   FailoverStatusEntry,
+  FailoverSwitchResult,
   FailoverSyncResult,
 } from '../types'
 
@@ -71,4 +73,23 @@ export async function getFailoverClientStatus(poolId: number, clientName: string
   return apiFetch<FailoverStatusEntry[]>(
     `/failover-pools/${poolId}/clients/${encodeURIComponent(clientName)}/status`,
   )
+}
+
+export async function setFailoverFront(poolId: number, payload: FailoverPoolFrontUpdate) {
+  return apiFetch<FailoverPool>(`/failover-pools/${poolId}/front`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function mirrorFailoverMemberIdentity(poolId: number, memberId: number) {
+  return apiFetch<FailoverPool>(`/failover-pools/${poolId}/members/${memberId}/mirror-identity`, {
+    method: 'POST',
+  })
+}
+
+export async function switchCheckFailoverPool(poolId: number) {
+  return apiFetch<FailoverSwitchResult>(`/failover-pools/${poolId}/switch-check`, {
+    method: 'POST',
+  })
 }
