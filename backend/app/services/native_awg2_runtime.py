@@ -273,7 +273,13 @@ def get_monitoring() -> dict[str, Any]:
                     "allowed_ips": info.get("allowed_ips") or None,
                 }
             )
-        ifaces.append({"name": interface_name, "peer_count": peer_count})
+        # `awg show <iface> dump` prints at least the interface's own summary
+        # line even with zero peers — empty output specifically means the
+        # dump itself failed (interface down, awg binary missing, wrong
+        # name), not "no clients". Callers that need a real up/down signal
+        # (rather than just a display peer count) should use this, not infer
+        # it from peer_count == 0.
+        ifaces.append({"name": interface_name, "peer_count": peer_count, "up": bool(dump_text.strip())})
 
     return {"ifaces": ifaces, "clients": clients, "stats_available": False}
 

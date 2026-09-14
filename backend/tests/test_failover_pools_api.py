@@ -278,6 +278,9 @@ def test_switch_check_endpoint_switches_to_primary(db, admin, monkeypatch):
     adapter = MagicMock()
     adapter.failover_status.return_value = {"destination_ip": None, "installed": False}
     monkeypatch.setattr("app.services.failover_front.get_proxy_adapter", lambda node: adapter)
+    node_adapter = MagicMock()
+    node_adapter.get_awg2_monitoring.return_value = {"ifaces": [{"name": "antizapret", "peer_count": 1, "up": True}]}
+    monkeypatch.setattr("app.services.failover_front.get_adapter_for_node", lambda node: node_adapter)
 
     result = router.switch_check(pool.id, db=db, _=admin)
     assert result.switched is True

@@ -35,6 +35,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.models import FailoverPool, FailoverPoolMember, FailoverPoolStrategy, Node, NodeStatus
+from app.services.failover_pool import NATIVE_AWG2_IFACE
 from app.services.node_manager import get_adapter_for_node, get_proxy_adapter
 from app.services.node_sync.vpn_state_sync import sync_amneziawg2_state_from_primary
 
@@ -133,12 +134,57 @@ def mirror_member_identity(db: Session, pool: FailoverPool, member: FailoverPool
             f"Клонирование identity на {member.node.name} не удалось: {exc}"
         ) from exc
 
+    # sync_amneziawg2_state_from_primary only LOGS a warning if the runtime
+    # apply (awg syncconf) partially fails — by design, since it's shared
+    # with the HA feature which tolerates a transient failure there (an admin
+    # can re-verify/retry later). For us that would silently leave the live
+    # interface out of sync with the config file we just wrote (server keeps
+    # whatever peer set it had before — observed once on LV1: an unrelated
+    # single stale peer stayed loaded while the config file already had the
+    # correct 3 clients) while still reporting "cloned" success. So: apply
+    # again here, explicitly, and this time actually fail loudly if it fails.
+    runtime = member_adapter.apply_amneziawg2_runtime()
+    if not runtime.get("success"):
+        errors = runtime.get("errors") or []
+        detail = "; ".join(
+            str(e.get("stderr") or e.get("error") or e) for e in errors
+        ) or "awg syncconf failed"
+        raise FailoverFrontError(
+            f"Конфиг на {member.node.name} обновлён, но применить к живому интерфейсу не удалось: "
+            f"{detail}. Живой интерфейс может отставать от файла — перезапустите "
+            f"amneziawg@<interface> на узле или попробуйте клонировать identity ещё раз."
+        )
+
     member.identity_mirrored_at = datetime.utcnow()
     db.commit()
 
 
 def _node_healthy(node: Node) -> bool:
-    return node.status == NodeStatus.online
+    """Control-plane reachable (``Node.status``) AND the AWG2 interface this
+    pool actually forwards to is confirmed live right now.
+
+    ``Node.status`` alone is not enough — it only means node_agent answered,
+    which says nothing about AmneziaWG 2.0 specifically on that box. Found
+    for real on LV1: node_agent stayed reachable ("online") while its AWG2
+    interface had drifted out of sync with its own config file (see
+    ``mirror_member_identity``'s runtime-apply check) — the client would
+    have been switched to a server that couldn't actually complete a
+    handshake. Best-effort: any failure to reach the monitoring endpoint
+    itself (timeout, node just rebooting) counts as unhealthy, not an error
+    that blocks the whole switch-check.
+    """
+    if node.status != NodeStatus.online:
+        return False
+    try:
+        adapter = get_adapter_for_node(node)
+        monitoring = adapter.get_awg2_monitoring()
+    except Exception:
+        return False
+    target_label = NATIVE_AWG2_IFACE[:-1] if NATIVE_AWG2_IFACE.endswith("2") else NATIVE_AWG2_IFACE
+    for iface in monitoring.get("ifaces") or []:
+        if iface.get("name") == target_label:
+            return bool(iface.get("up"))
+    return False
 
 
 def _apply_switch_to_target(db: Session, pool: FailoverPool, target: FailoverPoolMember) -> dict:

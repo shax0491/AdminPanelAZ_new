@@ -106,8 +106,8 @@ def test_get_monitoring_marks_recent_handshake_online(tmp_path, monkeypatch):
     assert by_name["alice"]["allowed_ips"] == "10.29.9.2/32"
     assert by_name["bob"]["online"] is False
     assert data["ifaces"] == [
-        {"name": "antizapret", "peer_count": 2},
-        {"name": "vpn", "peer_count": 0},
+        {"name": "antizapret", "peer_count": 2, "up": True},
+        {"name": "vpn", "peer_count": 0, "up": False},
     ]
     assert data["stats_available"] is False
 

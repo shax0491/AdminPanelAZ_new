@@ -31,6 +31,24 @@ def _make_db():
     return sessionmaker(bind=engine)()
 
 
+def _healthy_awg2_adapter() -> MagicMock:
+    adapter = MagicMock()
+    adapter.get_awg2_monitoring.return_value = {
+        "ifaces": [{"name": "antizapret", "peer_count": 1, "up": True}, {"name": "vpn", "peer_count": 1, "up": True}]
+    }
+    return adapter
+
+
+@pytest.fixture(autouse=True)
+def _default_healthy_node_adapter(monkeypatch):
+    """_node_healthy() now also confirms the AWG2 interface is live (not just
+    Node.status) — default every test to a healthy node-level adapter so only
+    tests specifically about that check need to override it. Individual
+    tests that patch ``get_adapter_for_node`` themselves simply overwrite
+    this default later in the same test body."""
+    monkeypatch.setattr(failover_front, "get_adapter_for_node", lambda node: _healthy_awg2_adapter())
+
+
 def _make_node(
     db,
     name: str,
@@ -129,6 +147,7 @@ def test_mirror_member_identity_calls_sync_and_stamps_timestamp(monkeypatch):
 
     primary_adapter = MagicMock()
     replica_adapter = MagicMock()
+    replica_adapter.apply_amneziawg2_runtime.return_value = {"success": True}
     adapters = {primary_node.id: primary_adapter, replica_node.id: replica_adapter}
     monkeypatch.setattr(failover_front, "get_adapter_for_node", lambda node: adapters[node.id])
 
@@ -141,6 +160,40 @@ def test_mirror_member_identity_calls_sync_and_stamps_timestamp(monkeypatch):
     sync_mock.assert_called_once_with(primary_adapter, replica_adapter, db=db, replica_node=replica_node)
     db.refresh(replica_member)
     assert replica_member.identity_mirrored_at is not None
+
+
+def test_mirror_member_identity_fails_loudly_when_runtime_apply_fails(monkeypatch):
+    # sync_amneziawg2_state_from_primary itself only logs a warning on a
+    # partial runtime-apply failure (shared with HA, which tolerates that) —
+    # mirror_member_identity must not inherit that silence: a config file
+    # written but not actually applied to the live interface must not be
+    # reported as a successful clone (observed for real on LV1: config had
+    # the right clients, live interface still had one unrelated stale peer).
+    db = _make_db()
+    primary_node = _make_node(db, "primary", "1.1.1.1")
+    replica_node = _make_node(db, "replica", "2.2.2.2")
+    pool = _make_pool(db)
+    primary_member = FailoverPoolMember(pool_id=pool.id, node_id=primary_node.id, priority=1)
+    replica_member = FailoverPoolMember(pool_id=pool.id, node_id=replica_node.id, priority=2)
+    db.add_all([primary_member, replica_member])
+    db.commit()
+    db.refresh(pool)
+
+    primary_adapter = MagicMock()
+    replica_adapter = MagicMock()
+    replica_adapter.apply_amneziawg2_runtime.return_value = {
+        "success": False,
+        "errors": [{"interface": "antizapret2", "stderr": "awg syncconf failed"}],
+    }
+    adapters = {primary_node.id: primary_adapter, replica_node.id: replica_adapter}
+    monkeypatch.setattr(failover_front, "get_adapter_for_node", lambda node: adapters[node.id])
+    monkeypatch.setattr(failover_front, "sync_amneziawg2_state_from_primary", MagicMock())
+
+    with pytest.raises(failover_front.FailoverFrontError, match="syncconf failed"):
+        failover_front.mirror_member_identity(db, pool, replica_member)
+
+    db.refresh(replica_member)
+    assert replica_member.identity_mirrored_at is None
 
 
 def test_mirror_member_identity_rejects_primary_as_its_own_target(monkeypatch):
@@ -262,6 +315,89 @@ def test_evaluate_and_switch_refuses_unmirrored_replica_even_if_only_healthy_one
     assert result["switched"] is False
     assert result["errors"]
     adapter.failover_set_destination.assert_not_called()
+
+
+def test_evaluate_and_switch_excludes_node_whose_awg2_interface_is_down(monkeypatch):
+    # Node.status can say "online" (node_agent answered) while AmneziaWG 2.0
+    # itself is not actually up on that box — found for real on LV1. The
+    # primary here is control-plane "online" but its AWG2 interface reports
+    # down, so the auto picker must skip it in favor of the mirrored replica.
+    db = _make_db()
+    pool, primary_member, replica_member = _pool_with_two_members(db, replica_mirrored=True)
+
+    def get_adapter_for_node(node):
+        adapter = MagicMock()
+        if node.id == primary_member.node_id:
+            adapter.get_awg2_monitoring.return_value = {
+                "ifaces": [{"name": "antizapret", "peer_count": 0, "up": False}]
+            }
+        else:
+            adapter.get_awg2_monitoring.return_value = {
+                "ifaces": [{"name": "antizapret", "peer_count": 1, "up": True}]
+            }
+        return adapter
+
+    monkeypatch.setattr(failover_front, "get_adapter_for_node", get_adapter_for_node)
+
+    front_adapter = MagicMock()
+    front_adapter.failover_status.return_value = {"destination_ip": "1.1.1.1", "installed": True}
+    monkeypatch.setattr(failover_front, "get_proxy_adapter", lambda node: front_adapter)
+
+    result = failover_front.evaluate_and_switch(db, pool)
+
+    assert result["switched"] is True
+    assert result["active_member_id"] == replica_member.id
+
+
+def test_evaluate_and_switch_treats_monitoring_error_as_unhealthy(monkeypatch):
+    db = _make_db()
+    pool, primary_member, replica_member = _pool_with_two_members(db, replica_mirrored=True)
+
+    def get_adapter_for_node(node):
+        adapter = MagicMock()
+        if node.id == primary_member.node_id:
+            adapter.get_awg2_monitoring.side_effect = RuntimeError("node unreachable")
+        else:
+            adapter.get_awg2_monitoring.return_value = {
+                "ifaces": [{"name": "antizapret", "peer_count": 1, "up": True}]
+            }
+        return adapter
+
+    monkeypatch.setattr(failover_front, "get_adapter_for_node", get_adapter_for_node)
+
+    front_adapter = MagicMock()
+    front_adapter.failover_status.return_value = {"destination_ip": "1.1.1.1", "installed": True}
+    monkeypatch.setattr(failover_front, "get_proxy_adapter", lambda node: front_adapter)
+
+    result = failover_front.evaluate_and_switch(db, pool)
+
+    assert result["switched"] is True
+    assert result["active_member_id"] == replica_member.id
+
+
+def test_force_switch_member_ignores_awg2_liveness_too(monkeypatch):
+    # Manual override means manual — it must not silently re-apply the
+    # health filter through the back door.
+    db = _make_db()
+    pool, primary_member, replica_member = _pool_with_two_members(db, replica_mirrored=True)
+
+    def get_adapter_for_node(node):
+        adapter = MagicMock()
+        adapter.get_awg2_monitoring.return_value = {
+            "ifaces": [{"name": "antizapret", "peer_count": 0, "up": False}]
+        }
+        return adapter
+
+    monkeypatch.setattr(failover_front, "get_adapter_for_node", get_adapter_for_node)
+
+    front_adapter = MagicMock()
+    front_adapter.failover_status.return_value = {"destination_ip": "1.1.1.1", "installed": True}
+    monkeypatch.setattr(failover_front, "get_proxy_adapter", lambda node: front_adapter)
+
+    result = failover_front.force_switch_member(db, pool, replica_member)
+
+    assert result["switched"] is True
+    assert result["active_member_id"] == replica_member.id
 
 
 def test_evaluate_and_switch_records_error_when_front_unreachable(monkeypatch):
