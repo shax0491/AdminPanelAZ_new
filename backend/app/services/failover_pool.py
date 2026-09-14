@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from app.models import FailoverClientLink, FailoverPool, FailoverPoolMember, Node
 from app.services.node_manager import get_adapter_for_node
 
-NATIVE_AWG2_IFACE = "vpn"  # full-tunnel interface only, for now
+NATIVE_AWG2_IFACE = "antizapret2"  # antizapret-only routing interface, not full-tunnel
 NATIVE_AWG2_OBFUSCATION_KEYS = ("Jc", "Jmin", "Jmax", "S1", "S2", "S3", "S4", "H1", "H2", "H3", "H4")
 NATIVE_AWG2_CLIENT_MTU = 1280
 
