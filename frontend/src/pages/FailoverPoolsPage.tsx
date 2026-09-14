@@ -15,7 +15,6 @@ import {
   setFailoverFront,
   switchCheckFailoverPool,
   unlinkFailoverClient,
-  updateFailoverPool,
 } from '@/api/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -25,14 +24,6 @@ import EmptyState from '@/components/ui/EmptyState'
 import SettingsAlert from '@/components/settings/SettingsAlert'
 import { useNotifications } from '@/context/NotificationContext'
 import type { FailoverPool, FailoverPoolStrategy, FailoverStatusEntry, Node } from '@/types'
-
-function ModeBadge({ mode }: { mode: string }) {
-  return (
-    <Badge variant={mode === 'auto' ? 'success' : 'secondary'}>
-      {mode === 'auto' ? 'Авто' : 'Ручное'}
-    </Badge>
-  )
-}
 
 function StrategyBadge({ strategy }: { strategy: FailoverPoolStrategy }) {
   return strategy === 'dnat_front' ? (
@@ -396,29 +387,16 @@ function PoolCard({
           <div className="flex items-center gap-2">
             <h3 className="text-base font-semibold">{pool.name}</h3>
             <StrategyBadge strategy={pool.strategy} />
-            <ModeBadge mode={pool.mode} />
             {!pool.enabled && <Badge variant="warning">Выключен</Badge>}
           </div>
-          <p className="text-xs text-muted-foreground">
-            health-check: {pool.health_check_target} · интервал {pool.health_check_interval_s} с ·
-            порог {pool.down_threshold}
-          </p>
+          {pool.strategy === 'client_sync' && (
+            <p className="text-xs text-muted-foreground">
+              Устройство проверяет само: health-check {pool.health_check_target} · интервал{' '}
+              {pool.health_check_interval_s} с · порог {pool.down_threshold}
+            </p>
+          )}
         </div>
         <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={async () => {
-              try {
-                await updateFailoverPool(pool.id, { mode: pool.mode === 'auto' ? 'manual' : 'auto' })
-                onChanged()
-              } catch (err) {
-                notifyError(err instanceof Error ? err.message : 'Ошибка')
-              }
-            }}
-          >
-            {pool.mode === 'auto' ? 'Сделать ручным' : 'Сделать авто'}
-          </Button>
           <Button
             size="sm"
             variant="ghost"
@@ -588,7 +566,7 @@ export default function FailoverPoolsPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [newPoolName, setNewPoolName] = useState('')
-  const [newPoolStrategy, setNewPoolStrategy] = useState<FailoverPoolStrategy>('client_sync')
+  const [newPoolStrategy, setNewPoolStrategy] = useState<FailoverPoolStrategy>('dnat_front')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -613,11 +591,27 @@ export default function FailoverPoolsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Автопереключение</h1>
         <p className="text-sm text-muted-foreground">
-          Пулы серверов AmneziaWG 2.0 для автопереключения между узлами. Два способа: «На
-          устройстве» — приложение/роутер сами хранят несколько конфигов и решают, на какой
-          переключиться; «На фронт-сервере» — у клиента один статический конфиг (годится для
-          штатного AmneziaWG в прошивке роутера, без стороннего приложения), а куда реально идёт
-          трафик решает панель через выделенный фронт-узел.
+          Пулы серверов AmneziaWG 2.0 — при отказе одного узла клиент продолжает работать через
+          другой без ручных действий. Только для нативного AmneziaWG 2.0 — OpenVPN и WireGuard 1.5
+          сюда не входят.
+        </p>
+        <p className="mt-1.5 text-sm text-muted-foreground">
+          <strong className="text-foreground">«На фронт-сервере» — рекомендуется</strong>, работает
+          со штатным приложением AmneziaWG (Android, Windows, роутер): у клиента один конфиг,
+          который никогда не меняется, а какой сервер реально отвечает — решает панель через
+          выделенный узел-фронт (проверено вживую).{' '}
+          <strong className="text-foreground">«На устройстве»</strong> — для случаев, когда фронта
+          нет: клиенту нужно отдельное приложение (например{' '}
+          <a
+            href="https://github.com/shax0491/panel_auto_reverce"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2"
+          >
+            panel_auto_reverce
+          </a>
+          ), которое само хранит несколько конфигов и переключается по своему пингу — переключение
+          происходит на самом устройстве, не на сервере.
         </p>
       </div>
 
@@ -659,8 +653,8 @@ export default function FailoverPoolsPage() {
             value={newPoolStrategy}
             onChange={(e) => setNewPoolStrategy(e.target.value as FailoverPoolStrategy)}
           >
-            <option value="client_sync">На устройстве (приложение/роутер, несколько конфигов)</option>
-            <option value="dnat_front">На фронт-сервере (один статический конфиг у клиента)</option>
+            <option value="dnat_front">На фронт-сервере — рекомендуется (один конфиг, штатное приложение)</option>
+            <option value="client_sync">На устройстве (нужно отдельное приложение на клиенте)</option>
           </select>
         </div>
         <Button size="sm" type="submit" disabled={!newPoolName.trim()}>
