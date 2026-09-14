@@ -1,0 +1,270 @@
+<title>Автопереключение AWG2</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#f4f6f5; --fg:#142420; --muted:#5c6d67; --card:#ffffff; --border:#dbe4e0;
+  --accent:#1f6f5c; --accent-fg:#eafbf3; --accent-soft:#e3f1ec;
+  --warn-bg:#fdf1e6; --warn-fg:#8a4e12; --warn-border:#f0d4ae;
+  --code-bg:#eef2f0; --code-border:#dbe4e0; --code-fg:#243430;
+  --good:#1f7a4c; --bad:#b23b2c; --shadow:0 1px 2px rgba(20,36,32,.06),0 1px 1px rgba(20,36,32,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1513; --fg:#e7ece9; --muted:#93a39d; --card:#161f1c; --border:#283530;
+    --accent:#5fc09c; --accent-fg:#06120d; --accent-soft:#16302a;
+    --warn-bg:#2a2013; --warn-fg:#e7b978; --warn-border:#4a3a1c;
+    --code-bg:#131b18; --code-border:#26332e; --code-fg:#d6e4de;
+    --good:#6fcb98; --bad:#e2897a; --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1513; --fg:#e7ece9; --muted:#93a39d; --card:#161f1c; --border:#283530;
+  --accent:#5fc09c; --accent-fg:#06120d; --accent-soft:#16302a;
+  --warn-bg:#2a2013; --warn-fg:#e7b978; --warn-border:#4a3a1c;
+  --code-bg:#131b18; --code-border:#26332e; --code-fg:#d6e4de;
+  --good:#6fcb98; --bad:#e2897a; --shadow:none;
+}
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:"IBM Plex Sans",-apple-system,Segoe UI,Helvetica,Arial,sans-serif;
+  line-height:1.6; font-size:16px;
+}
+.wrap{max-width:840px;margin:0 auto;padding-inline:20px;padding-block:40px 96px}
+.kicker{
+  font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  font-size:.72rem; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--accent); font-weight:600; margin:0 0 10px;
+}
+h1{
+  font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  font-size:clamp(1.5rem,4vw,2rem); font-weight:700; margin:0 0 6px;
+  letter-spacing:-.01em; text-wrap:balance;
+}
+.sub{color:var(--muted); margin:0 0 36px; font-size:.98rem; max-width:62ch}
+h2{
+  font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  font-size:1.1rem; font-weight:600; margin:48px 0 16px; padding-top:20px;
+  border-top:1px solid var(--border); display:flex; align-items:baseline; gap:10px;
+  text-wrap:balance;
+}
+h2:first-of-type{border-top:none; margin-top:0; padding-top:0}
+h2 .num{color:var(--accent); font-weight:700}
+h3{font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;font-size:.95rem;margin:22px 0 8px;font-weight:600}
+p{margin:8px 0; max-width:68ch}
+ol,ul{margin:8px 0; padding-left:22px; max-width:68ch}
+li{margin:6px 0}
+a{color:var(--accent)}
+strong{font-weight:600}
+code{
+  background:var(--code-bg); border:1px solid var(--code-border); color:var(--code-fg);
+  padding:.08em .4em; border-radius:5px; font-size:.88em;
+  font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+
+.term{
+  background:var(--code-bg); border:1px solid var(--code-border); border-radius:10px;
+  margin:14px 0; overflow:hidden; box-shadow:var(--shadow); max-width:100%;
+}
+.term-bar{
+  display:flex; align-items:center; gap:8px; padding:8px 12px;
+  border-bottom:1px solid var(--code-border);
+  font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  font-size:.72rem; color:var(--muted); letter-spacing:.02em;
+}
+.term-bar .dot{width:8px;height:8px;border-radius:50%;background:var(--border)}
+.term pre{margin:0; padding:12px 14px; overflow-x:auto}
+.term code{background:none; border:none; padding:0; color:var(--code-fg); font-size:.85rem; white-space:pre}
+
+.card{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px 22px; margin:18px 0; box-shadow:var(--shadow)}
+
+.warn{
+  background:var(--warn-bg); color:var(--warn-fg); border:1px solid var(--warn-border);
+  border-radius:10px; padding:14px 16px; margin:16px 0; font-size:.92rem; max-width:68ch;
+}
+.good{color:var(--good); font-weight:600}
+.bad{color:var(--bad); font-weight:600}
+
+table{border-collapse:collapse; width:100%; margin:14px 0; font-size:.9rem}
+.tablewrap{overflow-x:auto; margin:14px 0}
+.tablewrap table{margin:0}
+th,td{border:1px solid var(--border); padding:9px 11px; text-align:left; vertical-align:top}
+th{
+  background:var(--code-bg); font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  font-size:.72rem; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:600;
+}
+
+.steps{display:flex; flex-direction:column; gap:0; margin:18px 0; border-left:2px solid var(--border); padding-left:0}
+.step{display:flex; gap:16px; padding:16px 0 16px 20px; position:relative}
+.step + .step{border-top:1px dashed var(--border)}
+.step .n{
+  position:absolute; left:-11px; top:16px;
+  flex:0 0 20px; width:20px; height:20px; border-radius:50%;
+  background:var(--accent); color:var(--accent-fg);
+  display:flex; align-items:center; justify-content:center;
+  font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  font-weight:700; font-size:.7rem;
+}
+.step .body{flex:1; min-width:0}
+.step .body > strong:first-child{display:block; margin-bottom:2px}
+
+.toc{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px 22px; box-shadow:var(--shadow)}
+.toc .kicker{margin-bottom:8px}
+.toc ol{margin:0; padding-left:20px; columns:1; font-size:.92rem}
+.toc a{text-decoration:none}
+.toc a:hover{text-decoration:underline}
+.toc li{margin:5px 0}
+.toc li::marker{font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace; color:var(--muted)}
+
+.pill{
+  display:inline-flex; align-items:center; gap:5px; font-size:.72rem; font-weight:600;
+  padding:2px 9px; border-radius:999px; font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+.pill.rec{background:var(--accent-soft); color:var(--accent)}
+
+footer{
+  color:var(--muted); font-size:.78rem; margin-top:56px; padding-top:20px;
+  border-top:1px solid var(--border); font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+
+@media (max-width:520px){
+  .step{padding-left:16px}
+  .step .n{left:-10px}
+}
+</style>
+
+<div class="wrap">
+  <p class="kicker">AdminPanelAZ · Автопереключение</p>
+  <h1>Failover-пулы AmneziaWG 2.0</h1>
+  <p class="sub">Порядок установки, что и в каком порядке добавлять, что проверять на каждом шаге. Собрано по итогам живого теста на PL2 + LV1 + реальном Android-эмуляторе — 15.09.2026.</p>
+
+  <div class="toc">
+    <p class="kicker" style="margin-bottom:6px">Содержание</p>
+    <ol>
+      <li><a href="#idea">Идея в двух словах</a></li>
+      <li><a href="#modes">Два режима — какой выбрать</a></li>
+      <li><a href="#order">Порядок установки с нуля</a></li>
+      <li><a href="#adding">Добавление новых серверов</a></li>
+      <li><a href="#checks">Контрольные точки</a></li>
+      <li><a href="#limits">Известные ограничения</a></li>
+      <li><a href="#found">Что нашли и починили 15.09</a></li>
+    </ol>
+  </div>
+
+  <h2 id="idea"><span class="num">01</span> Идея в двух словах</h2>
+  <p>Пул из нескольких VPN-серверов с нативным AmneziaWG 2.0. Один падает — клиент продолжает работать через другой, без ручных действий. Работает <strong>только для AmneziaWG 2.0</strong> — OpenVPN и WireGuard/AmneziaWG 1.5 эта система не касается вообще.</p>
+
+  <h2 id="modes"><span class="num">02</span> Два режима — какой выбрать</h2>
+
+  <div class="tablewrap">
+  <table>
+    <tr><th></th><th>На фронт-сервере <span class="pill rec">рекомендуется</span></th><th>На устройстве</th></tr>
+    <tr><td>Софт на клиенте</td><td>Штатный AmneziaWG (Android / Windows / роутер) — ничего ставить не нужно</td><td>Отдельное приложение/скрипт (<a href="https://github.com/shax0491/panel_auto_reverce" target="_blank" rel="noopener">panel_auto_reverce</a>) на каждом устройстве</td></tr>
+    <tr><td>Конфиг у клиента</td><td>Один, никогда не меняется</td><td>Несколько, устройство переключается само</td></tr>
+    <tr><td>Кто решает переключить</td><td>Панель — health-check AWG2-интерфейса на узле</td><td>Само устройство — пингует хосты из своего конфига</td></tr>
+    <tr><td>Доп. инфраструктура</td><td>1 узел типа «Прокси» (фронт)</td><td>Не нужна</td></tr>
+    <tr><td>Проверено вживую</td><td class="good">Да — реальный Android, реальное переключение PL2 ↔ LV1</td><td>Частично, в предыдущих заходах</td></tr>
+  </table>
+  </div>
+
+  <p>Если нет причины иначе — выбирай <strong>«На фронт-сервере»</strong>: проще для клиента, без стороннего софта, уже обкатано на практике.</p>
+
+  <h2 id="order"><span class="num">03</span> Порядок установки с нуля <span class="pill rec" style="margin-left:2px">режим: На фронт-сервере</span></h2>
+
+  <div class="steps">
+    <div class="step"><div class="n">1</div><div class="body">
+      <strong>Минимум 2 узла типа «VPN»</strong> с установленным нативным AmneziaWG 2.0 (через <code>client.sh</code> на самих серверах — панель это не ставит).
+      <br><em>Проверить:</em> страница «AmneziaWG 2.0» → статус «Готов» на каждом.
+    </div></div>
+
+    <div class="step"><div class="n">2</div><div class="body">
+      <strong>1 узел типа «Прокси» — фронт.</strong> Может быть отдельным сервером или тем же самым, что и один из VPN-узлов.
+      <div class="term">
+        <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span> root@front:~</div>
+        <pre><code>cd /opt/AdminPanelAZ
+sudo ./install.sh --proxy-only --with-systemd -y</code></pre>
+      </div>
+      Затем добавить в панели: Узлы → Добавить узел → тип «Прокси» (host/port/ключ показывает установщик).
+      <br><em>Проверить:</em> узел «В сети», тип «Удалённый», транспорт HTTP.
+    </div></div>
+
+    <div class="step"><div class="n">3</div><div class="body">
+      <strong>Включить модули</strong> (если ещё нет): Настройки → Разделы панели → «Прокси-узлы» и «Автопереключение (пулы серверов)».
+      <div class="warn">Список включённых модулей грузится в браузере один раз при открытии — после включения обнови страницу (F5), иначе пункт меню не появится.</div>
+    </div></div>
+
+    <div class="step"><div class="n">4</div><div class="body">
+      <strong>Создать пул</strong>: Автопереключение → «Новый пул» → стратегия «На фронт-сервере».
+    </div></div>
+
+    <div class="step"><div class="n">5</div><div class="body">
+      <strong>Добавить участников</strong>: первым — узел, чей текущий рабочий AWG2-конфиг станет основой (источник identity), дальше — по приоритету.
+    </div></div>
+
+    <div class="step"><div class="n">6</div><div class="body">
+      <strong>Назначить фронт</strong>: узел-«Прокси» + порт. Порт — это <code>ListenPort</code> интерфейса <code>antizapret2</code> на основном узле (см. <code>/etc/amneziawg/antizapret2.conf</code>).
+    </div></div>
+
+    <div class="step"><div class="n">7</div><div class="body">
+      <strong>Клонировать identity</strong> на каждый узел, кроме основного. Копирует ключ сервера, обфускацию и <strong>всех</strong> клиентов с основного узла.
+      <br><em>Проверить:</em> бейдж «identity склонирована», без ошибок.
+    </div></div>
+
+    <div class="step"><div class="n">8</div><div class="body">
+      <strong>«Проверить и переключить»</strong> — панель ставит DNAT на фронте, указывающий на приоритетный здоровый узел.
+      <div class="term">
+        <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span> root@front:~</div>
+        <pre><code>iptables -t nat -L PREROUTING -n -v | grep &lt;порт&gt;
+<span style="opacity:.6"># счётчик пакетов должен расти при живом трафике</span></code></pre>
+      </div>
+    </div></div>
+
+    <div class="step"><div class="n">9</div><div class="body">
+      <strong>Раздать клиенту конфиг</strong> со страницы «Клиенты» (интерфейс antizapret2). Его <code>Endpoint</code> должен указывать на фронт. Если фронт = основной узел — конфиг уже верный. Если фронт отдельный — поправить <code>Endpoint</code> вручную.
+    </div></div>
+  </div>
+
+  <h2 id="adding"><span class="num">04</span> Добавление новых серверов</h2>
+  <p>Порядок не важен, схема не меняется от того, сколько уже добавлено:</p>
+  <ol>
+    <li>На новом сервере — обычный AntiZapret + нативный AWG2 (вне панели, как обычно).</li>
+    <li>На нём же — node_agent: <code>sudo ./install.sh --node-only --with-systemd -y</code>.</li>
+    <li>Добавить в панель как узел типа «VPN».</li>
+    <li>Добавить участником в нужный пул.</li>
+    <li>«Клонировать identity» на него.</li>
+  </ol>
+  <p>Второй фронт заводить не нужно — один фронт обслуживает несколько узлов и, в принципе, несколько разных пулов.</p>
+
+  <h2 id="checks"><span class="num">05</span> Контрольные точки</h2>
+  <div class="tablewrap">
+  <table>
+    <tr><th>Шаг</th><th>Как проверить</th></tr>
+    <tr><td>AWG2 на узле</td><td>«AmneziaWG 2.0» → статус «Готов»</td></tr>
+    <tr><td>Узел «в сети»</td><td>«Узлы» → статус, столбец «Службы»</td></tr>
+    <tr><td>Identity склонирована</td><td>Карточка пула → бейдж у узла</td></tr>
+    <tr><td>DNAT реально стоит</td><td><code>iptables -t nat -L PREROUTING -n -v</code> на фронте, тег <code>az-failover:pool&lt;N&gt;</code></td></tr>
+    <tr><td>Переключение сработало (новый клиент)</td><td>На узле-получателе: <code>awg show antizapret2</code> — свежий handshake по нужному pubkey</td></tr>
+    <tr><td>Переключение сработало (уже подключённый клиент)</td><td>То же, подождать ~15–30 сек (один keepalive) — раньше требовался ручной сброс conntrack, теперь панель делает это сама</td></tr>
+  </table>
+  </div>
+
+  <h2 id="limits"><span class="num">06</span> Известные ограничения</h2>
+  <ul>
+    <li><strong>Только AmneziaWG 2.0</strong> — OpenVPN и WG/AWG 1.5 не покрываются вообще.</li>
+    <li><strong>Health-check не по расписанию</strong> — «Проверить и переключить» это кнопка, не фоновая задача. Автоматический failover без нажатия пока не запущен по крону.</li>
+    <li><strong>Health-check с одной точки зрения</strong> — панель видит здоровье со стороны узла, не конкретного клиента. Сервер, заблокированный только для одного региона, но живой сам по себе, панель не отличит.</li>
+    <li><strong>Локальный узел не проверяется по сети</strong> — если фронт совпадает с локальным узлом панели, «упасть» и быть обнаруженным по health-check он не может: панель ходит к себе в процессе.</li>
+    <li><strong>Endpoint в обычном клиентском конфиге</strong> указывает на узел, с которого скачан, не на фронт — при отдельном фронте править вручную (шаг 9).</li>
+  </ul>
+
+  <h2 id="found"><span class="num">07</span> Что нашли и починили 15.09.2026</h2>
+  <ul>
+    <li>DESTINATION принимал только IP, а узлы регистрируются доменом/локально — добавлен резолвинг перед переключением.</li>
+    <li>Клонирование identity молча «успевало», хотя применение к живому интерфейсу падало — теперь ошибка не прячется.</li>
+    <li><code>awg-quick strip</code> искал файл не там, где он лежит (реальная причина ошибки <code>does not exist</code>) — теперь передаётся полный путь.</li>
+    <li>Health-check не отличал «агент ответил» от «AWG2 реально жив» — теперь пул проверяет именно интерфейс.</li>
+    <li><strong>Главная находка — conntrack.</strong> Уже установленное соединение клиента ядро держит на старом маршруте до ~180 сек, игнорируя новое DNAT-правило, пока запись не сбросится. Панель теперь сбрасывает её сама при каждом переключении — подтверждено: реальный Android-клиент переключился между PL2 и LV1 в пределах одного keepalive (~15–30 сек), без единого действия на телефоне.</li>
+  </ul>
+
+  <footer>adminpanelaz · раздел «Автопереключение» · обновлено 2026-09-15</footer>
+</div>
