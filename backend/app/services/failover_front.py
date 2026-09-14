@@ -27,7 +27,9 @@ half was the actual problem, and that half is not reused here.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
+import socket
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -41,6 +43,45 @@ logger = logging.getLogger(__name__)
 
 class FailoverFrontError(Exception):
     pass
+
+
+def _resolve_destination_ip(node: Node) -> str:
+    """Resolve a pool member's real public IPv4 for the front's DNAT DESTINATION.
+
+    ``Node.host`` is not usable as-is here in two common cases:
+    - Local node: stored as ``127.0.0.1`` (the panel talks to it in-process,
+      never over the network) — that's a loopback placeholder, not a real
+      address a DNAT rule can point external traffic at. Fall back to
+      ``Node.name`` (the node's own domain, e.g. set from WIREGUARD_HOST).
+    - Remote node registered by hostname rather than raw IP (the normal,
+      supported way to add a node) — DNAT needs a literal IPv4, so resolve it.
+    """
+    candidates = [node.name] if node.is_local else [node.host, node.name]
+    last_error: Exception | None = None
+    for candidate in candidates:
+        candidate = (candidate or "").strip()
+        if not candidate:
+            continue
+        try:
+            addr = ipaddress.ip_address(candidate)
+        except ValueError:
+            addr = None
+        if addr is not None:
+            if addr.version == 4 and not (addr.is_loopback or addr.is_unspecified):
+                return str(addr)
+            continue
+        try:
+            resolved = socket.gethostbyname(candidate)
+            addr = ipaddress.ip_address(resolved)
+        except (socket.gaierror, ValueError) as exc:
+            last_error = exc
+            continue
+        if not (addr.is_loopback or addr.is_unspecified):
+            return str(addr)
+
+    raise FailoverFrontError(
+        f"Не удалось определить публичный IPv4 для узла {node.name} (host={node.host}): {last_error}"
+    )
 
 
 def front_label(pool: FailoverPool) -> str:
@@ -139,6 +180,14 @@ def evaluate_and_switch(db: Session, pool: FailoverPool) -> dict:
 
     target = candidates[0]
     try:
+        target_ip = _resolve_destination_ip(target.node)
+    except FailoverFrontError as exc:
+        pool.last_switch_error = str(exc)
+        db.commit()
+        result["errors"].append(str(exc))
+        return result
+
+    try:
         status_now = adapter.failover_status(label, port)
     except Exception as exc:
         pool.last_switch_error = f"Фронт недоступен: {exc}"
@@ -147,7 +196,7 @@ def evaluate_and_switch(db: Session, pool: FailoverPool) -> dict:
         return result
 
     current_ip = status_now.get("destination_ip")
-    if current_ip == target.node.host:
+    if current_ip == target_ip:
         if pool.active_member_id != target.id:
             pool.active_member_id = target.id
             pool.last_switch_error = None
@@ -156,7 +205,7 @@ def evaluate_and_switch(db: Session, pool: FailoverPool) -> dict:
         return result
 
     try:
-        adapter.failover_set_destination(label, port, target.node.host)
+        adapter.failover_set_destination(label, port, target_ip)
     except Exception as exc:
         pool.last_switch_error = f"Не удалось переключить фронт: {exc}"
         db.commit()

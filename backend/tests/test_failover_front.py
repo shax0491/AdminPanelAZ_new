@@ -31,8 +31,16 @@ def _make_db():
     return sessionmaker(bind=engine)()
 
 
-def _make_node(db, name: str, host: str, *, status: NodeStatus = NodeStatus.online, node_kind: str = "vpn") -> Node:
-    node = Node(name=name, host=host, is_local=False, status=status, node_kind=node_kind)
+def _make_node(
+    db,
+    name: str,
+    host: str,
+    *,
+    status: NodeStatus = NodeStatus.online,
+    node_kind: str = "vpn",
+    is_local: bool = False,
+) -> Node:
+    node = Node(name=name, host=host, is_local=is_local, status=status, node_kind=node_kind)
     db.add(node)
     db.commit()
     db.refresh(node)
@@ -56,6 +64,42 @@ def _make_pool(db, *, front_node_id=None, front_port=None) -> FailoverPool:
 def test_front_label_is_stable_and_pool_scoped():
     pool = FailoverPool(id=7, name="x")
     assert failover_front.front_label(pool) == "pool7"
+
+
+def test_resolve_destination_ip_literal_ipv4():
+    node = Node(name="x", host="203.0.113.10", is_local=False)
+    assert failover_front._resolve_destination_ip(node) == "203.0.113.10"
+
+
+def test_resolve_destination_ip_local_node_uses_name_not_loopback(monkeypatch):
+    # Local node's Node.host is a meaningless "127.0.0.1" placeholder (the
+    # panel talks to it in-process) — must resolve via Node.name instead.
+    node = Node(name="pl2.example.com", host="127.0.0.1", is_local=True)
+    monkeypatch.setattr(
+        failover_front.socket, "gethostbyname", lambda h: {"pl2.example.com": "83.172.134.6"}[h]
+    )
+    assert failover_front._resolve_destination_ip(node) == "83.172.134.6"
+
+
+def test_resolve_destination_ip_domain_host_gets_resolved(monkeypatch):
+    node = Node(name="nl1.example.com", host="nl1.example.com", is_local=False)
+    monkeypatch.setattr(
+        failover_front.socket, "gethostbyname", lambda h: {"nl1.example.com": "185.193.51.13"}[h]
+    )
+    assert failover_front._resolve_destination_ip(node) == "185.193.51.13"
+
+
+def test_resolve_destination_ip_raises_when_unresolvable(monkeypatch):
+    import socket as socket_module
+
+    node = Node(name="ghost.invalid", host="ghost.invalid", is_local=False)
+    monkeypatch.setattr(
+        failover_front.socket,
+        "gethostbyname",
+        lambda h: (_ for _ in ()).throw(socket_module.gaierror("nope")),
+    )
+    with pytest.raises(failover_front.FailoverFrontError):
+        failover_front._resolve_destination_ip(node)
 
 
 def test_require_front_raises_for_client_sync_strategy(monkeypatch):
