@@ -113,8 +113,26 @@ def _run(args: list[str], timeout: int = COMMAND_TIMEOUT_SECONDS) -> subprocess.
     return subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)
 
 
+def _config_path_for_real_iface(interface_name: str) -> Path | None:
+    for label, real_name in NATIVE_AWG2_IFACE_NAMES.items():
+        if real_name == interface_name:
+            return NATIVE_AWG2_CONFIG_FILES.get(label)
+    return None
+
+
 def _sync_interface_from_stripped_config(interface_name: str, *, timeout: int = COMMAND_TIMEOUT_SECONDS) -> tuple[bool, str]:
-    strip_result = _run(["awg-quick", "strip", interface_name], timeout=timeout)
+    # `awg-quick strip <bare-name>` resolves against awg-quick's OWN compiled-in
+    # default directory — on this build that's /etc/amnezia/amneziawg (the
+    # retired third-party overlay's tree), NOT /etc/amneziawg where the native
+    # config actually lives (see module docstring). Passing the bare name here
+    # silently failed with "does not exist" against the real file at all times
+    # this ran — the failure was only ever logged (never surfaced to the
+    # caller) until mirror_member_identity started checking this return value,
+    # which is how it was actually found. Passing the full path sidesteps
+    # awg-quick's own directory guess entirely (wg-quick(8) accepts either).
+    config_path = _config_path_for_real_iface(interface_name)
+    strip_target = str(config_path) if config_path is not None else interface_name
+    strip_result = _run(["awg-quick", "strip", strip_target], timeout=timeout)
     if strip_result.returncode != 0:
         return False, (strip_result.stderr or "").strip() or "awg-quick strip failed"
 

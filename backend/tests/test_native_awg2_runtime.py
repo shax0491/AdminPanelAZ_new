@@ -12,9 +12,11 @@ from types import SimpleNamespace
 import app.services.native_awg2_runtime as native_awg2_runtime
 from app.services.native_awg2_runtime import (
     _load_native_peer_info,
+    _sync_interface_from_stripped_config,
     block_client_runtime,
     get_client_stats,
     get_monitoring,
+    sync_all_native_awg2_interfaces,
     unblock_client_runtime,
 )
 
@@ -223,3 +225,47 @@ def test_unblock_client_runtime_restores_persisted_peer_spec(monkeypatch):
     assert result["success"] is True
     assert result["restored"] == 1
     assert calls == [["awg", "set", "antizapret2", "peer", "alice-pub", "allowed-ips", "10.29.9.2/32"]]
+
+
+def test_sync_interface_from_stripped_config_strips_the_full_path_not_bare_name(monkeypatch):
+    # Regression: `awg-quick strip <bare interface name>` resolves against
+    # awg-quick's own compiled-in default directory (/etc/amnezia/amneziawg on
+    # this build) — NOT /etc/amneziawg where the native config actually lives.
+    # That silently failed with "does not exist" every single time this ran;
+    # only surfaced once a caller started checking the return value instead of
+    # just logging it. Must pass the full config path instead.
+    calls: list[list[str]] = []
+
+    def fake_run(args, timeout=native_awg2_runtime.COMMAND_TIMEOUT_SECONDS):
+        calls.append(args)
+        if args[:2] == ["awg-quick", "strip"]:
+            return SimpleNamespace(returncode=0, stdout="[Interface]\nPrivateKey=x\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(native_awg2_runtime, "_run", fake_run)
+
+    ok, err = _sync_interface_from_stripped_config("antizapret2")
+
+    assert ok is True, err
+    assert calls[0] == ["awg-quick", "strip", str(Path("/etc/amneziawg/antizapret2.conf"))]
+    assert calls[1][:2] == ["awg", "syncconf"]
+    assert calls[1][2] == "antizapret2"
+
+
+def test_sync_all_native_awg2_interfaces_uses_full_paths_for_both_ifaces(monkeypatch):
+    calls: list[list[str]] = []
+
+    def fake_run(args, timeout=native_awg2_runtime.COMMAND_TIMEOUT_SECONDS):
+        calls.append(args)
+        if args[:2] == ["awg-quick", "strip"]:
+            return SimpleNamespace(returncode=0, stdout="[Interface]\nPrivateKey=x\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(native_awg2_runtime, "_run", fake_run)
+
+    result = sync_all_native_awg2_interfaces()
+
+    assert result["success"] is True
+    strip_targets = [c[2] for c in calls if c[:2] == ["awg-quick", "strip"]]
+    expected = [str(Path("/etc/amneziawg/antizapret2.conf")), str(Path("/etc/amneziawg/vpn2.conf"))]
+    assert sorted(strip_targets) == sorted(expected)
