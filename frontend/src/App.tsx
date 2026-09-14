@@ -25,6 +25,7 @@ const AntizapretConfigPage = lazy(() => import('./pages/AntizapretConfigPage'))
 const ProxyHubPage = lazy(() => import('./pages/ProxyHubPage'))
 const WarperPage = lazy(() => import('./pages/WarperPage'))
 const Awg2Page = lazy(() => import('./pages/Awg2Page'))
+const FailoverPoolsPage = lazy(() => import('./pages/FailoverPoolsPage'))
 const TelegramPage = lazy(() => import('./pages/TelegramPage'))
 const SubscriptionPage = lazy(() => import('./pages/SubscriptionPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
@@ -86,6 +87,7 @@ export default function App() {
                   <Route path="proxy" element={<LazyPage><FeatureGuardRoute feature="proxy_nodes"><ProxyHubPage /></FeatureGuardRoute></LazyPage>} />
                   <Route path="warper" element={<LazyPage><FeatureGuardRoute feature="warper"><WarperPage /></FeatureGuardRoute></LazyPage>} />
                   <Route path="awg2" element={<LazyPage><FeatureGuardRoute feature="awg2"><Awg2Page /></FeatureGuardRoute></LazyPage>} />
+                  <Route path="failover" element={<LazyPage><FeatureGuardRoute feature="failover_pools"><FailoverPoolsPage /></FeatureGuardRoute></LazyPage>} />
                   <Route path="telegram" element={<LazyPage><FeatureGuardRoute feature="telegram"><TelegramPage /></FeatureGuardRoute></LazyPage>} />
                   <Route
                     path="subscription"

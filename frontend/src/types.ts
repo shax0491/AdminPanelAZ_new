@@ -437,6 +437,73 @@ export interface MonitoringOverview {
   ha_mode?: 'dedupe' | 'raw'
 }
 
+export type FailoverPoolMode = 'auto' | 'manual'
+
+export interface FailoverPoolMember {
+  id: number
+  node_id: number
+  node_name: string
+  node_host: string
+  priority: number
+  label?: string | null
+}
+
+export interface FailoverPool {
+  id: number
+  name: string
+  vpn_type: string
+  mode: FailoverPoolMode
+  health_check_target: string
+  health_check_interval_s: number
+  health_check_timeout_s: number
+  down_threshold: number
+  enabled: boolean
+  members: FailoverPoolMember[]
+  client_names: string[]
+}
+
+export interface FailoverPoolCreate {
+  name: string
+  vpn_type?: string
+  mode?: FailoverPoolMode
+  health_check_target?: string
+  health_check_interval_s?: number
+  health_check_timeout_s?: number
+  down_threshold?: number
+}
+
+export interface FailoverPoolUpdate {
+  name?: string
+  mode?: FailoverPoolMode
+  health_check_target?: string
+  health_check_interval_s?: number
+  health_check_timeout_s?: number
+  down_threshold?: number
+  enabled?: boolean
+}
+
+export interface FailoverClientLink {
+  id: number
+  client_name: string
+  primary_node_id: number
+  access_token: string
+  last_synced_at?: string | null
+  last_sync_error?: string | null
+}
+
+export interface FailoverSyncResult {
+  synced_nodes: string[]
+  errors: string[]
+}
+
+export interface FailoverStatusEntry {
+  device_label: string
+  active_node_name?: string | null
+  healthy: boolean
+  detail?: string | null
+  reported_at: string
+}
+
 export interface NocIncidentItem {
   id: string
   kind: string
