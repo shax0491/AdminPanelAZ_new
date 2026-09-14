@@ -290,6 +290,63 @@ def test_evaluate_and_switch_missing_front_is_recorded_not_raised():
     assert result["errors"]
 
 
+def test_force_switch_member_switches_to_unhealthy_but_mirrored_replica(monkeypatch):
+    # Primary is healthy (would win the automatic picker) but the admin
+    # explicitly wants the replica live anyway — force_switch_member must not
+    # apply any health filtering, only the identity-readiness one.
+    db = _make_db()
+    pool, primary_member, replica_member = _pool_with_two_members(db, replica_mirrored=True)
+
+    adapter = MagicMock()
+    adapter.failover_status.return_value = {"destination_ip": "1.1.1.1", "installed": True}
+    monkeypatch.setattr(failover_front, "get_proxy_adapter", lambda node: adapter)
+
+    result = failover_front.force_switch_member(db, pool, replica_member)
+
+    assert result["switched"] is True
+    assert result["active_member_id"] == replica_member.id
+    adapter.failover_set_destination.assert_called_once_with(f"pool{pool.id}", 39001, "2.2.2.2")
+
+
+def test_force_switch_member_refuses_unmirrored_member(monkeypatch):
+    db = _make_db()
+    pool, primary_member, replica_member = _pool_with_two_members(db, replica_mirrored=False)
+
+    adapter = MagicMock()
+    monkeypatch.setattr(failover_front, "get_proxy_adapter", lambda node: adapter)
+
+    with pytest.raises(failover_front.FailoverFrontError, match="identity"):
+        failover_front.force_switch_member(db, pool, replica_member)
+    adapter.failover_set_destination.assert_not_called()
+
+
+def test_force_switch_member_allows_primary_always(monkeypatch):
+    db = _make_db()
+    pool, primary_member, replica_member = _pool_with_two_members(db, replica_mirrored=False)
+
+    adapter = MagicMock()
+    adapter.failover_status.return_value = {"destination_ip": None, "installed": False}
+    monkeypatch.setattr(failover_front, "get_proxy_adapter", lambda node: adapter)
+
+    result = failover_front.force_switch_member(db, pool, primary_member)
+
+    assert result["switched"] is True
+    assert result["active_member_id"] == primary_member.id
+
+
+def test_force_switch_member_rejects_member_from_other_pool():
+    db = _make_db()
+    pool, primary_member, _replica_member = _pool_with_two_members(db)
+    other_pool = _make_pool(db)
+    other_node = _make_node(db, "other", "5.5.5.5")
+    other_member = FailoverPoolMember(pool_id=other_pool.id, node_id=other_node.id, priority=1)
+    db.add(other_member)
+    db.commit()
+
+    with pytest.raises(failover_front.FailoverFrontError, match="не принадлежит"):
+        failover_front.force_switch_member(db, pool, other_member)
+
+
 def test_teardown_front_calls_adapter_teardown(monkeypatch):
     db = _make_db()
     pool, _primary, _replica = _pool_with_two_members(db)

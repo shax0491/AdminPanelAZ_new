@@ -4,6 +4,7 @@ import {
   addFailoverPoolMember,
   createFailoverPool,
   deleteFailoverPool,
+  forceSwitchFailoverMember,
   getFailoverClientStatus,
   getNodes,
   linkFailoverClient,
@@ -173,6 +174,7 @@ function FrontPanel({
   const [frontPort, setFrontPort] = useState<string>(pool.front_port ? String(pool.front_port) : '')
   const [checking, setChecking] = useState(false)
   const [mirroringId, setMirroringId] = useState<number | null>(null)
+  const [switchingId, setSwitchingId] = useState<number | null>(null)
 
   const proxyNodes = nodes.filter((n) => n.node_kind === 'proxy')
   const activeMember = pool.members.find((m) => m.id === pool.active_member_id)
@@ -303,38 +305,66 @@ function FrontPanel({
             className="flex flex-wrap items-center gap-2 rounded-lg border bg-card/40 px-3 py-2 text-sm"
           >
             <span className="font-medium">{m.label || m.node_name}</span>
+            {m.id === pool.active_member_id && <Badge variant="success">активен на фронте</Badge>}
             {idx === 0 ? (
-              <Badge variant="success">основной — источник identity</Badge>
+              <Badge variant="outline">основной — источник identity</Badge>
             ) : m.identity_mirrored_at ? (
-              <Badge variant="success">
-                клонирована {new Date(m.identity_mirrored_at).toLocaleString('ru-RU')}
+              <Badge variant="outline">
+                identity склонирована {new Date(m.identity_mirrored_at).toLocaleString('ru-RU')}
               </Badge>
             ) : (
-              <Badge variant="warning">не клонирована</Badge>
+              <Badge variant="warning">identity не клонирована</Badge>
             )}
-            {idx !== 0 && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="ml-auto"
-                disabled={mirroringId === m.id}
-                onClick={async () => {
-                  setMirroringId(m.id)
-                  try {
-                    await mirrorFailoverMemberIdentity(pool.id, m.id)
-                    success(`Identity склонирована на ${m.node_name}`)
-                    onChanged()
-                  } catch (err) {
-                    notifyError(err instanceof Error ? err.message : 'Ошибка клонирования')
-                  } finally {
-                    setMirroringId(null)
-                  }
-                }}
-              >
-                <RefreshCw size={14} className={mirroringId === m.id ? 'animate-spin' : ''} />
-                {m.identity_mirrored_at ? 'Обновить' : 'Клонировать identity'}
-              </Button>
-            )}
+            <div className="ml-auto flex gap-2">
+              {idx !== 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={mirroringId === m.id}
+                  onClick={async () => {
+                    setMirroringId(m.id)
+                    try {
+                      await mirrorFailoverMemberIdentity(pool.id, m.id)
+                      success(`Identity склонирована на ${m.node_name}`)
+                      onChanged()
+                    } catch (err) {
+                      notifyError(err instanceof Error ? err.message : 'Ошибка клонирования')
+                    } finally {
+                      setMirroringId(null)
+                    }
+                  }}
+                >
+                  <RefreshCw size={14} className={mirroringId === m.id ? 'animate-spin' : ''} />
+                  {m.identity_mirrored_at ? 'Обновить' : 'Клонировать identity'}
+                </Button>
+              )}
+              {(idx === 0 || m.identity_mirrored_at) && m.id !== pool.active_member_id && (
+                <Button
+                  size="sm"
+                  disabled={switchingId === m.id}
+                  title="Переключить на этот узел вручную, даже если по health-check активен другой"
+                  onClick={async () => {
+                    setSwitchingId(m.id)
+                    try {
+                      const result = await forceSwitchFailoverMember(pool.id, m.id)
+                      if (result.errors.length > 0) {
+                        notifyError(result.errors.join('; '))
+                      } else {
+                        success(`Фронт переключён на ${m.node_name}`)
+                      }
+                      onChanged()
+                    } catch (err) {
+                      notifyError(err instanceof Error ? err.message : 'Ошибка переключения')
+                    } finally {
+                      setSwitchingId(null)
+                    }
+                  }}
+                >
+                  <RefreshCw size={14} className={switchingId === m.id ? 'animate-spin' : ''} />
+                  Сделать активным
+                </Button>
+              )}
+            </div>
           </div>
         ))}
       </div>

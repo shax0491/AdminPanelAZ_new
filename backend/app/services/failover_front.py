@@ -141,15 +141,19 @@ def _node_healthy(node: Node) -> bool:
     return node.status == NodeStatus.online
 
 
-def evaluate_and_switch(db: Session, pool: FailoverPool) -> dict:
-    """Pick the highest-priority healthy, identity-ready member and point the
-    front's DNAT at it, if that differs from what is live now.
+def _apply_switch_to_target(db: Session, pool: FailoverPool, target: FailoverPoolMember) -> dict:
+    """Point the front's DNAT at ``target`` if it isn't already, updating
+    ``pool.active_member_id``/``last_switch_at``/``last_switch_error``.
 
-    Best-effort end to end: never raises past this function. Any failure
-    (front unreachable, no healthy candidate) lands in ``pool.last_switch_error``
-    — an unreachable front/panel must never crash a caller, same "observer,
-    not a hard dependency" principle already applied to the client watchdog's
-    optional status reporting.
+    Shared by the auto health-based picker (``evaluate_and_switch``) and the
+    explicit admin override (``force_switch_member``) — both just need to
+    agree on a target member first, this part (resolve IP, compare against
+    current DESTINATION, flip if needed) is identical either way.
+
+    Best-effort: never raises past this function. Any failure lands in
+    ``pool.last_switch_error`` — an unreachable front/panel must never crash
+    a caller, same "observer, not a hard dependency" principle already
+    applied to the client watchdog's optional status reporting.
     """
     result: dict = {"pool_id": pool.id, "switched": False, "active_member_id": pool.active_member_id, "errors": []}
     try:
@@ -163,22 +167,6 @@ def evaluate_and_switch(db: Session, pool: FailoverPool) -> dict:
     label = front_label(pool)
     adapter = get_proxy_adapter(front)
 
-    members = sorted(pool.members, key=lambda m: m.priority)
-    primary = members[0] if members else None
-    candidates = [
-        m
-        for m in members
-        if _node_healthy(m.node)
-        and (primary is not None and (m.id == primary.id or m.identity_mirrored_at is not None))
-    ]
-
-    if not candidates:
-        pool.last_switch_error = "Нет здоровых узлов с готовой identity (клонируйте identity на резервные узлы)"
-        db.commit()
-        result["errors"].append(pool.last_switch_error)
-        return result
-
-    target = candidates[0]
     try:
         target_ip = _resolve_destination_ip(target.node)
     except FailoverFrontError as exc:
@@ -219,6 +207,57 @@ def evaluate_and_switch(db: Session, pool: FailoverPool) -> dict:
     result["switched"] = True
     result["active_member_id"] = target.id
     return result
+
+
+def _eligible_candidates(pool: FailoverPool) -> list[FailoverPoolMember]:
+    """Members that could legally receive traffic right now: the primary
+    (source of identity, always eligible) or any member with identity already
+    mirrored from it — never a member whose identity hasn't been cloned yet,
+    switching there would just break every client's handshake."""
+    members = sorted(pool.members, key=lambda m: m.priority)
+    primary = members[0] if members else None
+    if primary is None:
+        return []
+    return [m for m in members if m.id == primary.id or m.identity_mirrored_at is not None]
+
+
+def evaluate_and_switch(db: Session, pool: FailoverPool) -> dict:
+    """Pick the highest-priority HEALTHY, identity-ready member and point the
+    front's DNAT at it, if that differs from what is live now.
+
+    This is the automatic policy — ignores anything currently unhealthy
+    (``Node.status``) even if an admin would prefer it. To force a specific
+    member regardless of health (e.g. testing, or overriding a health-check
+    you don't trust), use ``force_switch_member`` instead.
+    """
+    eligible = _eligible_candidates(pool)
+    candidates = [m for m in eligible if _node_healthy(m.node)]
+
+    if not candidates:
+        pool.last_switch_error = "Нет здоровых узлов с готовой identity (клонируйте identity на резервные узлы)"
+        db.commit()
+        return {"pool_id": pool.id, "switched": False, "active_member_id": pool.active_member_id, "errors": [pool.last_switch_error]}
+
+    return _apply_switch_to_target(db, pool, candidates[0])
+
+
+def force_switch_member(db: Session, pool: FailoverPool, member: FailoverPoolMember) -> dict:
+    """Explicitly point the front at ``member``, regardless of its current
+    health status — manual override for when the admin wants direct control
+    (testing, or overriding a health-check that's a false positive/negative).
+
+    Still refuses a member with no cloned identity (mirror_member_identity
+    not run yet) — that's not a policy choice, switching there would just
+    break every client's handshake outright.
+    """
+    if member.pool_id != pool.id:
+        raise FailoverFrontError("Участник не принадлежит этому пулу")
+    eligible_ids = {m.id for m in _eligible_candidates(pool)}
+    if member.id not in eligible_ids:
+        raise FailoverFrontError(
+            f"У узла {member.node.name} ещё нет склонированной identity — сначала «Клонировать identity»"
+        )
+    return _apply_switch_to_target(db, pool, member)
 
 
 def teardown_front(pool: FailoverPool) -> None:

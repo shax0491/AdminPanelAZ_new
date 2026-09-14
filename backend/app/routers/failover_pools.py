@@ -42,6 +42,7 @@ from app.schemas import (
 from app.services.failover_front import (
     FailoverFrontError,
     evaluate_and_switch,
+    force_switch_member,
     mirror_member_identity,
     teardown_front,
 )
@@ -212,6 +213,27 @@ def switch_check(pool_id: int, db: Session = Depends(get_db), _: User = Depends(
     trigger for now — call periodically (cron) for real automatic failover."""
     pool = _get_pool_or_404(db, pool_id)
     result = evaluate_and_switch(db, pool)
+    return FailoverSwitchResult(**result)
+
+
+@router.post("/{pool_id}/members/{member_id}/force-switch", response_model=FailoverSwitchResult)
+def force_switch(pool_id: int, member_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """Point the front's DNAT at this exact member, regardless of its current
+    health status — manual override for when the admin wants direct control
+    over which member is live (still refuses a member with no cloned
+    identity — that would break every client's handshake outright)."""
+    pool = _get_pool_or_404(db, pool_id)
+    member = (
+        db.query(FailoverPoolMember)
+        .filter(FailoverPoolMember.id == member_id, FailoverPoolMember.pool_id == pool_id)
+        .first()
+    )
+    if member is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Участник пула не найден")
+    try:
+        result = force_switch_member(db, pool, member)
+    except FailoverFrontError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return FailoverSwitchResult(**result)
 
 

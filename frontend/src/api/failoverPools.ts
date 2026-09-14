@@ -88,6 +88,12 @@ export async function mirrorFailoverMemberIdentity(poolId: number, memberId: num
   })
 }
 
+export async function forceSwitchFailoverMember(poolId: number, memberId: number) {
+  return apiFetch<FailoverSwitchResult>(`/failover-pools/${poolId}/members/${memberId}/force-switch`, {
+    method: 'POST',
+  })
+}
+
 export async function switchCheckFailoverPool(poolId: number) {
   return apiFetch<FailoverSwitchResult>(`/failover-pools/${poolId}/switch-check`, {
     method: 'POST',
