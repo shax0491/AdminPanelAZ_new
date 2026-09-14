@@ -522,6 +522,26 @@ def nginx_listens_on_443() -> bool:
     return nginx_listens_on_https_port(443)
 
 
+def _nginx_config_is_valid() -> bool:
+    """``nginx -t`` — a vhost file existing on disk says nothing about whether
+    the running nginx can actually serve anything (this vhost or an unrelated
+    one may be failing `nginx -t`, e.g. a long domain tripping
+    server_names_hash_bucket_size)."""
+    if not is_nginx_installed():
+        return False
+    try:
+        result = subprocess.run(
+            ["nginx", "-t"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def nginx_has_vhost_for_domain(domain: str) -> bool:
     domain = (domain or "").strip().split(":")[0]
     if not domain or not is_nginx_installed():
@@ -963,6 +983,19 @@ def build_portal_publish_status(
     vhost_ok = bool(portal) and nginx_has_vhost_for_domain(portal)
     cert_ok = False
     warnings: list[str] = []
+    nginx_config_broken = False
+    if vhost_ok and mode in {"nginx_le", "nginx_selfsigned", "nginx_custom"}:
+        # A vhost file existing isn't enough — if nginx itself is currently
+        # broken (this vhost or an unrelated one), "Готов" must not lie about
+        # it: a client link to a portal nginx can't actually serve is worse
+        # than an honest "not ready".
+        if not _nginx_config_is_valid():
+            nginx_config_broken = True
+            vhost_ok = False
+            warnings.append(
+                "Vhost портала на диске есть, но текущий конфиг nginx не проходит `nginx -t` — "
+                "портал не отдаётся. Нажмите «Настроить под текущую публикацию» или проверьте nginx вручную."
+            )
     dns_hint = ""
     primary_ip = server_primary_ip()
     if portal and primary_ip:
@@ -1034,6 +1067,7 @@ def build_portal_publish_status(
         "portal_vhost_ok": vhost_ok,
         "portal_cert_ok": cert_ok,
         "portal_ready": ready,
+        "nginx_config_broken": nginx_config_broken,
         "server_primary_ip": primary_ip,
         "dns_hint": dns_hint,
         "warnings": warnings,

@@ -52,3 +52,42 @@ def test_build_portal_publish_status_nginx_needs_vhost():
     assert status["portal_ready"] is False
     assert status["portal_vhost_ok"] is False
     assert status["dns_hint"]
+
+
+def test_build_portal_publish_status_nginx_broken_config_not_ready(monkeypatch):
+    # A vhost file on disk existing is not enough — if `nginx -t` currently
+    # fails (this vhost or an unrelated one), "ready" must say so, not lie.
+    import app.services.panel_publish_info as ppi
+
+    monkeypatch.setattr(ppi, "nginx_has_vhost_for_domain", lambda domain: True)
+    monkeypatch.setattr(ppi, "nginx_ssl_cert_path_for_domain", lambda domain: "/fake/cert.pem")
+    monkeypatch.setattr(ppi, "cert_covers_hostname", lambda cert_path, domain: True)
+    monkeypatch.setattr(ppi, "_nginx_config_is_valid", lambda: False)
+
+    status = build_portal_publish_status(
+        portal_domain="portal.example.com",
+        panel_domain="example.com",
+        publish_mode="nginx_le",
+    )
+    assert status["portal_vhost_ok"] is False
+    assert status["portal_ready"] is False
+    assert status["nginx_config_broken"] is True
+    assert any("nginx -t" in w for w in status["warnings"])
+
+
+def test_build_portal_publish_status_nginx_valid_config_ready(monkeypatch):
+    import app.services.panel_publish_info as ppi
+
+    monkeypatch.setattr(ppi, "nginx_has_vhost_for_domain", lambda domain: True)
+    monkeypatch.setattr(ppi, "nginx_ssl_cert_path_for_domain", lambda domain: "/fake/cert.pem")
+    monkeypatch.setattr(ppi, "cert_covers_hostname", lambda cert_path, domain: True)
+    monkeypatch.setattr(ppi, "_nginx_config_is_valid", lambda: True)
+
+    status = build_portal_publish_status(
+        portal_domain="portal.example.com",
+        panel_domain="example.com",
+        publish_mode="nginx_le",
+    )
+    assert status["portal_vhost_ok"] is True
+    assert status["portal_ready"] is True
+    assert status["nginx_config_broken"] is False

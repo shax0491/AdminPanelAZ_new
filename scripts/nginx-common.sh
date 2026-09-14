@@ -898,11 +898,37 @@ nginx_install_site() {
   local reload_only="${3:-false}"
 
   nginx_conf_paths "$domain"
+
+  # Бэкапим предыдущий конфиг (если был), чтобы откатиться на него при
+  # провале `nginx -t` — иначе битый сайт остаётся в sites-enabled и следующий
+  # restart/reload (в том числе после reboot) валит nginx целиком, а не
+  # только этот вхост.
+  local prev_conf_backup=""
+  if [[ -f "$NGINX_CONF_FILE" ]]; then
+    prev_conf_backup="$(mktemp)"
+    cp -a "$NGINX_CONF_FILE" "$prev_conf_backup"
+  fi
+  local had_enabled_link=false
+  [[ -L "$NGINX_ENABLED_LINK" ]] && had_enabled_link=true
+
   printf '%s\n' "$conf_content" >"$NGINX_CONF_FILE"
   ln -sf "$NGINX_CONF_FILE" "$NGINX_ENABLED_LINK"
   # Стандартный default мешает: на корне домена показывается «Welcome to nginx».
   rm -f /etc/nginx/sites-enabled/default
-  nginx -t || nginx_die "nginx -t не прошёл (конфиг: $NGINX_CONF_FILE)"
+
+  if ! nginx -t; then
+    if [[ -n "$prev_conf_backup" ]]; then
+      mv "$prev_conf_backup" "$NGINX_CONF_FILE"
+      nginx_warn "nginx -t не прошёл — вернули предыдущий конфиг $NGINX_CONF_FILE"
+    else
+      rm -f "$NGINX_CONF_FILE"
+      [[ "$had_enabled_link" == false ]] && rm -f "$NGINX_ENABLED_LINK"
+      nginx_warn "nginx -t не прошёл — убрали только что созданный $NGINX_CONF_FILE (сайта раньше не было)"
+    fi
+    nginx_die "nginx -t не прошёл (конфиг: $NGINX_CONF_FILE) — изменения откачены, nginx не тронут"
+  fi
+  [[ -n "$prev_conf_backup" ]] && rm -f "$prev_conf_backup"
+
   systemctl enable nginx >/dev/null 2>&1 || true
   if [[ "$reload_only" == "true" ]]; then
     systemctl reload nginx || nginx_die "Не удалось перезагрузить nginx"
