@@ -115,7 +115,10 @@ class BackupManager:
                         continue
                     tmp = self.backup_root / f".tmp_{filename}"
                     try:
-                        tmp.write_text(content, encoding="utf-8")
+                        # newline="" — write content byte-exact, no platform
+                        # newline translation (Windows would otherwise turn
+                        # \n into \r\n, corrupting AntiZapret config files).
+                        tmp.write_text(content, encoding="utf-8", newline="")
                         tar.add(tmp, arcname=f"antizapret/config/{filename}")
                     finally:
                         if tmp.exists():
