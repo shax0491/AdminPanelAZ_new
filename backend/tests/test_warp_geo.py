@@ -19,8 +19,10 @@ ANTIZAPRET_WARP_PUBLIC_KEY=
 VPN_WARP=2
 PROTON_ANTIZAPRET_PRIVATE_KEY=abcdef1234567890
 PROTON_ANTIZAPRET_PUBLIC_KEY=pubkeyhere
+PROTON_ANTIZAPRET_ADDRESS=10.2.0.2
 PROTON_VPN_PRIVATE_KEY=
 PROTON_VPN_PUBLIC_KEY=
+PROTON_VPN_ADDRESS=
 ANTIZAPRET_DNS=1
 VPN_DNS=1
 """
@@ -59,21 +61,30 @@ def _fake_run(responses: dict[str, tuple[int, str]]):
     return fake
 
 
-def test_check_warp_geo_parses_trace_and_youtube_gl(monkeypatch, tmp_path):
-    trace_out = "ip=185.193.51.13\nts=169000.0\nloc=LV\ncolo=ARN\n"
-    youtube_out = '<html>...{"GL":"LV","other":1}...</html>'
+def _patch_subprocess(monkeypatch, curl_responses: dict[str, tuple[int, str]], *, ip_addr_output: str = ""):
+    def fake_run(args, **kwargs):
+        if args[:1] == ["curl"]:
+            return _fake_run(curl_responses)(args, **kwargs)
+        if args[:1] == ["ip"]:
+            return SimpleNamespace(returncode=0, stdout=ip_addr_output, stderr="")
+        raise AssertionError(f"unexpected subprocess call: {args}")
+
     monkeypatch.setattr(
         warp_geo,
         "subprocess",
-        SimpleNamespace(
-            run=_fake_run(
-                {
-                    "https://1.1.1.1/cdn-cgi/trace": (0, trace_out),
-                    "https://www.youtube.com/": (0, youtube_out),
-                }
-            ),
-            TimeoutExpired=Exception,
-        ),
+        SimpleNamespace(run=fake_run, TimeoutExpired=Exception),
+    )
+
+
+def test_check_warp_geo_parses_trace_and_youtube_gl(monkeypatch, tmp_path):
+    trace_out = "ip=185.193.51.13\nts=169000.0\nloc=LV\ncolo=ARN\n"
+    youtube_out = '<html>...{"GL":"LV","other":1}...</html>'
+    _patch_subprocess(
+        monkeypatch,
+        {
+            "https://1.1.1.1/cdn-cgi/trace": (0, trace_out),
+            "https://www.youtube.com/": (0, youtube_out),
+        },
     )
 
     result = check_warp_geo("antizapret", tmp_path)
@@ -86,18 +97,12 @@ def test_check_warp_geo_parses_trace_and_youtube_gl(monkeypatch, tmp_path):
 
 
 def test_check_warp_geo_flags_ru(monkeypatch, tmp_path):
-    monkeypatch.setattr(
-        warp_geo,
-        "subprocess",
-        SimpleNamespace(
-            run=_fake_run(
-                {
-                    "https://1.1.1.1/cdn-cgi/trace": (0, "ip=1.2.3.4\nloc=RU\ncolo=DME\n"),
-                    "https://www.youtube.com/": (0, '{"GL":"RU"}'),
-                }
-            ),
-            TimeoutExpired=Exception,
-        ),
+    _patch_subprocess(
+        monkeypatch,
+        {
+            "https://1.1.1.1/cdn-cgi/trace": (0, "ip=1.2.3.4\nloc=RU\ncolo=DME\n"),
+            "https://www.youtube.com/": (0, '{"GL":"RU"}'),
+        },
     )
 
     result = check_warp_geo("raw", tmp_path)
@@ -109,14 +114,7 @@ def test_check_warp_geo_flags_ru(monkeypatch, tmp_path):
 def test_check_warp_geo_interface_down_returns_error_not_raw_ip_geo(monkeypatch, tmp_path):
     # Regression: if warp-antizapret isn't up, must not silently fall back to
     # testing the raw host route and report it as if it were the WARP egress.
-    monkeypatch.setattr(
-        warp_geo,
-        "subprocess",
-        SimpleNamespace(
-            run=_fake_run({}),  # every curl call "fails" (not in the map -> rc=1)
-            TimeoutExpired=Exception,
-        ),
-    )
+    _patch_subprocess(monkeypatch, {})  # every curl call "fails" (not in the map -> rc=1)
 
     result = check_warp_geo("vpn", tmp_path)
 
@@ -129,6 +127,67 @@ def test_check_warp_geo_rejects_unknown_scope_at_type_level():
     # scope is validated at the router layer (400 for anything outside the
     # three known values) - the service itself only maps known scopes.
     assert set(warp_geo._SCOPE_INTERFACE) == {"antizapret", "vpn", "raw"}
+
+
+def test_check_warp_geo_flags_stale_tunnel_not_matching_proton_config(monkeypatch, tmp_path):
+    # Real incident: setup was hand-edited to Proton with valid keys, but
+    # /root/antizapret/up.sh was never re-run - the live warp-antizapret
+    # interface kept an OLD Cloudflare registration (different local IP) for
+    # days, silently. The geo-check result was technically accurate for
+    # whatever was actually running, but nothing flagged that it wasn't the
+    # provider the config claims. Must be surfaced explicitly.
+    (tmp_path / "setup").write_text(SETUP_CONTENT, encoding="utf-8")
+    _patch_subprocess(
+        monkeypatch,
+        {
+            "https://1.1.1.1/cdn-cgi/trace": (0, "ip=104.28.254.37\nloc=LV\ncolo=ARN\n"),
+            "https://www.youtube.com/": (0, '{"GL":"RU"}'),
+        },
+        ip_addr_output="12: warp-antizapret    inet 172.16.0.2/32 scope global warp-antizapret\n",
+    )
+
+    result = check_warp_geo("antizapret", tmp_path)
+
+    assert result["tunnel_matches_config"] is False
+    assert "172.16.0.2" in result["tunnel_mismatch_detail"]
+    assert "10.2.0.2" in result["tunnel_mismatch_detail"]
+    assert "up.sh" in result["tunnel_mismatch_detail"]
+
+
+def test_check_warp_geo_tunnel_matches_config_when_addresses_agree(monkeypatch, tmp_path):
+    (tmp_path / "setup").write_text(SETUP_CONTENT, encoding="utf-8")
+    _patch_subprocess(
+        monkeypatch,
+        {
+            "https://1.1.1.1/cdn-cgi/trace": (0, "ip=74.118.126.132\nloc=GB\ncolo=LHR\n"),
+            "https://www.youtube.com/": (0, '{"GL":"CA"}'),
+        },
+        ip_addr_output="16: warp-antizapret    inet 10.2.0.2/32 scope global warp-antizapret\n",
+    )
+
+    result = check_warp_geo("antizapret", tmp_path)
+
+    assert result["tunnel_matches_config"] is True
+    assert "tunnel_mismatch_detail" not in result
+
+
+def test_check_warp_geo_skips_tunnel_check_for_cloudflare_provider(monkeypatch, tmp_path):
+    # No fixed expected address for Cloudflare's anonymous auto-registration -
+    # nothing to compare against, so the field must simply be absent, not a
+    # false mismatch.
+    (tmp_path / "setup").write_text(SETUP_CONTENT.replace("WARP_PROVIDER=proton", "WARP_PROVIDER=cloudflare"), encoding="utf-8")
+    _patch_subprocess(
+        monkeypatch,
+        {
+            "https://1.1.1.1/cdn-cgi/trace": (0, "ip=1.2.3.4\nloc=LV\ncolo=ARN\n"),
+            "https://www.youtube.com/": (0, '{"GL":"LV"}'),
+        },
+        ip_addr_output="12: warp-antizapret    inet 172.16.0.2/32 scope global warp-antizapret\n",
+    )
+
+    result = check_warp_geo("antizapret", tmp_path)
+
+    assert "tunnel_matches_config" not in result
 
 
 def test_local_node_adapter_delegates_to_warp_geo_service(tmp_path):

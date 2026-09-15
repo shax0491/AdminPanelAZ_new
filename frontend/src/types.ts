@@ -1979,6 +1979,8 @@ export interface WarpGeoCheckResponse {
   scope: 'antizapret' | 'vpn' | 'raw'
   interface: string | null
   error?: string
+  tunnel_matches_config?: boolean
+  tunnel_mismatch_detail?: string
   cloudflare_ip?: string
   cloudflare_loc?: string
   cloudflare_colo?: string

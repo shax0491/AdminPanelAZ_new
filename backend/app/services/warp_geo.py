@@ -37,6 +37,11 @@ _PROTON_PRESENCE_KEYS = {
     "PROTON_ANTIZAPRET_PRIVATE_KEY": "proton_antizapret_configured",
     "PROTON_VPN_PRIVATE_KEY": "proton_vpn_configured",
 }
+_PROTON_ADDRESS_KEY = {
+    "antizapret": "PROTON_ANTIZAPRET_ADDRESS",
+    "vpn": "PROTON_VPN_ADDRESS",
+}
+_IP_ADDR_RE = re.compile(r"inet (\d+\.\d+\.\d+\.\d+)/")
 
 
 def _read_setup_file(antizapret_path: Path) -> dict[str, str]:
@@ -75,6 +80,54 @@ def _run_curl(url: str, *, interface: str | None) -> tuple[bool, str]:
     return True, result.stdout
 
 
+def _interface_local_ip(interface: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["ip", "-o", "addr", "show", interface],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    if result.returncode != 0:
+        return None
+    match = _IP_ADDR_RE.search(result.stdout)
+    return match.group(1) if match else None
+
+
+def _check_tunnel_matches_config(scope: GeoScope, interface: str, antizapret_path: Path | None) -> dict:
+    """Сверить реально поднятый IP туннеля с тем, что задан в setup для Proton.
+
+    Реальный найденный случай: конфиг правят вручную (nano setup), но забывают
+    выполнить up.sh - туннель продолжает жить со СТАРОЙ регистрацией (например,
+    ещё Cloudflare, оставшийся от предыдущего провайдера) сколько угодно долго,
+    хотя setup уже говорит Proton с валидными ключами. Без явного сравнения
+    это выглядит как настоящий результат геопроверки, хотя на деле проверяется
+    не тот провайдер вообще.
+    """
+    if antizapret_path is None:
+        return {}
+    raw = _read_setup_file(antizapret_path)
+    if raw.get("WARP_PROVIDER", "").strip() != "proton":
+        return {}
+    expected_key = _PROTON_ADDRESS_KEY.get(scope)
+    expected_ip = raw.get(expected_key, "").strip() if expected_key else ""
+    if not expected_ip:
+        return {}
+    actual_ip = _interface_local_ip(interface)
+    if actual_ip is None:
+        return {}
+    matches = actual_ip == expected_ip
+    out: dict[str, object] = {"tunnel_matches_config": matches}
+    if not matches:
+        out["tunnel_mismatch_detail"] = (
+            f"Туннель поднят с IP {actual_ip}, а в конфиге для Proton задан {expected_ip} - "
+            "похоже, setup правили вручную, но /root/antizapret/up.sh не выполнялся. "
+            "Результат проверки ниже может относиться к СТАРОМУ провайдеру, а не к Proton. "
+            "Выполните up.sh на узле."
+        )
+    return out
+
+
 def check_warp_geo(scope: GeoScope, antizapret_path: Path | None = None) -> dict:
     """Проверить гео исходящего трафика для scope (antizapret/vpn/raw).
 
@@ -85,6 +138,9 @@ def check_warp_geo(scope: GeoScope, antizapret_path: Path | None = None) -> dict
     """
     interface = _SCOPE_INTERFACE[scope]
     result: dict[str, object] = {"scope": scope, "interface": interface}
+
+    if interface:
+        result.update(_check_tunnel_matches_config(scope, interface, antizapret_path))
 
     ok, trace_out = _run_curl("https://1.1.1.1/cdn-cgi/trace", interface=interface)
     if not ok:

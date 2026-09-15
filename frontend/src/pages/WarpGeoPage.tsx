@@ -165,6 +165,12 @@ export default function WarpGeoPage() {
                     {checking === scope ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Проверить'}
                   </Button>
                 </div>
+                {result?.tunnel_matches_config === false && (
+                  <div className="rounded-md border border-destructive/50 bg-destructive/10 p-2 text-sm text-destructive">
+                    ⚠️ Туннель не соответствует конфигу — проверка ниже может относиться к старому
+                    провайдеру. {result.tunnel_mismatch_detail}
+                  </div>
+                )}
                 {result && (
                   <div className="flex flex-wrap items-center gap-2 text-sm">
                     {result.error ? (
