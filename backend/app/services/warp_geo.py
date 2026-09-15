@@ -417,7 +417,7 @@ def preview_cloudflare_warp(tmp_dir: Path | None = None) -> dict:
             return {"error": f"Неожиданный ответ Cloudflare API: {exc}"}
 
         conf_path.write_text(
-            f"[Interface]\nPrivateKey = {private_key}\nAddress = {address}/32\nDNS = 1.1.1.1, 1.0.0.1\nMTU = 1280\n\n"
+            f"[Interface]\nPrivateKey = {private_key}\nAddress = {address}/32\nMTU = 1280\n\n"
             f"[Peer]\nPublicKey = {peer_public_key}\nAllowedIPs = 0.0.0.0/0\nEndpoint = {endpoint}\n",
             encoding="utf-8",
         )
