@@ -99,8 +99,9 @@ def test_add_wireguard_client_skips_client_sh_when_already_provisioned(tmp_path,
 
 
 def test_add_amneziawg2_client_skips_but_still_syncs_obfuscation(tmp_path, monkeypatch):
+    """AWG2 peer already exists for this name - pure no-op (just resync obfuscation/MTU)."""
     service = _make_service(tmp_path)
-    monkeypatch.setattr(service, "_client_already_provisioned", lambda _name: True)
+    monkeypatch.setattr(service, "_awg2_client_provisioned", lambda _name: True)
     override_calls: list[str] = []
     monkeypatch.setattr(service, "_apply_native_awg2_overrides", lambda name: override_calls.append(name))
     monkeypatch.setattr(
@@ -111,6 +112,43 @@ def test_add_amneziawg2_client_skips_but_still_syncs_obfuscation(tmp_path, monke
 
     assert override_calls == ["existing"]
     assert "уже существует" in result
+
+
+def test_add_amneziawg2_client_backfills_via_option_10_when_other_protocol_exists(tmp_path, monkeypatch):
+    """Regression: a client created before native AWG2 shipped (or that only ever got
+    OpenVPN/WireGuard) has NO AWG2 peer yet, but _client_already_provisioned is True because
+    of the other protocols. Must call option 10 (AWG2-only add), never option 1 (which would
+    re-run addOpenVPN for an existing cert and crash on closed stdin)."""
+    service = _make_service(tmp_path)
+    monkeypatch.setattr(service, "_awg2_client_provisioned", lambda _name: False)
+    monkeypatch.setattr(service, "_client_already_provisioned", lambda _name: True)
+    override_calls: list[str] = []
+    monkeypatch.setattr(service, "_apply_native_awg2_overrides", lambda name: override_calls.append(name))
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        AntiZapretService, "_run_client_script", lambda self, *a, **kw: calls.append(a) or "ok"
+    )
+
+    result = service.add_amneziawg2_client("legacy_client")
+
+    assert calls == [("10", "legacy_client")]
+    assert override_calls == ["legacy_client"]
+    assert result == "ok"
+
+
+def test_add_amneziawg2_client_full_add_for_brand_new_name(tmp_path, monkeypatch):
+    service = _make_service(tmp_path)
+    monkeypatch.setattr(service, "_awg2_client_provisioned", lambda _name: False)
+    monkeypatch.setattr(service, "_client_already_provisioned", lambda _name: False)
+    monkeypatch.setattr(service, "_apply_native_awg2_overrides", lambda name: None)
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        AntiZapretService, "_run_client_script", lambda self, *a, **kw: calls.append(a) or "ok"
+    )
+
+    service.add_amneziawg2_client("brand_new")
+
+    assert calls == [("1", "brand_new", "3650")]
 
 
 def test_add_openvpn_client_skips_when_provisioned_and_not_forced(tmp_path, monkeypatch):

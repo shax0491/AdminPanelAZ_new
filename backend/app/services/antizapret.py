@@ -134,6 +134,10 @@ class AntiZapretService:
             path = WIREGUARD_SERVER_CONFIG_DIR / f"{interface}.conf"
             if path.is_file() and marker in path.read_text(encoding="utf-8", errors="replace"):
                 return True
+        return self._awg2_client_provisioned(client_name)
+
+    def _awg2_client_provisioned(self, client_name: str) -> bool:
+        marker = f"# Client = {client_name}"
         for _tunnel, (server_conf, _subdir) in NATIVE_AWG2_TUNNELS.items():
             if server_conf.is_file() and marker in server_conf.read_text(encoding="utf-8", errors="replace"):
                 return True
@@ -196,16 +200,23 @@ class AntiZapretService:
         obfuscation params always match the live server interface and MTU is forced to 1280.
         """
         self.validate_client_name(client_name)
-        if self._client_already_provisioned(client_name):
-            # Still (re)sync obfuscation/MTU even when skipping client.sh — e.g. the client
-            # was created via WireGuard/OpenVPN first and this is the first AWG2-specific
-            # call for it, so its *-am2.conf already exists from that unified add but may
-            # not have gone through the override pass yet.
+        if self._awg2_client_provisioned(client_name):
+            # Already has an AWG2 peer - just (re)sync obfuscation/MTU, nothing to add.
             self._apply_native_awg2_overrides(client_name)
             return f"Клиент '{client_name}' уже существует на сервере — профиль AmneziaWG 2.0 уже создан"
-        # Same reason as add_wireguard_client: addClient() always runs addOpenVPN() too, which
-        # needs a valid $3 (CLIENT_CERT_EXPIRE) or it hangs on an interactive prompt for a new
-        # client name and dies on closed stdin.
+        if self._client_already_provisioned(client_name):
+            # Regression: a client created BEFORE native AWG2 shipped in client.sh (or before
+            # this specific client ever went through the unified add) has OpenVPN/WireGuard
+            # but genuinely no AWG2 peer yet. Calling option 1 (addClient) here would re-run
+            # addOpenVPN() for an existing cert, which hangs on an interactive prompt and
+            # crashes under closed stdin (see _client_already_provisioned). Option 10 calls
+            # ONLY addAmneziaWG2 - safe to backfill without touching OpenVPN/WireGuard at all.
+            output = self._run_client_script("10", client_name)
+            self._apply_native_awg2_overrides(client_name)
+            return output
+        # Brand new client name across every protocol - same reason as add_wireguard_client:
+        # addClient() always runs addOpenVPN() too, which needs a valid $3 (CLIENT_CERT_EXPIRE)
+        # or it hangs on an interactive prompt for a new client name and dies on closed stdin.
         output = self._run_client_script("1", client_name, "3650")
         self._apply_native_awg2_overrides(client_name)
         return output
