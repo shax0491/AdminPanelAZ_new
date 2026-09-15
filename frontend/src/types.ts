@@ -463,6 +463,7 @@ export interface FailoverPool {
   enabled: boolean
   front_node_id?: number | null
   front_port?: number | null
+  backend_port?: number | null
   active_member_id?: number | null
   last_switch_at?: string | null
   last_switch_error?: string | null
@@ -494,6 +495,7 @@ export interface FailoverPoolUpdate {
 export interface FailoverPoolFrontUpdate {
   front_node_id: number
   front_port: number
+  backend_port?: number
 }
 
 export interface FailoverSwitchResult {

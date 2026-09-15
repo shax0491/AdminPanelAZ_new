@@ -226,6 +226,7 @@ def proxy_destination(payload: DestinationBody, _: None = Depends(verify_api_key
 class FailoverDestinationBody(BaseModel):
     destination_ip: str = Field(..., min_length=7, max_length=64)
     port: int = Field(..., ge=1, le=65535)
+    backend_port: int | None = Field(None, ge=1, le=65535)
 
 
 @app.get("/failover/{label}/status")
@@ -271,7 +272,7 @@ def failover_set_destination(label: str, payload: FailoverDestinationBody, _: No
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     rules = _run_iptables_save_nat()
-    plan = plan_failover_switch(rules, label, payload.port, new_ip)
+    plan = plan_failover_switch(rules, label, payload.port, new_ip, payload.backend_port)
     if plan:
         _apply_iptables_plan(plan)
         try:
@@ -285,11 +286,13 @@ def failover_set_destination(label: str, payload: FailoverDestinationBody, _: No
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
         _flush_conntrack_for_port(payload.port)
+        if payload.backend_port and payload.backend_port != payload.port:
+            _flush_conntrack_for_port(payload.backend_port)
     return failover_status_from_rules(_run_iptables_save_nat(), label, payload.port)
 
 
 @app.delete("/failover/{label}")
-def failover_teardown(label: str, port: int, _: None = Depends(verify_api_key)):
+def failover_teardown(label: str, port: int, backend_port: int | None = None, _: None = Depends(verify_api_key)):
     try:
         label = validate_failover_label(label)
         port = validate_failover_port(port)
@@ -297,7 +300,7 @@ def failover_teardown(label: str, port: int, _: None = Depends(verify_api_key)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     rules = _run_iptables_save_nat()
-    plan = plan_failover_teardown(rules, label, port)
+    plan = plan_failover_teardown(rules, label, port, backend_port)
     if plan:
         _apply_iptables_plan(plan)
         try:

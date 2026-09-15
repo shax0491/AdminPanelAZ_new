@@ -1325,6 +1325,10 @@ class FailoverPoolUpdate(BaseModel):
 class FailoverPoolFrontUpdate(BaseModel):
     front_node_id: int
     front_port: int = Field(ge=1, le=65535)
+    # Real AmneziaWG 2.0 port on the pool's own members, if different from
+    # front_port - only needed when this front already serves another pool on
+    # a different client-facing port. Defaults to front_port when omitted.
+    backend_port: int | None = Field(None, ge=1, le=65535)
 
 
 class FailoverPoolResponse(BaseModel):
@@ -1340,6 +1344,7 @@ class FailoverPoolResponse(BaseModel):
     enabled: bool
     front_node_id: int | None = None
     front_port: int | None = None
+    backend_port: int | None = None
     active_member_id: int | None = None
     last_switch_at: str | None = None
     last_switch_error: str | None = None

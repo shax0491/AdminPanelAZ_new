@@ -138,12 +138,21 @@ class ProxyNodeAdapter:
         """GET /failover/{label}/status?port=N — независимо от proxy.sh DESTINATION."""
         return self._request("GET", f"/failover/{label}/status", params={"port": port})
 
-    def failover_set_destination(self, label: str, port: int, ip: str) -> dict[str, Any]:
-        """PUT /failover/{label}/destination → переключить фронт пула на другой узел."""
-        return self._request(
-            "PUT", f"/failover/{label}/destination", json={"destination_ip": ip, "port": port}
-        )
+    def failover_set_destination(
+        self, label: str, port: int, ip: str, *, backend_port: int | None = None
+    ) -> dict[str, Any]:
+        """PUT /failover/{label}/destination → переключить фронт пула на другой узел.
 
-    def failover_teardown(self, label: str, port: int) -> dict[str, Any]:
+        ``backend_port`` — реальный порт AmneziaWG на участниках пула, если
+        отличается от клиентского ``port`` (общий фронт на несколько пулов)."""
+        body: dict[str, Any] = {"destination_ip": ip, "port": port}
+        if backend_port is not None:
+            body["backend_port"] = backend_port
+        return self._request("PUT", f"/failover/{label}/destination", json=body)
+
+    def failover_teardown(self, label: str, port: int, *, backend_port: int | None = None) -> dict[str, Any]:
         """DELETE /failover/{label} — снять правила (пул удалён / фронт отвязан)."""
-        return self._request("DELETE", f"/failover/{label}", params={"port": port})
+        params: dict[str, Any] = {"port": port}
+        if backend_port is not None:
+            params["backend_port"] = backend_port
+        return self._request("DELETE", f"/failover/{label}", params=params)

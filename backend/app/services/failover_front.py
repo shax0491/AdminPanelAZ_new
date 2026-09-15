@@ -100,6 +100,14 @@ def require_front(pool: FailoverPool) -> tuple[Node, int]:
     return front, int(pool.front_port)
 
 
+def backend_port(pool: FailoverPool) -> int | None:
+    """Real AmneziaWG 2.0 port the pool's own members listen on. Usually the
+    same as ``front_port`` - only differs when one front hosts several pools
+    and each needs its own client-facing port while every member still
+    listens on the fleet's normal port (see ``FailoverPool.backend_port``)."""
+    return pool.backend_port or pool.front_port
+
+
 def front_endpoint(pool: FailoverPool) -> str | None:
     """``host:port`` clients should actually dial - the front, never a member
     directly. ``None`` if no front is assigned yet."""
@@ -245,6 +253,8 @@ def _apply_switch_to_target(db: Session, pool: FailoverPool, target: FailoverPoo
 
     label = front_label(pool)
     adapter = get_proxy_adapter(front)
+    real_port = backend_port(pool) or port
+    real_port_kwarg = real_port if real_port != port else None
 
     try:
         target_ip = _resolve_destination_ip(target.node)
@@ -271,8 +281,9 @@ def _apply_switch_to_target(db: Session, pool: FailoverPool, target: FailoverPoo
         result["active_member_id"] = target.id
         return result
 
+    extra: dict = {"backend_port": real_port_kwarg} if real_port_kwarg is not None else {}
     try:
-        adapter.failover_set_destination(label, port, target_ip)
+        adapter.failover_set_destination(label, port, target_ip, **extra)
     except Exception as exc:
         pool.last_switch_error = f"Не удалось переключить фронт: {exc}"
         db.commit()
@@ -352,7 +363,9 @@ def teardown_front_node(pool: FailoverPool, node: Node, port: int) -> None:
     """
     try:
         adapter = get_proxy_adapter(node)
-        adapter.failover_teardown(front_label(pool), int(port))
+        real_port = backend_port(pool)
+        extra: dict = {"backend_port": real_port} if real_port and real_port != port else {}
+        adapter.failover_teardown(front_label(pool), int(port), **extra)
     except Exception as exc:
         logger.warning("Failover front teardown failed for pool %s on %s: %s", pool.id, node.name, exc)
 

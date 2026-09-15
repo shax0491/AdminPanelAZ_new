@@ -168,6 +168,7 @@ function FrontPanel({
   const { success, error: notifyError } = useNotifications()
   const [frontNodeId, setFrontNodeId] = useState<string>(pool.front_node_id ? String(pool.front_node_id) : '')
   const [frontPort, setFrontPort] = useState<string>(pool.front_port ? String(pool.front_port) : '')
+  const [backendPort, setBackendPort] = useState<string>(pool.backend_port ? String(pool.backend_port) : '')
   const [checking, setChecking] = useState(false)
   const [mirroringId, setMirroringId] = useState<number | null>(null)
   const [switchingId, setSwitchingId] = useState<number | null>(null)
@@ -187,6 +188,9 @@ function FrontPanel({
             {nodes.find((n) => n.id === pool.front_node_id)?.name ?? `#${pool.front_node_id}`}
           </Badge>
           <span className="text-muted-foreground">порт {pool.front_port}</span>
+          {pool.backend_port && pool.backend_port !== pool.front_port && (
+            <span className="text-muted-foreground">(на узлах реально порт {pool.backend_port})</span>
+          )}
           <span className="text-muted-foreground">
             активен: {activeMember ? activeMember.label || activeMember.node_name : '— ещё не переключалось'}
           </span>
@@ -243,6 +247,7 @@ function FrontPanel({
             await setFailoverFront(pool.id, {
               front_node_id: Number(frontNodeId),
               front_port: Number(frontPort),
+              backend_port: backendPort ? Number(backendPort) : undefined,
             })
             success('Фронт назначен')
             onChanged()
@@ -267,15 +272,29 @@ function FrontPanel({
           </select>
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">UDP-порт AmneziaWG 2.0</Label>
+          <Label className="text-xs">UDP-порт для клиента</Label>
           <Input
             className="h-9 w-32 text-sm"
             type="number"
             min={1}
             max={65535}
-            placeholder="напр. 39001"
+            placeholder="напр. 53443"
             value={frontPort}
             onChange={(e) => setFrontPort(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs" title="Заполняйте, только если этот фронт-узел уже обслуживает другой пул на другом клиентском порту, а реальный AmneziaWG на самих узлах пула слушает другой порт (обычно 53443).">
+            Порт на узлах пула (если отличается)
+          </Label>
+          <Input
+            className="h-9 w-40 text-sm"
+            type="number"
+            min={1}
+            max={65535}
+            placeholder="по умолчанию = порт выше"
+            value={backendPort}
+            onChange={(e) => setBackendPort(e.target.value)}
           />
         </div>
         <Button size="sm" type="submit" disabled={!frontNodeId || !frontPort}>

@@ -87,6 +87,7 @@ def _pool_response(pool: FailoverPool) -> FailoverPoolResponse:
         enabled=pool.enabled,
         front_node_id=pool.front_node_id,
         front_port=pool.front_port,
+        backend_port=pool.backend_port,
         active_member_id=pool.active_member_id,
         last_switch_at=pool.last_switch_at.isoformat() if pool.last_switch_at else None,
         last_switch_error=pool.last_switch_error,
@@ -183,6 +184,7 @@ def set_front(
     old_front_port = pool.front_port
     pool.front_node_id = node.id
     pool.front_port = payload.front_port
+    pool.backend_port = payload.backend_port
     pool.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(pool)

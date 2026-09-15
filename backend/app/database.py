@@ -1181,6 +1181,9 @@ def run_db_migrations() -> None:
             ("cert_expires_at", "DATETIME"),
             ("expires_at", "DATETIME"),
         ],
+        "failover_pools": [
+            ("backend_port", "INTEGER"),
+        ],
         "users": [
             ("totp_secret_encrypted", "VARCHAR(512)"),
             ("totp_enabled", "INTEGER DEFAULT 0"),

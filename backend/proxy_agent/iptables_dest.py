@@ -256,33 +256,42 @@ def failover_status_from_rules(rules_text: str, label: str, port: int) -> dict:
     return {"label": label, "port": port, "destination_ip": ip, "installed": ip is not None}
 
 
-def _failover_dnat_argv(action: str, label: str, port: int, ip: str) -> list[str]:
+def _failover_dnat_argv(action: str, label: str, port: int, ip: str, backend_port: int) -> list[str]:
     return [
         "iptables", "-w", "-t", "nat", action, "PREROUTING",
         "-p", "udp", "--dport", str(port),
         "-m", "comment", "--comment", _failover_comment(label),
-        "-j", "DNAT", "--to-destination", f"{ip}:{port}",
+        "-j", "DNAT", "--to-destination", f"{ip}:{backend_port}",
     ]
 
 
-def _failover_masq_argv(action: str, label: str, port: int, ip: str) -> list[str]:
+def _failover_masq_argv(action: str, label: str, ip: str, backend_port: int) -> list[str]:
+    # Matches the packet AFTER DNAT rewrote its destination port, so this must
+    # use backend_port, not the client-facing front port.
     return [
         "iptables", "-w", "-t", "nat", action, "POSTROUTING",
-        "-p", "udp", "-d", ip, "--dport", str(port),
+        "-p", "udp", "-d", ip, "--dport", str(backend_port),
         "-m", "comment", "--comment", _failover_comment(label),
         "-j", "MASQUERADE",
     ]
 
 
-def plan_failover_switch(rules_text: str, label: str, port: int, new_ip: str) -> list[list[str]]:
+def plan_failover_switch(
+    rules_text: str, label: str, port: int, new_ip: str, backend_port: int | None = None
+) -> list[list[str]]:
     """Argv plan to point label's DNAT+MASQUERADE at new_ip.
 
     No existing rule for this label → just INSERT (-A) a fresh pair. A rule
     already exists → -D the old pair first, then -A the new one, so exactly
     one destination is ever live for a given label at a time.
+
+    ``backend_port`` is the real port the pool's members listen on - defaults
+    to ``port`` (the common case: front is a dedicated node, not shared with
+    another pool that needs a different client-facing port on the same host).
     """
     label = validate_failover_label(label)
     port = validate_failover_port(port)
+    backend_port = validate_failover_port(backend_port) if backend_port else port
     new = _parse_ipv4(new_ip)
     old_ip = detect_failover_destination(rules_text, label)
     if old_ip == new:
@@ -290,23 +299,26 @@ def plan_failover_switch(rules_text: str, label: str, port: int, new_ip: str) ->
 
     plan: list[list[str]] = []
     if old_ip:
-        plan.append(_failover_dnat_argv("-D", label, port, old_ip))
-        plan.append(_failover_masq_argv("-D", label, port, old_ip))
-    plan.append(_failover_dnat_argv("-A", label, port, new))
-    plan.append(_failover_masq_argv("-A", label, port, new))
+        plan.append(_failover_dnat_argv("-D", label, port, old_ip, backend_port))
+        plan.append(_failover_masq_argv("-D", label, old_ip, backend_port))
+    plan.append(_failover_dnat_argv("-A", label, port, new, backend_port))
+    plan.append(_failover_masq_argv("-A", label, new, backend_port))
     return plan
 
 
-def plan_failover_teardown(rules_text: str, label: str, port: int) -> list[list[str]]:
+def plan_failover_teardown(
+    rules_text: str, label: str, port: int, backend_port: int | None = None
+) -> list[list[str]]:
     """Argv plan to remove label's rules entirely (pool deleted / front detached)."""
     label = validate_failover_label(label)
     port = validate_failover_port(port)
+    backend_port = validate_failover_port(backend_port) if backend_port else port
     old_ip = detect_failover_destination(rules_text, label)
     if not old_ip:
         return []
     return [
-        _failover_dnat_argv("-D", label, port, old_ip),
-        _failover_masq_argv("-D", label, port, old_ip),
+        _failover_dnat_argv("-D", label, port, old_ip, backend_port),
+        _failover_masq_argv("-D", label, old_ip, backend_port),
     ]
 
 

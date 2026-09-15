@@ -802,6 +802,11 @@ class FailoverPool(Base):
     # dnat_front only, all nullable:
     front_node_id: Mapped[int | None] = mapped_column(ForeignKey("nodes.id"), nullable=True, default=None)
     front_port: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    # Real AmneziaWG 2.0 listen port on the pool's own members (usually 53443 same
+    # as front_port). Only differs when one front hosts several pools and needs a
+    # distinct client-facing port per pool while every member still listens on the
+    # same real port - see failover_front.py's DNAT/MASQUERADE port translation.
+    backend_port: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     active_member_id: Mapped[int | None] = mapped_column(
         ForeignKey("failover_pool_members.id", use_alter=True, name="fk_failover_pools_active_member_id"),
         nullable=True,
