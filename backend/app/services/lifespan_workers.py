@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.cidr_database import resolve_cidr_db_path
 from app.services.backup_scheduler import run_backup_scheduler_loop, run_runtime_backup_cleanup_loop
 from app.services.cloudflare_ips_scheduler import run_cloudflare_ips_scheduler_loop
+from app.services.failover_scheduler import run_failover_scheduler_loop
 from app.services.access_expiry_worker import run_access_expiry_loop
 from app.services.awg2_expire_worker import run_awg2_expire_loop
 from app.services.cert_sync_worker import run_cert_sync_loop
@@ -50,6 +51,7 @@ from app.services.worker_lifecycle import (
     should_start_awg2_expire,
     should_start_access_expiry,
     should_start_cloudflare_ips_scheduler,
+    should_start_failover_scheduler,
 )
 
 TaskFactory = Callable[[], asyncio.Task]
@@ -79,6 +81,7 @@ def get_worker_startup_plan() -> dict[str, bool]:
         "awg2_expire": should_start_awg2_expire(),
         "access_expiry": should_start_access_expiry(),
         "cloudflare_ips_scheduler": should_start_cloudflare_ips_scheduler(),
+        "failover_scheduler": should_start_failover_scheduler(),
     }
 
 
@@ -141,6 +144,8 @@ def spawn_background_tasks(
         tasks["awg2_expire"] = create_task(run_awg2_expire_loop())
     if plan.get("access_expiry"):
         tasks["access_expiry"] = create_task(run_access_expiry_loop())
+    if plan.get("failover_scheduler"):
+        tasks["failover_scheduler"] = create_task(run_failover_scheduler_loop())
     if plan.get("cloudflare_ips_scheduler"):
         tasks["cloudflare_ips_scheduler"] = create_task(run_cloudflare_ips_scheduler_loop())
 

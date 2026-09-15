@@ -157,6 +157,8 @@ class Settings(BaseSettings):
     telegram_bot_command_rate_limit_enabled: bool = True
     geoip_city_mmdb_path: Path = Path("data/geoip/GeoLite2-City.mmdb")
     geoip_asn_mmdb_path: Path = Path("data/geoip/GeoLite2-ASN.mmdb")
+    failover_scheduler_enabled: bool = True
+    failover_scheduler_interval_seconds: int = 20
     noc_report_enabled: bool = True
     noc_report_check_interval_seconds: int = 60
     noc_report_daily_cron: str = "0 8 * * *"

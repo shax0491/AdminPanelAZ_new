@@ -91,6 +91,12 @@ def should_start_noc_report_scheduler() -> bool:
     return True
 
 
+def should_start_failover_scheduler() -> bool:
+    # Always spawn — loop re-checks FAILOVER_SCHEDULER_ENABLED and which pools
+    # are mode=auto each tick, no pools yet is a cheap no-op query.
+    return True
+
+
 def should_start_alert_rules_worker() -> bool:
     # Always spawn — loop re-checks alert_rules_enabled + telegram each tick.
     return True
