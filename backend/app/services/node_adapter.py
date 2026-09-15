@@ -280,6 +280,15 @@ class NodeAdapter(ABC):
     def check_warp_geo(self, scope: str) -> dict: ...
 
     @abstractmethod
+    def save_warp_proton_config(self, scope: str, raw_config: str) -> dict: ...
+
+    @abstractmethod
+    def set_warp_provider(self, provider: str) -> dict: ...
+
+    @abstractmethod
+    def apply_warp_changes(self) -> dict: ...
+
+    @abstractmethod
     def awg2_iter_install_stream(
         self,
         mode: str,
@@ -655,6 +664,21 @@ class LocalNodeAdapter(NodeAdapter):
         from app.services.warp_geo import check_warp_geo as _check_warp_geo
 
         return _check_warp_geo(scope, self._service.base_path)
+
+    def save_warp_proton_config(self, scope: str, raw_config: str) -> dict:
+        from app.services.warp_geo import save_proton_config
+
+        return save_proton_config(scope, raw_config, self._service.base_path)
+
+    def set_warp_provider(self, provider: str) -> dict:
+        from app.services.warp_geo import set_warp_provider as _set_warp_provider
+
+        return _set_warp_provider(provider, self._service.base_path)
+
+    def apply_warp_changes(self) -> dict:
+        from app.services.warp_geo import apply_warp_changes as _apply_warp_changes
+
+        return _apply_warp_changes(self._service.base_path)
 
     def awg2_iter_install_stream(
         self,
@@ -1635,6 +1659,18 @@ class RemoteNodeAdapter(NodeAdapter):
 
     def check_warp_geo(self, scope: str) -> dict:
         return self._request("GET", "/warp-geo/check", params={"scope": scope}, timeout=30.0)
+
+    def save_warp_proton_config(self, scope: str, raw_config: str) -> dict:
+        return self._request(
+            "POST", "/warp-geo/proton-config",
+            json={"scope": scope, "raw_config": raw_config}, timeout=30.0,
+        )
+
+    def set_warp_provider(self, provider: str) -> dict:
+        return self._request("POST", "/warp-geo/provider", json={"provider": provider}, timeout=30.0)
+
+    def apply_warp_changes(self) -> dict:
+        return self._request("POST", "/warp-geo/apply", timeout=70.0)
 
     def awg2_iter_install_stream(
         self,

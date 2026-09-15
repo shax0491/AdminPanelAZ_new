@@ -38,7 +38,14 @@ from app.services.native_awg2_runtime import (
     unblock_client_runtime as awg2_unblock_client_runtime,
 )
 from app.services.warper import WarperService, run_warper_action
-from app.services.warp_geo import check_warp_geo, read_warp_status
+from app.services.warp_geo import (
+    ProtonConfigError,
+    apply_warp_changes,
+    check_warp_geo,
+    read_warp_status,
+    save_proton_config,
+    set_warp_provider,
+)
 from app.services.awg2 import (
     Awg2ClientNotFoundError,
     Awg2NotInstalledError,
@@ -293,6 +300,37 @@ def warp_geo_check(scope: str = "antizapret", _: None = Depends(verify_api_key))
     if scope not in ("antizapret", "vpn", "raw"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scope должен быть antizapret, vpn или raw")
     return check_warp_geo(scope, ANTIZAPRET_PATH)
+
+
+class ProtonConfigRequest(BaseModel):
+    scope: str
+    raw_config: str = Field(min_length=1, max_length=4096)
+
+
+class WarpProviderRequest(BaseModel):
+    provider: str
+
+
+@app.post("/warp-geo/proton-config")
+def warp_geo_save_proton_config(payload: ProtonConfigRequest, _: None = Depends(verify_api_key)):
+    if payload.scope not in ("antizapret", "vpn"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scope должен быть antizapret или vpn")
+    try:
+        return save_proton_config(payload.scope, payload.raw_config, ANTIZAPRET_PATH)
+    except ProtonConfigError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@app.post("/warp-geo/provider")
+def warp_geo_set_provider(payload: WarpProviderRequest, _: None = Depends(verify_api_key)):
+    if payload.provider not in ("proton", "cloudflare"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="provider должен быть proton или cloudflare")
+    return set_warp_provider(payload.provider, ANTIZAPRET_PATH)
+
+
+@app.post("/warp-geo/apply")
+def warp_geo_apply(_: None = Depends(verify_api_key)):
+    return apply_warp_changes(ANTIZAPRET_PATH)
 
 
 @app.post("/openvpn/management/disconnect")

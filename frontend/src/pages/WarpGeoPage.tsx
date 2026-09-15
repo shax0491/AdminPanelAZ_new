@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CircleCheck, CircleX, Loader2, Satellite } from 'lucide-react'
-import { checkWarpGeo, getWarpGeoStatus, listWarpGeoNodes } from '@/api/warpGeo'
+import { AlertTriangle, CircleCheck, CircleX, Loader2, RefreshCw, Satellite } from 'lucide-react'
+import {
+  applyWarpChanges,
+  checkWarpGeo,
+  getWarpGeoStatus,
+  listWarpGeoNodes,
+  saveWarpProtonConfig,
+  setWarpProvider,
+} from '@/api/warpGeo'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import type { WarpGeoCheckResponse, WarpGeoNodesResponse, WarpGeoStatusResponse } from '@/types'
 
 const SCOPE_LABELS: Record<'antizapret' | 'vpn' | 'raw', string> = {
@@ -28,6 +36,12 @@ export default function WarpGeoPage() {
   const [statusError, setStatusError] = useState<string | null>(null)
   const [checkResults, setCheckResults] = useState<Partial<Record<'antizapret' | 'vpn' | 'raw', WarpGeoCheckResponse>>>({})
   const [checking, setChecking] = useState<string | null>(null)
+  const [protonDraft, setProtonDraft] = useState<{ antizapret: string; vpn: string }>({ antizapret: '', vpn: '' })
+  const [savingScope, setSavingScope] = useState<'antizapret' | 'vpn' | null>(null)
+  const [manageError, setManageError] = useState<string | null>(null)
+  const [manageMessage, setManageMessage] = useState<string | null>(null)
+  const [switchingProvider, setSwitchingProvider] = useState(false)
+  const [applying, setApplying] = useState(false)
 
   useEffect(() => {
     listWarpGeoNodes()
@@ -88,8 +102,62 @@ export default function WarpGeoPage() {
 
   useEffect(() => {
     if (nodeId !== null) loadStatus(nodeId)
+    setProtonDraft({ antizapret: '', vpn: '' })
+    setManageError(null)
+    setManageMessage(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeId])
+
+  const handleSaveProtonConfig = async (scope: 'antizapret' | 'vpn') => {
+    if (nodeId === null) return
+    const raw = protonDraft[scope].trim()
+    if (!raw) return
+    setSavingScope(scope)
+    setManageError(null)
+    setManageMessage(null)
+    try {
+      await saveWarpProtonConfig(nodeId, scope, raw)
+      setProtonDraft((prev) => ({ ...prev, [scope]: '' }))
+      setManageMessage('Ключ сохранён в конфиг. Нажмите «Применить», чтобы поднять туннель.')
+      loadStatus(nodeId)
+    } catch (err) {
+      setManageError(err instanceof Error ? err.message : 'Не удалось сохранить конфиг')
+    } finally {
+      setSavingScope(null)
+    }
+  }
+
+  const handleSwitchProvider = async (provider: 'proton' | 'cloudflare') => {
+    if (nodeId === null || status?.warp_provider === provider) return
+    setSwitchingProvider(true)
+    setManageError(null)
+    setManageMessage(null)
+    try {
+      await setWarpProvider(nodeId, provider)
+      setManageMessage('Провайдер сохранён в конфиг. Нажмите «Применить», чтобы переключить туннель.')
+      loadStatus(nodeId)
+    } catch (err) {
+      setManageError(err instanceof Error ? err.message : 'Не удалось сменить провайдера')
+    } finally {
+      setSwitchingProvider(false)
+    }
+  }
+
+  const handleApply = async () => {
+    if (nodeId === null) return
+    setApplying(true)
+    setManageError(null)
+    setManageMessage(null)
+    try {
+      const result = await applyWarpChanges(nodeId)
+      setManageMessage(result.success ? 'Применено — туннели подняты заново.' : `up.sh завершился с ошибкой: ${result.output}`)
+      loadStatus(nodeId)
+    } catch (err) {
+      setManageError(err instanceof Error ? err.message : 'Не удалось применить изменения')
+    } finally {
+      setApplying(false)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -161,6 +229,86 @@ export default function WarpGeoPage() {
               </div>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Управление WARP</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">Провайдер:</span>
+            <Button
+              size="sm"
+              variant={status?.warp_provider === 'proton' ? 'default' : 'outline'}
+              disabled={nodeId === null || switchingProvider}
+              onClick={() => handleSwitchProvider('proton')}
+            >
+              Proton
+            </Button>
+            <Button
+              size="sm"
+              variant={status?.warp_provider === 'cloudflare' ? 'default' : 'outline'}
+              disabled={nodeId === null || switchingProvider}
+              onClick={() => handleSwitchProvider('cloudflare')}
+            >
+              Cloudflare WARP
+            </Button>
+            {switchingProvider && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          </div>
+
+          {(['antizapret', 'vpn'] as const).map((scope) => (
+            <div key={scope} className="flex flex-col gap-2 rounded-md border p-3">
+              <span className="text-sm font-medium">
+                Proton-конфиг для {scope === 'antizapret' ? 'AntiZapret VPN' : 'полного VPN'}
+                {status && (
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    (сейчас: {(scope === 'antizapret' ? status.proton_antizapret_configured : status.proton_vpn_configured) ? 'ключ задан' : 'ключ не задан'})
+                  </span>
+                )}
+              </span>
+              <Textarea
+                placeholder={'[Interface]\nPrivateKey = ...\nAddress = 10.2.0.2/32\n\n[Peer]\nPublicKey = ...\nEndpoint = host:port'}
+                value={protonDraft[scope]}
+                onChange={(e) => setProtonDraft((prev) => ({ ...prev, [scope]: e.target.value }))}
+                className="min-h-[120px] font-mono text-xs"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                className="self-start"
+                disabled={nodeId === null || !protonDraft[scope].trim() || savingScope === scope}
+                onClick={() => handleSaveProtonConfig(scope)}
+              >
+                {savingScope === scope ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Сохранить ключ'}
+              </Button>
+            </div>
+          ))}
+
+          <div className="flex flex-col gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-3">
+            <div className="flex items-start gap-2 text-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <span>
+                Смена провайдера и новые ключи не действуют, пока не нажата «Применить» — это
+                выполняет <code className="font-mono">up.sh</code> на узле, который кратко (на
+                секунды) обрывает ВСЕ активные туннели на этом сервере, не только WARP.
+              </span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="self-start gap-1.5"
+              disabled={nodeId === null || applying}
+              onClick={handleApply}
+            >
+              {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Применить (перезапустить туннели)
+            </Button>
+          </div>
+
+          {manageMessage && <p className="text-sm text-muted-foreground">{manageMessage}</p>}
+          {manageError && <p className="text-sm text-destructive">{manageError}</p>}
         </CardContent>
       </Card>
 
