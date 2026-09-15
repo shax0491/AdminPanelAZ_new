@@ -76,6 +76,51 @@ def _patch_subprocess(monkeypatch, curl_responses: dict[str, tuple[int, str]], *
     )
 
 
+def test_check_warp_geo_reports_gemini_blocked(monkeypatch, tmp_path):
+    _patch_subprocess(
+        monkeypatch,
+        {
+            "https://1.1.1.1/cdn-cgi/trace": (0, "ip=1.2.3.4\nloc=RU\ncolo=DME\n"),
+            "https://www.youtube.com/": (0, '{"GL":"RU"}'),
+            "https://gemini.google.com/": (0, "<html>Gemini is not available in your country</html>"),
+        },
+    )
+
+    result = check_warp_geo("raw", tmp_path)
+
+    assert result["gemini_status"] == "blocked"
+
+
+def test_check_warp_geo_reports_gemini_ok(monkeypatch, tmp_path):
+    _patch_subprocess(
+        monkeypatch,
+        {
+            "https://1.1.1.1/cdn-cgi/trace": (0, "ip=1.2.3.4\nloc=GB\ncolo=LHR\n"),
+            "https://www.youtube.com/": (0, '{"GL":"CA"}'),
+            "https://gemini.google.com/": (0, "<html>normal page</html>"),
+        },
+    )
+
+    result = check_warp_geo("raw", tmp_path)
+
+    assert result["gemini_status"] == "ok"
+
+
+def test_check_warp_geo_reports_gemini_unknown_on_curl_failure(monkeypatch, tmp_path):
+    _patch_subprocess(
+        monkeypatch,
+        {
+            "https://1.1.1.1/cdn-cgi/trace": (0, "ip=1.2.3.4\nloc=GB\ncolo=LHR\n"),
+            "https://www.youtube.com/": (0, '{"GL":"CA"}'),
+            # gemini.google.com not in the map -> curl "fails" (rc=1)
+        },
+    )
+
+    result = check_warp_geo("raw", tmp_path)
+
+    assert result["gemini_status"] == "unknown"
+
+
 def test_check_warp_geo_parses_trace_and_youtube_gl(monkeypatch, tmp_path):
     trace_out = "ip=185.193.51.13\nts=169000.0\nloc=LV\ncolo=ARN\n"
     youtube_out = '<html>...{"GL":"LV","other":1}...</html>'

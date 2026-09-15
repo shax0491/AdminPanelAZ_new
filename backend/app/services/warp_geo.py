@@ -27,6 +27,12 @@ _SCOPE_INTERFACE = {
 
 _YOUTUBE_GL_RE = re.compile(r'"GL"\s*:\s*"([A-Z]{2})"')
 _TRACE_FIELD_RE = re.compile(r"^(ip|loc|colo)=(.*)$", re.MULTILINE)
+_GEMINI_BLOCK_MARKERS = (
+    "is not available in your country",
+    "not available in your country",
+    "unsupported country",
+    "user location is not supported",
+)
 
 _SAFE_SETUP_KEYS = {
     "WARP_PROVIDER",
@@ -277,19 +283,14 @@ def apply_warp_changes(antizapret_path: Path) -> dict:
     return {"success": result.returncode == 0, "output": output.strip()[-4000:]}
 
 
-def check_warp_geo(scope: GeoScope, antizapret_path: Path | None = None) -> dict:
-    """Проверить гео исходящего трафика для scope (antizapret/vpn/raw).
+def _run_geo_checks(interface: str | None) -> dict:
+    """Общее ядро гео-проверки (Cloudflare trace + YouTube GL + Gemini) по интерфейсу.
 
-    Для antizapret/vpn привязывается через `curl --interface warp-*` к
-    реальному WARP-интерфейсу - если он сейчас не поднят (провайдер Proton
-    без активного WARP, или ANTIZAPRET_WARP=1/none), возвращает понятную
-    ошибку вместо гео сырого IP хоста, которое может ввести в заблуждение.
+    Используется и для check_warp_geo (реальный WARP-интерфейс узла), и для
+    preview_cloudflare_warp (временный интерфейс, не трогающий боевые тоннели) -
+    источники детекта одни и те же в обоих случаях.
     """
-    interface = _SCOPE_INTERFACE[scope]
-    result: dict[str, object] = {"scope": scope, "interface": interface}
-
-    if interface:
-        result.update(_check_tunnel_matches_config(scope, interface, antizapret_path))
+    result: dict[str, object] = {}
 
     ok, trace_out = _run_curl("https://1.1.1.1/cdn-cgi/trace", interface=interface)
     if not ok:
@@ -312,8 +313,101 @@ def check_warp_geo(scope: GeoScope, antizapret_path: Path | None = None) -> dict
             youtube_gl = gl_match.group(1)
     result["youtube_gl"] = youtube_gl
 
+    ok_gm, gm_out = _run_curl("https://gemini.google.com/", interface=interface)
+    gemini_status = "unknown"
+    if ok_gm:
+        lowered = gm_out.lower()
+        gemini_status = "blocked" if any(marker in lowered for marker in _GEMINI_BLOCK_MARKERS) else "ok"
+    result["gemini_status"] = gemini_status
+
     country = result.get("cloudflare_loc")
     flagged_values = [v for v in (country, youtube_gl) if v]
     result["flagged_as_ru"] = any(v == "RU" for v in flagged_values)
     result["checked_fields"] = len(flagged_values)
     return result
+
+
+def check_warp_geo(scope: GeoScope, antizapret_path: Path | None = None) -> dict:
+    """Проверить гео исходящего трафика для scope (antizapret/vpn/raw).
+
+    Для antizapret/vpn привязывается через `curl --interface warp-*` к
+    реальному WARP-интерфейсу - если он сейчас не поднят (провайдер Proton
+    без активного WARP, или ANTIZAPRET_WARP=1/none), возвращает понятную
+    ошибку вместо гео сырого IP хоста, которое может ввести в заблуждение.
+    """
+    interface = _SCOPE_INTERFACE[scope]
+    result: dict[str, object] = {"scope": scope, "interface": interface}
+
+    if interface:
+        result.update(_check_tunnel_matches_config(scope, interface, antizapret_path))
+
+    result.update(_run_geo_checks(interface))
+    return result
+
+
+def preview_cloudflare_warp(tmp_dir: Path = Path("/tmp")) -> dict:
+    """Зарегистрировать ВРЕМЕННЫЙ анонимный Cloudflare WARP-аккаунт, поднять его на
+    отдельном временном интерфейсе, прогнать гео-проверку через него и сразу снести -
+    не трогая реальные тоннели/конфиг узла вообще.
+
+    Нужно для превью "как будет видеть нас Cloudflare WARP", не переключая провайдера
+    и не обрывая текущие боевые сессии (в отличие от apply_warp_changes/up.sh).
+    """
+    import json as _json
+    import uuid
+
+    iface = f"wgtest{uuid.uuid4().hex[:8]}"
+    conf_path = tmp_dir / f"{iface}.conf"
+    interface_up = False
+
+    try:
+        priv = subprocess.run(["wg", "genkey"], capture_output=True, text=True, timeout=10)
+        if priv.returncode != 0 or not priv.stdout.strip():
+            return {"error": "Не удалось сгенерировать ключ (wg genkey)"}
+        private_key = priv.stdout.strip()
+
+        pub = subprocess.run(["wg", "pubkey"], input=private_key, capture_output=True, text=True, timeout=10)
+        if pub.returncode != 0 or not pub.stdout.strip():
+            return {"error": "Не удалось получить публичный ключ (wg pubkey)"}
+        public_key = pub.stdout.strip()
+
+        reg = subprocess.run(
+            [
+                "curl", "-sSfL", "--connect-timeout", "10", "-X", "POST",
+                "https://api.cloudflareclient.com/v0a2158/reg",
+                "-H", "Content-Type: application/json",
+                "-d", _json.dumps({"key": public_key}),
+            ],
+            capture_output=True, text=True, timeout=15,
+        )
+        if reg.returncode != 0 or not reg.stdout.strip():
+            return {"error": f"Не удалось зарегистрироваться в Cloudflare WARP: {reg.stderr.strip()[:200]}"}
+        try:
+            data = _json.loads(reg.stdout)
+            peer_public_key = data["config"]["peers"][0]["public_key"]
+            endpoint = data["config"]["peers"][0]["endpoint"]["host"]
+            address = data["config"]["interface"]["addresses"]["v4"]
+        except (KeyError, IndexError, ValueError) as exc:
+            return {"error": f"Неожиданный ответ Cloudflare API: {exc}"}
+
+        conf_path.write_text(
+            f"[Interface]\nPrivateKey = {private_key}\nAddress = {address}/32\nMTU = 1280\n\n"
+            f"[Peer]\nPublicKey = {peer_public_key}\nAllowedIPs = 0.0.0.0/0\nEndpoint = {endpoint}\n",
+            encoding="utf-8",
+        )
+        up = subprocess.run(["wg-quick", "up", str(conf_path)], capture_output=True, text=True, timeout=15)
+        if up.returncode != 0:
+            return {"error": f"Не удалось поднять временный интерфейс: {up.stderr.strip()[:200]}"}
+        interface_up = True
+
+        result = _run_geo_checks(iface)
+        result["preview"] = True
+        return result
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return {"error": f"Ошибка предпросмотра Cloudflare: {exc}"}
+    finally:
+        # Только если реально подняли - "wg-quick down" на не существующем/не
+        # поднятом интерфейсе просто зря шумит в логах узла.
+        if interface_up:
+            subprocess.run(["wg-quick", "down", str(conf_path)], capture_output=True, text=True, timeout=10)
+        conf_path.unlink(missing_ok=True)

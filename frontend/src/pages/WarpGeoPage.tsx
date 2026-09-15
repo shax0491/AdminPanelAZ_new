@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, ChevronDown, ChevronRight, CircleCheck, CircleX, Loader2, RefreshCw, Satellite } from 'lucide-react'
+import { AlertTriangle, Cloud, ChevronDown, ChevronRight, CircleCheck, CircleX, Loader2, RefreshCw, Satellite } from 'lucide-react'
 import {
   applyWarpChanges,
   checkWarpGeo,
@@ -7,6 +7,7 @@ import {
   listWarpGeoNodes,
   saveWarpProtonConfig,
   setWarpProvider,
+  testCloudflareWarpPreview,
 } from '@/api/warpGeo'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -43,6 +44,8 @@ export default function WarpGeoPage() {
   const [switchingProvider, setSwitchingProvider] = useState(false)
   const [applying, setApplying] = useState(false)
   const [expandedProtonScope, setExpandedProtonScope] = useState<'antizapret' | 'vpn' | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewResult, setPreviewResult] = useState<WarpGeoCheckResponse | null>(null)
 
   useEffect(() => {
     listWarpGeoNodes()
@@ -107,6 +110,7 @@ export default function WarpGeoPage() {
     setManageError(null)
     setManageMessage(null)
     setExpandedProtonScope(null)
+    setPreviewResult(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeId])
 
@@ -145,6 +149,25 @@ export default function WarpGeoPage() {
     }
   }
 
+  const handlePreviewCloudflare = async () => {
+    if (nodeId === null) return
+    setPreviewLoading(true)
+    setPreviewResult(null)
+    setManageError(null)
+    try {
+      const result = await testCloudflareWarpPreview(nodeId)
+      setPreviewResult(result)
+    } catch (err) {
+      setPreviewResult({
+        scope: 'raw',
+        interface: null,
+        error: err instanceof Error ? err.message : 'Не удалось выполнить предпросмотр',
+      })
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
   const handleApply = async () => {
     if (nodeId === null) return
     setApplying(true)
@@ -160,6 +183,49 @@ export default function WarpGeoPage() {
       setApplying(false)
     }
   }
+
+  const renderCheckBadges = (result: WarpGeoCheckResponse) => (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      {result.error ? (
+        <span className="text-destructive">{result.error}</span>
+      ) : (
+        <>
+          {result.cloudflare_loc && (
+            <Badge variant="outline" title="Геолокация по сервису Cloudflare (не провайдер трафика)">
+              Гео-детект (Cloudflare): {result.cloudflare_loc} ({result.cloudflare_colo})
+            </Badge>
+          )}
+          {result.youtube_gl && (
+            <Badge variant="outline" title="Страна, которой YouTube определяет этот выход">
+              YouTube видит как: {result.youtube_gl}
+            </Badge>
+          )}
+          {result.gemini_status && result.gemini_status !== 'unknown' && (
+            <Badge
+              variant={result.gemini_status === 'blocked' ? 'destructive' : 'outline'}
+              title="Доступность gemini.google.com через этот выход"
+            >
+              Gemini: {result.gemini_status === 'blocked' ? 'заблокирован' : 'доступен'}
+            </Badge>
+          )}
+          {result.cloudflare_ip && (
+            <Badge variant="outline" className="font-mono">
+              IP: {result.cloudflare_ip}
+            </Badge>
+          )}
+          {result.flagged_as_ru ? (
+            <Badge variant="destructive" className="gap-1">
+              <CircleX className="h-3 w-3" /> Видят как Россию
+            </Badge>
+          ) : (
+            <Badge variant="success" className="gap-1">
+              <CircleCheck className="h-3 w-3" /> Не Россия
+            </Badge>
+          )}
+        </>
+      )}
+    </div>
+  )
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -258,6 +324,26 @@ export default function WarpGeoPage() {
               Cloudflare WARP
             </Button>
             {switchingProvider && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          </div>
+
+          <div className="flex flex-col gap-2 rounded-md border p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm">
+                Как будет видеть нас Cloudflare WARP — без смены провайдера, без обрыва текущих
+                тоннелей (временный отдельный интерфейс, снимается сразу после проверки).
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0 gap-1.5"
+                disabled={nodeId === null || previewLoading}
+                onClick={handlePreviewCloudflare}
+              >
+                {previewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Cloud className="h-4 w-4" />}
+                Проверить Cloudflare без переключения
+              </Button>
+            </div>
+            {previewResult && renderCheckBadges(previewResult)}
           </div>
 
           {status?.warp_provider === 'proton' &&
@@ -363,40 +449,7 @@ export default function WarpGeoPage() {
                     провайдеру. {result.tunnel_mismatch_detail}
                   </div>
                 )}
-                {result && (
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    {result.error ? (
-                      <span className="text-destructive">{result.error}</span>
-                    ) : (
-                      <>
-                        {result.cloudflare_loc && (
-                          <Badge variant="outline" title="Геолокация по сервису Cloudflare (не провайдер трафика)">
-                            Гео-детект (Cloudflare): {result.cloudflare_loc} ({result.cloudflare_colo})
-                          </Badge>
-                        )}
-                        {result.youtube_gl && (
-                          <Badge variant="outline" title="Страна, которой YouTube определяет этот выход">
-                            YouTube видит как: {result.youtube_gl}
-                          </Badge>
-                        )}
-                        {result.cloudflare_ip && (
-                          <Badge variant="outline" className="font-mono">
-                            IP: {result.cloudflare_ip}
-                          </Badge>
-                        )}
-                        {result.flagged_as_ru ? (
-                          <Badge variant="destructive" className="gap-1">
-                            <CircleX className="h-3 w-3" /> Видят как Россию
-                          </Badge>
-                        ) : (
-                          <Badge variant="success" className="gap-1">
-                            <CircleCheck className="h-3 w-3" /> Не Россия
-                          </Badge>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
+                {result && renderCheckBadges(result)}
               </div>
             )
           })}

@@ -1987,6 +1987,8 @@ export interface WarpGeoCheckResponse {
   youtube_gl?: string | null
   flagged_as_ru?: boolean
   checked_fields?: number
+  gemini_status?: 'ok' | 'blocked' | 'unknown'
+  preview?: boolean
 }
 
 export interface WarperHealthResponse {

@@ -289,6 +289,9 @@ class NodeAdapter(ABC):
     def apply_warp_changes(self) -> dict: ...
 
     @abstractmethod
+    def test_cloudflare_warp_preview(self) -> dict: ...
+
+    @abstractmethod
     def awg2_iter_install_stream(
         self,
         mode: str,
@@ -679,6 +682,11 @@ class LocalNodeAdapter(NodeAdapter):
         from app.services.warp_geo import apply_warp_changes as _apply_warp_changes
 
         return _apply_warp_changes(self._service.base_path)
+
+    def test_cloudflare_warp_preview(self) -> dict:
+        from app.services.warp_geo import preview_cloudflare_warp
+
+        return preview_cloudflare_warp()
 
     def awg2_iter_install_stream(
         self,
@@ -1671,6 +1679,9 @@ class RemoteNodeAdapter(NodeAdapter):
 
     def apply_warp_changes(self) -> dict:
         return self._request("POST", "/warp-geo/apply", timeout=70.0)
+
+    def test_cloudflare_warp_preview(self) -> dict:
+        return self._request("POST", "/warp-geo/test-cloudflare", timeout=30.0)
 
     def awg2_iter_install_stream(
         self,

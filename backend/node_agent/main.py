@@ -45,6 +45,7 @@ from app.services.warp_geo import (
     read_warp_status,
     save_proton_config,
     set_warp_provider,
+    preview_cloudflare_warp,
 )
 from app.services.awg2 import (
     Awg2ClientNotFoundError,
@@ -331,6 +332,11 @@ def warp_geo_set_provider(payload: WarpProviderRequest, _: None = Depends(verify
 @app.post("/warp-geo/apply")
 def warp_geo_apply(_: None = Depends(verify_api_key)):
     return apply_warp_changes(ANTIZAPRET_PATH)
+
+
+@app.post("/warp-geo/test-cloudflare")
+def warp_geo_test_cloudflare(_: None = Depends(verify_api_key)):
+    return preview_cloudflare_warp()
 
 
 @app.post("/openvpn/management/disconnect")

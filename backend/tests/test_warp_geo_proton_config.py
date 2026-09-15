@@ -19,6 +19,7 @@ from app.services.warp_geo import (
     parse_proton_wg_conf,
     save_proton_config,
     set_warp_provider,
+    preview_cloudflare_warp,
 )
 
 VALID_KEY_A = "uEPQs+EiRfLL4ok3NuNxSklLyR2YboTUNWDmRIla32o="
@@ -212,3 +213,99 @@ def test_remote_node_adapter_warp_write_methods_hit_expected_routes():
     with patch.object(adapter, "_request", return_value={"success": True}) as request:
         adapter.apply_warp_changes()
     request.assert_called_once_with("POST", "/warp-geo/apply", timeout=70.0)
+
+    with patch.object(adapter, "_request", return_value={"preview": True}) as request:
+        adapter.test_cloudflare_warp_preview()
+    request.assert_called_once_with("POST", "/warp-geo/test-cloudflare", timeout=30.0)
+
+
+def _fake_cloudflare_subprocess(*, up_ok=True, geo_ok=True):
+    """Симулирует всю цепочку preview_cloudflare_warp: wg genkey/pubkey, регистрация
+    в Cloudflare API, wg-quick up, гео-проверка через _run_geo_checks, wg-quick down."""
+    calls: list[list[str]] = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        if args[:2] == ["wg", "genkey"]:
+            return SimpleNamespace(returncode=0, stdout="fakeprivkey==\n", stderr="")
+        if args[:2] == ["wg", "pubkey"]:
+            return SimpleNamespace(returncode=0, stdout="fakepubkey==\n", stderr="")
+        if args[:1] == ["curl"] and any("api.cloudflareclient.com" in a for a in args):
+            import json
+
+            body = json.dumps(
+                {
+                    "config": {
+                        "peers": [{"public_key": "serverpub==", "endpoint": {"host": "162.159.192.1:2408"}}],
+                        "interface": {"addresses": {"v4": "172.16.0.2"}},
+                    }
+                }
+            )
+            return SimpleNamespace(returncode=0, stdout=body, stderr="")
+        if args[:2] == ["wg-quick", "up"]:
+            return SimpleNamespace(returncode=0 if up_ok else 1, stdout="", stderr="" if up_ok else "boom")
+        if args[:2] == ["wg-quick", "down"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if args[:1] == ["curl"]:
+            if not geo_ok:
+                return SimpleNamespace(returncode=1, stdout="", stderr="fail")
+            url = args[-1]
+            if "1.1.1.1" in url:
+                return SimpleNamespace(returncode=0, stdout="ip=172.16.0.2\nloc=DE\ncolo=FRA\n", stderr="")
+            if "youtube" in url:
+                return SimpleNamespace(returncode=0, stdout='{"GL":"DE"}', stderr="")
+            return SimpleNamespace(returncode=0, stdout="<html>ok</html>", stderr="")
+        raise AssertionError(f"unexpected subprocess call: {args}")
+
+    return calls, fake_run
+
+
+def test_preview_cloudflare_warp_happy_path(monkeypatch, tmp_path):
+    calls, fake_run = _fake_cloudflare_subprocess()
+    monkeypatch.setattr(
+        "app.services.warp_geo.subprocess",
+        SimpleNamespace(run=fake_run, TimeoutExpired=Exception),
+    )
+
+    result = preview_cloudflare_warp(tmp_path)
+
+    assert result["preview"] is True
+    assert result["cloudflare_loc"] == "DE"
+    assert result["youtube_gl"] == "DE"
+    assert result["flagged_as_ru"] is False
+    assert any(c[:2] == ["wg-quick", "down"] for c in calls), "cleanup must run even on success"
+    assert not list(tmp_path.glob("*.conf")), "temp conf file must be cleaned up"
+
+
+def test_preview_cloudflare_warp_cleans_up_even_if_up_fails(monkeypatch, tmp_path):
+    _calls, fake_run = _fake_cloudflare_subprocess(up_ok=False)
+    monkeypatch.setattr(
+        "app.services.warp_geo.subprocess",
+        SimpleNamespace(run=fake_run, TimeoutExpired=Exception),
+    )
+
+    result = preview_cloudflare_warp(tmp_path)
+
+    assert "error" in result
+    assert not list(tmp_path.glob("*.conf")), "temp conf file must not be left behind on failure"
+
+
+def test_preview_cloudflare_warp_registration_failure_returns_error(monkeypatch, tmp_path):
+    def fake_run(args, **kwargs):
+        if args[:2] == ["wg", "genkey"]:
+            return SimpleNamespace(returncode=0, stdout="fakeprivkey==\n", stderr="")
+        if args[:2] == ["wg", "pubkey"]:
+            return SimpleNamespace(returncode=0, stdout="fakepubkey==\n", stderr="")
+        if args[:1] == ["curl"]:
+            return SimpleNamespace(returncode=1, stdout="", stderr="network unreachable")
+        raise AssertionError(f"unexpected subprocess call: {args}")
+
+    monkeypatch.setattr(
+        "app.services.warp_geo.subprocess",
+        SimpleNamespace(run=fake_run, TimeoutExpired=Exception),
+    )
+
+    result = preview_cloudflare_warp(tmp_path)
+
+    assert "error" in result
+    assert "зарегистрироваться" in result["error"]

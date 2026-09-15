@@ -92,3 +92,10 @@ def warp_geo_apply(node_id: int, db: Session = Depends(get_db), _: User = Depend
     node = _get_vpn_node_or_404(node_id, db)
     adapter = get_adapter_for_node(node)
     return adapter.apply_warp_changes()
+
+
+@router.post("/{node_id}/test-cloudflare")
+def warp_geo_test_cloudflare(node_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    node = _get_vpn_node_or_404(node_id, db)
+    adapter = get_adapter_for_node(node)
+    return adapter.test_cloudflare_warp_preview()

@@ -30,3 +30,7 @@ export async function setWarpProvider(nodeId: number, provider: 'proton' | 'clou
 export async function applyWarpChanges(nodeId: number) {
   return apiFetch<{ success: boolean; output: string }>(`/warp-geo/${nodeId}/apply`, { method: 'POST' })
 }
+
+export async function testCloudflareWarpPreview(nodeId: number) {
+  return apiFetch<WarpGeoCheckResponse>(`/warp-geo/${nodeId}/test-cloudflare`, { method: 'POST' })
+}
