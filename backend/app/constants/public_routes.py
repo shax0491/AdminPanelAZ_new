@@ -7,6 +7,8 @@ PUBLIC_ROUTE_ROUTERS: dict[str, str] = {
     "keenetic": "keenetic_wg",
     "mikrotik": "mikrotik_wg",
     "tplink": "tplink_ovpn",
+    "keenetic-awg2": "keenetic_awg2",
+    "mikrotik-awg2": "mikrotik_awg2",
 }
 
 DEFAULT_OPENVPN_GROUP = r"GROUP_UDP\TCP"

@@ -93,4 +93,6 @@ RESULT_FILES = {
     "keenetic_wg": "keenetic-wireguard-routes.txt",
     "mikrotik_wg": "mikrotik-wireguard-routes.txt",
     "tplink_ovpn": "tp-link-openvpn-routes.txt",
+    "keenetic_awg2": "keenetic-amneziawg2-routes.txt",
+    "mikrotik_awg2": "mikrotik-amneziawg2-routes.txt",
 }

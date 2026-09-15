@@ -23,12 +23,16 @@ const ROUTER_META: Record<
   keenetic_wg: { label: 'Keenetic', initial: 'K', hint: 'WireGuard-маршруты' },
   mikrotik_wg: { label: 'MikroTik', initial: 'M', hint: 'WireGuard-маршруты' },
   tplink_ovpn: { label: 'TP-Link', initial: 'T', hint: 'OpenVPN-маршруты' },
+  keenetic_awg2: { label: 'Keenetic (AmneziaWG 2.0)', initial: 'K2', hint: 'AmneziaWG 2.0-маршруты' },
+  mikrotik_awg2: { label: 'MikroTik (AmneziaWG 2.0)', initial: 'M2', hint: 'AmneziaWG 2.0-маршруты' },
 }
 
 const PUBLIC_SLUGS: Record<string, string> = {
   keenetic_wg: 'keenetic',
   mikrotik_wg: 'mikrotik',
   tplink_ovpn: 'tplink',
+  keenetic_awg2: 'keenetic-awg2',
+  mikrotik_awg2: 'mikrotik-awg2',
 }
 
 function buildPublicRouteUrl(key: string): string | null {
