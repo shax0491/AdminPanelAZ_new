@@ -216,7 +216,7 @@ def test_remote_node_adapter_warp_write_methods_hit_expected_routes():
 
     with patch.object(adapter, "_request", return_value={"preview": True}) as request:
         adapter.test_cloudflare_warp_preview()
-    request.assert_called_once_with("POST", "/warp-geo/test-cloudflare", timeout=30.0)
+    request.assert_called_once_with("POST", "/warp-geo/test-cloudflare", timeout=150.0)
 
 
 def _fake_cloudflare_subprocess(*, up_ok=True, geo_ok=True):

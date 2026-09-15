@@ -74,6 +74,9 @@ def _patch_subprocess(monkeypatch, curl_responses: dict[str, tuple[int, str]], *
         "subprocess",
         SimpleNamespace(run=fake_run, TimeoutExpired=Exception),
     )
+    # _run_curl now retries on failure with a real time.sleep backoff -
+    # skip the wall-clock wait for the tests that deliberately fail a curl.
+    monkeypatch.setattr(warp_geo.time, "sleep", lambda *_: None)
 
 
 def test_check_warp_geo_reports_gemini_blocked(monkeypatch, tmp_path):

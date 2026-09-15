@@ -73,7 +73,7 @@ def read_warp_status(antizapret_path: Path) -> dict:
     return status
 
 
-def _run_curl(url: str, *, interface: str | None) -> tuple[bool, str]:
+def _run_curl_once(url: str, *, interface: str | None) -> tuple[bool, str]:
     args = ["curl", "-s", "-4", "--max-time", str(CURL_TIMEOUT_SECONDS)]
     if interface:
         args += ["--interface", interface]
@@ -85,6 +85,27 @@ def _run_curl(url: str, *, interface: str | None) -> tuple[bool, str]:
     if result.returncode != 0:
         return False, f"curl exit {result.returncode}: {result.stderr.strip()[:200]}"
     return True, result.stdout
+
+
+def _run_curl(url: str, *, interface: str | None, attempts: int = 4) -> tuple[bool, str]:
+    """Retries on failure - a free/anonymous Cloudflare WARP tunnel (the preview
+    flow registers a fresh one every time) drops individual requests at random,
+    not deterministically: live testing against one identity, 6 back-to-back
+    requests to youtube.com, got 200/200/200/200/000/000 - roughly a 30% single-
+    attempt failure rate with no pattern tying it to a specific target (plain
+    google.com hit the same resets). Single-shot was reporting "unreachable"
+    for targets that were actually fine on the very next attempt, which then
+    read as a confident (and wrong) geo verdict. 4 attempts keeps the overall
+    miss rate low without dragging out an interactive preview click too long
+    worst case (~4x CURL_TIMEOUT_SECONDS if every attempt times out)."""
+    last: tuple[bool, str] = (False, "no attempts made")
+    for attempt in range(attempts):
+        last = _run_curl_once(url, interface=interface)
+        if last[0]:
+            return last
+        if attempt < attempts - 1:
+            time.sleep(0.5)
+    return last
 
 
 def _interface_local_ip(interface: str) -> str | None:

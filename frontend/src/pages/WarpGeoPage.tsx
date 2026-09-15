@@ -351,6 +351,12 @@ export default function WarpGeoPage() {
                 Проверить Cloudflare без переключения
               </Button>
             </div>
+            {previewLoading && (
+              <p className="text-xs text-muted-foreground">
+                Проверяем (с повторами на нестабильном временном тоннеле) — обычно несколько секунд,
+                иногда до минуты…
+              </p>
+            )}
             {previewResult && renderCheckBadges(previewResult)}
           </div>
 

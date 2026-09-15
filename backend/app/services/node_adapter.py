@@ -1681,7 +1681,12 @@ class RemoteNodeAdapter(NodeAdapter):
         return self._request("POST", "/warp-geo/apply", timeout=70.0)
 
     def test_cloudflare_warp_preview(self) -> dict:
-        return self._request("POST", "/warp-geo/test-cloudflare", timeout=30.0)
+        # Generous ceiling: each of the 3 geo checks retries up to 4x with a
+        # CURL_TIMEOUT_SECONDS=10 cap (see warp_geo._run_curl) against a
+        # free/anonymous WARP tunnel that drops requests at random - the
+        # mathematical worst case is high, even if the typical case resolves
+        # in a few seconds.
+        return self._request("POST", "/warp-geo/test-cloudflare", timeout=150.0)
 
     def awg2_iter_install_stream(
         self,
