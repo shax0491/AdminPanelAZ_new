@@ -1190,8 +1190,21 @@ apply_wiz_env_settings() {
     && { [[ "$WIZARD_RAN" == true ]] || [[ -n "${WIZ_NODE_API_KEY_ROTATION_DAYS:-}" ]]; }; then
     env_set NODE_API_KEY_ROTATION_DAYS "$WIZ_NODE_API_KEY_ROTATION_DAYS"
   fi
-  if [[ "$WIZARD_RAN" == true && "${WIZ_INSTALL_TYPE:-controller}" == "controller" ]]; then
-    if [[ "${WIZ_REQUIRE_ANTIZAPRET:-false}" == "true" ]]; then
+  if { [[ "$WIZARD_RAN" == true ]] || _wiz_should_apply WIZ_INSTALL_TYPE; } \
+    && [[ "${WIZ_INSTALL_TYPE:-controller}" == "controller" ]]; then
+    # Приоритет: явный WIZ_REQUIRE_ANTIZAPRET (true/false), иначе - реальное
+    # наличие /root/antizapret на диске. Без этой ветки non-interactive
+    # установка (--non-interactive с явными WIZ_* флагами, минуя мастер и его
+    # отдельный блок ниже) оставляла LOCAL_ANTIZAPRET_ENABLED незаписанным,
+    # backend по умолчанию (config.py) считал его true и молча регистрировал
+    # текущую машину как "локальный узел VPN", даже когда AntiZapret на ней
+    # вообще не установлен - такой узел бессмысленно попадал в селектор узлов.
+    local az_path="${WIZ_ANTIZAPRET_PATH:-${ANTIZAPRET_PATH:-/root/antizapret}}"
+    if [[ "${WIZ_REQUIRE_ANTIZAPRET:-}" == "true" ]]; then
+      env_set LOCAL_ANTIZAPRET_ENABLED "true"
+    elif [[ "${WIZ_REQUIRE_ANTIZAPRET:-}" == "false" ]]; then
+      env_set LOCAL_ANTIZAPRET_ENABLED "false"
+    elif [[ -d "$az_path" && -f "$az_path/client.sh" ]]; then
       env_set LOCAL_ANTIZAPRET_ENABLED "true"
     else
       env_set LOCAL_ANTIZAPRET_ENABLED "false"
