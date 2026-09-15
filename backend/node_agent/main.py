@@ -38,6 +38,7 @@ from app.services.native_awg2_runtime import (
     unblock_client_runtime as awg2_unblock_client_runtime,
 )
 from app.services.warper import WarperService, run_warper_action
+from app.services.warp_geo import check_warp_geo, read_warp_status
 from app.services.awg2 import (
     Awg2ClientNotFoundError,
     Awg2NotInstalledError,
@@ -280,6 +281,18 @@ def openvpn_management_sockets(_: None = Depends(verify_api_key)):
 @app.get("/server/ip")
 def server_ip(_: None = Depends(verify_api_key)):
     return {"server_ip": service.get_server_ip()}
+
+
+@app.get("/warp-geo/status")
+def warp_geo_status(_: None = Depends(verify_api_key)):
+    return read_warp_status(ANTIZAPRET_PATH)
+
+
+@app.get("/warp-geo/check")
+def warp_geo_check(scope: str = "antizapret", _: None = Depends(verify_api_key)):
+    if scope not in ("antizapret", "vpn", "raw"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scope должен быть antizapret, vpn или raw")
+    return check_warp_geo(scope, ANTIZAPRET_PATH)
 
 
 @app.post("/openvpn/management/disconnect")
