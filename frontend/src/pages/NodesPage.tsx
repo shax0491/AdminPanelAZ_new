@@ -163,7 +163,7 @@ export default function NodesPage() {
   const [bulkConfirmAction, setBulkConfirmAction] = useState<BulkConfirmAction>(null)
   const [haDeleteBlockedNodes, setHaDeleteBlockedNodes] = useState<Node[]>([])
   const [statusFilter, setStatusFilter] = useState<'all' | NodeStatus>('all')
-  const [frontPoolNameByNodeId, setFrontPoolNameByNodeId] = useState<Map<number, string>>(new Map())
+  const [frontPoolNameByNodeId, setFrontPoolNameByNodeId] = useState<Map<number, string[]>>(new Map())
   const { task: rollTask, polling: rollPolling, startPoll: startRollPoll } = useBackgroundTaskPoll()
 
   // Only for the "Фронт: <пул>" badge - which node is *actually* the live
@@ -171,13 +171,17 @@ export default function NodesPage() {
   // node got proxy_agent auto-installed, so without this every proxy card
   // looked like an active front, and it was impossible to tell which one
   // really was ("у тебя все прокси фронты и нихуя не ясно кто из них кто").
+  // One node can front multiple pools at once (e.g. a shared panel front on
+  // different ports) - keep every pool name, not just the last one written.
   useEffect(() => {
     listFailoverPools()
       .then((pools) => {
-        const map = new Map<number, string>()
+        const map = new Map<number, string[]>()
         for (const pool of pools) {
           if (pool.enabled && pool.front_node_id != null) {
-            map.set(pool.front_node_id, pool.name)
+            const names = map.get(pool.front_node_id) ?? []
+            names.push(pool.name)
+            map.set(pool.front_node_id, names)
           }
         }
         setFrontPoolNameByNodeId(map)
@@ -1154,11 +1158,11 @@ export default function NodesPage() {
                       key={node.id}
                       node={node}
                       actions={buildNodeActions(node)}
-                      frontPoolName={frontPoolNameByNodeId.get(node.id) ?? null}
+                      frontPoolName={frontPoolNameByNodeId.get(node.id)?.join(', ') ?? null}
                       pairedProxyNode={pairedProxyNode}
                       pairedActions={pairedProxyNode ? buildNodeActions(pairedProxyNode) : null}
                       pairedFrontPoolName={
-                        pairedProxyNode ? (frontPoolNameByNodeId.get(pairedProxyNode.id) ?? null) : null
+                        pairedProxyNode ? (frontPoolNameByNodeId.get(pairedProxyNode.id)?.join(', ') ?? null) : null
                       }
                       showProxyUi={proxyNodesEnabled}
                       nodes={nodes}
