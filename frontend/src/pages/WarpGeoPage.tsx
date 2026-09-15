@@ -38,25 +38,10 @@ export default function WarpGeoPage() {
       .catch(() => setNodes([]))
   }, [])
 
-  const loadStatus = useCallback((id: number) => {
-    setStatusLoading(true)
-    setStatusError(null)
-    setCheckResults({})
-    getWarpGeoStatus(id)
-      .then(setStatus)
-      .catch((err) => setStatusError(err instanceof Error ? err.message : 'Не удалось загрузить статус WARP'))
-      .finally(() => setStatusLoading(false))
-  }, [])
-
-  useEffect(() => {
-    if (nodeId !== null) loadStatus(nodeId)
-  }, [nodeId, loadStatus])
-
-  const runCheck = async (scope: 'antizapret' | 'vpn' | 'raw') => {
-    if (nodeId === null) return
+  const runCheck = useCallback(async (id: number, scope: 'antizapret' | 'vpn' | 'raw') => {
     setChecking(scope)
     try {
-      const result = await checkWarpGeo(nodeId, scope)
+      const result = await checkWarpGeo(id, scope)
       setCheckResults((prev) => ({ ...prev, [scope]: result }))
     } catch (err) {
       setCheckResults((prev) => ({
@@ -70,7 +55,41 @@ export default function WarpGeoPage() {
     } finally {
       setChecking(null)
     }
-  }
+  }, [])
+
+  const runAllChecks = useCallback(
+    (id: number) => {
+      // Последовательно, а не Promise.all - три curl-запроса на самом узле,
+      // параллельный запуск только продлевает каждый из-за конкуренции за сеть.
+      void (async () => {
+        await runCheck(id, 'antizapret')
+        await runCheck(id, 'vpn')
+        await runCheck(id, 'raw')
+      })()
+    },
+    [runCheck],
+  )
+
+  const loadStatus = useCallback(
+    (id: number) => {
+      setStatusLoading(true)
+      setStatusError(null)
+      setCheckResults({})
+      getWarpGeoStatus(id)
+        .then((data) => {
+          setStatus(data)
+          runAllChecks(id)
+        })
+        .catch((err) => setStatusError(err instanceof Error ? err.message : 'Не удалось загрузить статус WARP'))
+        .finally(() => setStatusLoading(false))
+    },
+    [runAllChecks],
+  )
+
+  useEffect(() => {
+    if (nodeId !== null) loadStatus(nodeId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodeId])
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -146,8 +165,18 @@ export default function WarpGeoPage() {
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base">Гео-проверка</CardTitle>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={nodeId === null || checking !== null}
+            onClick={() => nodeId !== null && runAllChecks(nodeId)}
+            className="gap-1.5"
+          >
+            {checking !== null ? <Loader2 className="h-4 w-4 animate-spin" /> : <Satellite className="h-4 w-4" />}
+            Обновить всё
+          </Button>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {(['antizapret', 'vpn', 'raw'] as const).map((scope) => {
@@ -160,9 +189,9 @@ export default function WarpGeoPage() {
                     size="sm"
                     variant="outline"
                     disabled={nodeId === null || checking === scope}
-                    onClick={() => runCheck(scope)}
+                    onClick={() => nodeId !== null && runCheck(nodeId, scope)}
                   >
-                    {checking === scope ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Проверить'}
+                    {checking === scope ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Обновить'}
                   </Button>
                 </div>
                 {result?.tunnel_matches_config === false && (
@@ -178,9 +207,20 @@ export default function WarpGeoPage() {
                     ) : (
                       <>
                         {result.cloudflare_loc && (
-                          <Badge variant="outline">Cloudflare: {result.cloudflare_loc} ({result.cloudflare_colo})</Badge>
+                          <Badge variant="outline" title="Геолокация по сервису Cloudflare (не провайдер трафика)">
+                            Гео-детект (Cloudflare): {result.cloudflare_loc} ({result.cloudflare_colo})
+                          </Badge>
                         )}
-                        {result.youtube_gl && <Badge variant="outline">YouTube: {result.youtube_gl}</Badge>}
+                        {result.youtube_gl && (
+                          <Badge variant="outline" title="Страна, которой YouTube определяет этот выход">
+                            YouTube видит как: {result.youtube_gl}
+                          </Badge>
+                        )}
+                        {result.cloudflare_ip && (
+                          <Badge variant="outline" className="font-mono">
+                            IP: {result.cloudflare_ip}
+                          </Badge>
+                        )}
                         {result.flagged_as_ru ? (
                           <Badge variant="destructive" className="gap-1">
                             <CircleX className="h-3 w-3" /> Видят как Россию
