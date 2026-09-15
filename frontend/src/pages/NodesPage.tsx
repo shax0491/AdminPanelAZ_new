@@ -32,11 +32,11 @@ import MtlsCaStatusAlert from '@/components/nodes/MtlsCaStatusAlert'
 import NodeActions from '@/components/nodes/NodeActions'
 import NodeBulkActionsBar from '@/components/nodes/NodeBulkActionsBar'
 import NodeCard from '@/components/nodes/NodeCard'
-import FailoverFrontRoleCard from '@/components/nodes/FailoverFrontRoleCard'
 import NodeOfflineNotifyCard from '@/components/nodes/NodeOfflineNotifyCard'
+import NodeProxySection from '@/components/nodes/NodeProxySection'
 import NodeSyncGroupSection from '@/components/nodes/NodeSyncGroupSection'
 import NodeTransportBadge from '@/components/nodes/NodeTransportBadge'
-import ProxyNodePanel, { AZ_PROXY_SH_DOCS_URL } from '@/components/nodes/ProxyNodePanel'
+import { AZ_PROXY_SH_DOCS_URL } from '@/components/nodes/ProxyNodePanel'
 import {
   formatLastSeen,
   getNodeMeta,
@@ -1323,9 +1323,8 @@ export default function NodesPage() {
                               </TableRow>
                               {showProxyAffordance && (
                                 <TableRow>
-                                  <TableCell colSpan={10} className="space-y-3 bg-muted/20 py-3">
-                                    <FailoverFrontRoleCard node={node} />
-                                    <ProxyNodePanel
+                                  <TableCell colSpan={10} className="bg-muted/20 py-2">
+                                    <NodeProxySection
                                       node={node}
                                       nodes={nodes}
                                       syncGroups={syncGroups}
