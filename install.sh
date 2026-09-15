@@ -9,8 +9,10 @@
 #
 # Основные режимы:
 #   (по умолчанию)      установка панели управления (controller)
-#   --node-only         только агент узла для VPN-сервера
+#   --node-only         только агент узла для VPN-сервера (вместе с ним теперь
+#                       автоматически ставится и proxy_agent - см. --no-proxy-agent)
 #   --proxy-only        только proxy_agent для RU-прокси (без панели и без proxy.sh)
+#   --no-proxy-agent    не ставить proxy_agent вместе с node_agent
 #   --with-systemd      автозапуск как системный сервис
 #   --reinstall         переустановка с сохранением backend/.env
 #   --uninstall         удаление сервисов (каталог проекта остаётся)
@@ -116,6 +118,7 @@ WITH_SYSTEMD=false
 WITH_NODE_AGENT=false
 NODE_ONLY=false
 PROXY_ONLY=false
+NO_PROXY_AGENT=false
 FORCE=false
 NON_INTERACTIVE=false
 ACCEPT_DEFAULTS=false
@@ -322,6 +325,9 @@ parse_args() {
       --proxy-only)
         PROXY_ONLY=true
         export WIZ_INSTALL_TYPE=proxy
+        ;;
+      --no-proxy-agent)
+        NO_PROXY_AGENT=true
         ;;
       --force)
         FORCE=true
@@ -1057,6 +1063,13 @@ install_proxy_selected() {
   if [[ "$WIZARD_RAN" == true ]]; then
     wizard_install_proxy
     return $?
+  fi
+  # Любой узел (node_agent) может также служить dnat_front для пулов
+  # автопереключения (failover_pools) - proxy_agent лёгкий (простой FastAPI
+  # процесс, не трогает VPN-трафик, пока не назначен фронтом явно из панели),
+  # поэтому ставим его вместе с node_agent по умолчанию. Явный отказ: --no-proxy-agent.
+  if [[ "$NO_PROXY_AGENT" != true ]] && install_node_selected; then
+    return 0
   fi
   return 1
 }
