@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, CircleCheck, CircleX, Loader2, RefreshCw, Satellite } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, CircleCheck, CircleX, Loader2, RefreshCw, Satellite } from 'lucide-react'
 import {
   applyWarpChanges,
   checkWarpGeo,
@@ -42,6 +42,7 @@ export default function WarpGeoPage() {
   const [manageMessage, setManageMessage] = useState<string | null>(null)
   const [switchingProvider, setSwitchingProvider] = useState(false)
   const [applying, setApplying] = useState(false)
+  const [expandedProtonScope, setExpandedProtonScope] = useState<'antizapret' | 'vpn' | null>(null)
 
   useEffect(() => {
     listWarpGeoNodes()
@@ -105,6 +106,7 @@ export default function WarpGeoPage() {
     setProtonDraft({ antizapret: '', vpn: '' })
     setManageError(null)
     setManageMessage(null)
+    setExpandedProtonScope(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeId])
 
@@ -258,41 +260,54 @@ export default function WarpGeoPage() {
             {switchingProvider && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
           </div>
 
-          {(['antizapret', 'vpn'] as const).map((scope) => (
-            <div key={scope} className="flex flex-col gap-2 rounded-md border p-3">
-              <span className="text-sm font-medium">
-                Proton-конфиг для {scope === 'antizapret' ? 'AntiZapret VPN' : 'полного VPN'}
-                {status && (
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">
-                    (сейчас: {(scope === 'antizapret' ? status.proton_antizapret_configured : status.proton_vpn_configured) ? 'ключ задан' : 'ключ не задан'})
-                  </span>
-                )}
-              </span>
-              <Textarea
-                placeholder={'[Interface]\nPrivateKey = ...\nAddress = 10.2.0.2/32\n\n[Peer]\nPublicKey = ...\nEndpoint = host:port'}
-                value={protonDraft[scope]}
-                onChange={(e) => setProtonDraft((prev) => ({ ...prev, [scope]: e.target.value }))}
-                className="min-h-[120px] font-mono text-xs"
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                className="self-start"
-                disabled={nodeId === null || !protonDraft[scope].trim() || savingScope === scope}
-                onClick={() => handleSaveProtonConfig(scope)}
-              >
-                {savingScope === scope ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Сохранить ключ'}
-              </Button>
-            </div>
-          ))}
+          {status?.warp_provider === 'proton' &&
+            (['antizapret', 'vpn'] as const).map((scope) => {
+              const expanded = expandedProtonScope === scope
+              const configured = scope === 'antizapret' ? status.proton_antizapret_configured : status.proton_vpn_configured
+              return (
+                <div key={scope} className="flex flex-col gap-2 rounded-md border p-3">
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 text-left text-sm font-medium"
+                    onClick={() => setExpandedProtonScope(expanded ? null : scope)}
+                  >
+                    {expanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                    Proton-конфиг для {scope === 'antizapret' ? 'AntiZapret VPN' : 'полного VPN'}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      (сейчас: {configured ? 'ключ задан' : 'ключ не задан'})
+                    </span>
+                  </button>
+                  {expanded && (
+                    <>
+                      <Textarea
+                        placeholder={'[Interface]\nPrivateKey = ...\nAddress = 10.2.0.2/32\n\n[Peer]\nPublicKey = ...\nEndpoint = host:port'}
+                        value={protonDraft[scope]}
+                        onChange={(e) => setProtonDraft((prev) => ({ ...prev, [scope]: e.target.value }))}
+                        className="min-h-[120px] font-mono text-xs"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="self-start"
+                        disabled={nodeId === null || !protonDraft[scope].trim() || savingScope === scope}
+                        onClick={() => handleSaveProtonConfig(scope)}
+                      >
+                        {savingScope === scope ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Сохранить ключ'}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )
+            })}
 
           <div className="flex flex-col gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-3">
             <div className="flex items-start gap-2 text-sm">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <span>
-                Смена провайдера и новые ключи не действуют, пока не нажата «Применить» — это
-                выполняет <code className="font-mono">up.sh</code> на узле, который кратко (на
-                секунды) обрывает ВСЕ активные туннели на этом сервере, не только WARP.
+                Смена провайдера{status?.warp_provider === 'proton' ? ' и новые ключи' : ''} не
+                действует, пока не нажата «Применить» — это выполняет{' '}
+                <code className="font-mono">up.sh</code> на узле, который кратко (на секунды)
+                обрывает ВСЕ активные туннели на этом сервере, не только WARP.
               </span>
             </div>
             <Button

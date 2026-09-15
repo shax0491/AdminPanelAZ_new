@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import PageSectionHeader from '@/components/shared/PageSectionHeader'
 import { DOCS } from '@/lib/docsUrls'
-import { NodeBadge } from '@/components/NodeSelector'
+import NodeSelector, { NodeBadge } from '@/components/NodeSelector'
+import { useAuth } from '@/context/AuthContext'
 import { useNode } from '@/context/NodeContext'
 import type { Awg2HealthResponse } from '@/types'
 import { cn } from '@/lib/utils'
@@ -19,6 +20,7 @@ interface Awg2HeroProps {
 
 export default function Awg2Hero({ health, loading, nodeLabel, onRefresh }: Awg2HeroProps) {
   const { activeNode } = useNode()
+  const { user } = useAuth()
   const status = awg2StatusMeta(health)
 
   return (
@@ -48,10 +50,13 @@ export default function Awg2Hero({ health, loading, nodeLabel, onRefresh }: Awg2
         </>
       }
       actions={
-        <Button variant="outline" size="sm" onClick={onRefresh} disabled={loading}>
-          <RefreshCw className={cn('mr-1.5 h-4 w-4', loading && 'animate-spin')} />
-          Обновить
-        </Button>
+        <>
+          {user?.role === 'admin' && <NodeSelector compact />}
+          <Button variant="outline" size="sm" onClick={onRefresh} disabled={loading}>
+            <RefreshCw className={cn('mr-1.5 h-4 w-4', loading && 'animate-spin')} />
+            Обновить
+          </Button>
+        </>
       }
     />
   )

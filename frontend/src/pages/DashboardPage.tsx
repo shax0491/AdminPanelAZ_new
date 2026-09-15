@@ -49,7 +49,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { NodeBadge } from '@/components/NodeSelector'
+import NodeSelector, { NodeBadge } from '@/components/NodeSelector'
 import { useAuth } from '@/context/AuthContext'
 import { useFeatureModules } from '@/context/FeatureModulesContext'
 import { useNode } from '@/context/NodeContext'
@@ -383,11 +383,15 @@ export default function DashboardPage() {
                 <NodeBadge name={activeNode?.name} status={activeNode?.status} />
               </div>
               <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                VPN-клиенты на узле{' '}
-                <strong className="font-medium text-foreground">{activeNode?.name ?? summary?.node_name ?? 'не выбран'}</strong>
-                {activeNode?.is_local ? ' (локальный controller)' : activeNode ? ' (удалённый node agent)' : ''}.
                 OpenVPN и WireGuard / AmneziaWG.
+                {activeNode?.is_local ? ' Узел: локальный controller.' : ''}
               </p>
+              {user?.role === 'admin' && (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Узел:</span>
+                  <NodeSelector />
+                </div>
+              )}
             </div>
           </div>
 
