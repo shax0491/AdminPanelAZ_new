@@ -609,9 +609,21 @@ wizard_ask_install_type() {
     "Не уверены? Один сервер с уже установленным AntiZapret — выберите 2."
   echo
   if [[ "$WIZ_ACCEPT_DEFAULTS" == true ]]; then
-    WIZ_INSTALL_TYPE="controller"
-    WIZ_REQUIRE_ANTIZAPRET=true
-    echo "Какой компонент устанавливаем? [2]: Панель + локальный AntiZapret"
+    case "$WIZ_INSTALL_TYPE" in
+      node)
+        WIZ_REQUIRE_ANTIZAPRET=true
+        echo "Какой компонент устанавливаем? [3]: Только Node agent"
+        ;;
+      proxy)
+        WIZ_REQUIRE_ANTIZAPRET=false
+        echo "Какой компонент устанавливаем? [4]: Только proxy_agent (RU-прокси)"
+        ;;
+      *)
+        WIZ_INSTALL_TYPE="controller"
+        WIZ_REQUIRE_ANTIZAPRET=true
+        echo "Какой компонент устанавливаем? [2]: Панель + локальный AntiZapret"
+        ;;
+    esac
   else
     wiz_prompt_choice "Какой компонент устанавливаем?" 2 \
       "Только панель (управление удалёнными узлами, без локального AntiZapret)" \
