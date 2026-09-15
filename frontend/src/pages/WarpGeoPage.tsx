@@ -203,10 +203,10 @@ export default function WarpGeoPage() {
           {result.gemini_status && result.gemini_status !== 'unknown' && (
             <Badge
               variant={result.gemini_status === 'blocked' ? 'destructive' : 'outline'}
-              title="У gemini.google.com (в отличие от YouTube) нет отдельного поля с определённой страной в ответе - региона своего у Gemini не показываем, только доступность. Регион для этого же egress см. в бейдже YouTube рядом (тот же IP, тот же geoIP у Google)."
+              title="У gemini.google.com нет отдельного поля страны в ответе (в отличие от YouTube) - страна здесь из бейджа YouTube рядом: тот же IP, тот же geoIP у Google."
             >
-              Gemini: {result.gemini_status === 'blocked' ? 'заблокирован' : 'доступен'}
-              {result.youtube_gl ? ` (регион как у YouTube: ${result.youtube_gl})` : ''}
+              Gemini {result.gemini_status === 'blocked' ? 'заблокирован' : 'видит как'}
+              {result.gemini_status !== 'blocked' && result.youtube_gl ? `: ${result.youtube_gl}` : ''}
             </Badge>
           )}
           {result.cloudflare_ip && (

@@ -160,6 +160,9 @@ export type NodeCardProps = {
   selected?: boolean
   onToggleSelect?: () => void
   onProxyUpdated?: () => void | Promise<void>
+  /** Name of the enabled pool this node is the *live* dnat_front of right now, if any - every node has proxy_agent, most aren't actually fronting anyone. */
+  frontPoolName?: string | null
+  pairedFrontPoolName?: string | null
 }
 
 export default function NodeCard({
@@ -173,6 +176,8 @@ export default function NodeCard({
   selected = false,
   onToggleSelect,
   onProxyUpdated,
+  frontPoolName,
+  pairedFrontPoolName,
 }: NodeCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [pairedExpanded, setPairedExpanded] = useState(false)
@@ -215,8 +220,12 @@ export default function NodeCard({
             <Server size={14} className="shrink-0 text-muted-foreground" />
             <span className="truncate text-sm font-semibold tracking-tight">{node.name}</span>
             {isProxy && (
-              <Badge variant="outline" className="border-amber-500/40 text-[10px] text-amber-800 dark:text-amber-100">
-                Прокси
+              <Badge
+                variant="outline"
+                className="border-amber-500/40 text-[10px] text-amber-800 dark:text-amber-100"
+                title={frontPoolName ? `Сейчас активный фронт пула «${frontPoolName}»` : 'proxy_agent есть, но фронтом ни одного пула сейчас не назначен'}
+              >
+                {frontPoolName ? `Фронт: ${frontPoolName}` : 'Прокси'}
               </Badge>
             )}
             {isProxy && !showProxyUi && (
@@ -279,8 +288,16 @@ export default function NodeCard({
                   aria-hidden
                 />
                 <span className="truncate text-sm font-medium">{pairedProxyNode.name}</span>
-                <Badge variant="outline" className="border-amber-500/40 text-[10px] text-amber-800 dark:text-amber-100">
-                  Прокси / фронт
+                <Badge
+                  variant="outline"
+                  className="border-amber-500/40 text-[10px] text-amber-800 dark:text-amber-100"
+                  title={
+                    pairedFrontPoolName
+                      ? `Сейчас активный фронт пула «${pairedFrontPoolName}»`
+                      : 'proxy_agent есть, но фронтом ни одного пула сейчас не назначен'
+                  }
+                >
+                  {pairedFrontPoolName ? `Фронт: ${pairedFrontPoolName}` : 'Прокси (не фронт)'}
                 </Badge>
                 <span className="ml-auto shrink-0">
                   <NodeStatusBadge status={pairedProxyNode.status} />
