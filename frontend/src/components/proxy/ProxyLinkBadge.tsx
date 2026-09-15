@@ -25,7 +25,11 @@ export default function ProxyLinkBadge({
   if (!target) {
     if (!showUnlinked) return null
     return (
-      <Badge variant="outline" className={cn('text-[10px] font-normal text-muted-foreground', className)}>
+      <Badge
+        variant="outline"
+        className={cn('text-[10px] font-normal text-muted-foreground', className)}
+        title="Не отмечено, к какому VPN-серверу относится этот прокси - чисто для порядка в списке, на DESTINATION/трафик/роль во фронте автопереключения не влияет. Задаётся в форме редактирования узла."
+      >
         не привязан
       </Badge>
     )
