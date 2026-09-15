@@ -134,14 +134,26 @@ export default function ProxyNodePanel({
 
   const showLinkSelect = nodes.length > 0
 
+  const showProxyShWarning = Boolean(status && !status.installed)
+
   return (
-    <div className="space-y-3 rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
+    <div
+      className={
+        showProxyShWarning
+          ? 'space-y-3 rounded-lg border border-amber-500/25 bg-amber-500/5 p-3'
+          : 'space-y-3 rounded-lg border p-3'
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-sm font-medium">Прокси (proxy_agent)</p>
           {status && (
-            <Badge variant={status.installed ? 'default' : 'secondary'} className="text-[10px]">
-              {status.installed ? 'proxy.sh обнаружен' : 'proxy.sh не найден'}
+            <Badge
+              variant={status.installed ? 'default' : 'outline'}
+              className="text-[10px]"
+              title="Классический AntiZapret proxy.sh - не нужен, если узел используется только как фронт автопереключения (dnat_front)"
+            >
+              {status.installed ? 'proxy.sh обнаружен' : 'proxy.sh не установлен (не нужен для dnat_front)'}
             </Badge>
           )}
         </div>
@@ -176,10 +188,13 @@ export default function ProxyNodePanel({
         </p>
       ) : (
         <>
-          {status && !status.installed && (
+          {showProxyShWarning && (
             <SettingsAlert variant="warning" title="proxy.sh не установлен на этом сервере">
-              Установите прокси сами по инструкции AntiZapret, затем обновите статус. Панель не
-              ставит и не запускает proxy.sh.{' '}
+              Это нужно, только если узел пересылает трафик как классический RU-прокси AntiZapret.
+              Если он используется исключительно как фронт пула автопереключения (dnat_front) —
+              proxy.sh не требуется, это предупреждение можно игнорировать. Иначе установите прокси
+              сами по инструкции AntiZapret, затем обновите статус. Панель не ставит и не запускает
+              proxy.sh.{' '}
               <a
                 href={AZ_PROXY_SH_DOCS_URL}
                 target="_blank"
