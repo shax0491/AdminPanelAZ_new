@@ -26,6 +26,7 @@
 | Конфиг AntiZapret | [antizapret-config.md](antizapret-config.md) | Только админ |
 | Прокси | [proxy-nodes.md](proxy-nodes.md) | Только админ (меню **Конфигурация → Прокси**, модуль `proxy_nodes`) |
 | AZ-WARP | [warper.md](warper.md) | Только админ |
+| Warp Geo | [warp-geo.md](warp-geo.md) | Только админ (модуль `warp_geo`, выключен по умолчанию) |
 | AZ-AWG2 | [awg2.md](awg2.md) | Админ (страница); пользователи — свои конфиги на Конфигурациях |
 | Telegram | [Telegram.md](Telegram.md) | Только админ |
 | Редактор файлов | [edit-files.md](edit-files.md) | Только админ |
