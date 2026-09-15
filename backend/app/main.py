@@ -53,6 +53,7 @@ from app.routers import (
     telegram_webhook,
     session,
     unlock_codes,
+    warp_geo,
 )
 from app.routers import settings as settings_router
 from app.routers import users
@@ -234,6 +235,7 @@ app.include_router(failover_pools.router, prefix=_API_PREFIX)
 app.include_router(failover_pools.public_router, prefix=_API_PREFIX)
 app.include_router(routing.router, prefix=_API_PREFIX)
 app.include_router(warper.router, prefix=_API_PREFIX)
+app.include_router(warp_geo.router, prefix=_API_PREFIX)
 app.include_router(awg2.router, prefix=_API_PREFIX)
 app.include_router(cidr_db.router, prefix=_API_PREFIX)
 app.include_router(traffic.router, prefix=_API_PREFIX)

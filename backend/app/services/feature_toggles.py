@@ -198,6 +198,23 @@ FEATURE_TOGGLES: tuple[FeatureToggleDefinition, ...] = (
         frontend_paths=("/warper",),
     ),
     FeatureToggleDefinition(
+        key="warp_geo",
+        env_key="FEATURE_WARP_GEO_ENABLED",
+        label="Warp Geo",
+        description=(
+            "Статус провайдера WARP (Proton/Cloudflare) и гео-проверка исходящего трафика по узлам: "
+            "какой страной видят сервер Cloudflare и YouTube (GL-поле) — привязано к реальному "
+            "WARP-интерфейсу узла, а не к сырому IP хоста."
+        ),
+        icon="🛰️",
+        disable_hint="Раздел Warp Geo и связанные API будут недоступны.",
+        resource_impact_level="minimal",
+        default=False,
+        group="app_module",
+        api_prefixes=("/api/warp-geo",),
+        frontend_paths=("/warp-geo",),
+    ),
+    FeatureToggleDefinition(
         key="awg2",
         env_key="FEATURE_AWG2_ENABLED",
         label="AmneziaWG 2.0",
