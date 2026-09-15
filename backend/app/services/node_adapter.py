@@ -274,6 +274,12 @@ class NodeAdapter(ABC):
     def get_awg2_client_stats(self, client_name: str) -> dict: ...
 
     @abstractmethod
+    def get_warp_geo_status(self) -> dict: ...
+
+    @abstractmethod
+    def check_warp_geo(self, scope: str) -> dict: ...
+
+    @abstractmethod
     def awg2_iter_install_stream(
         self,
         mode: str,
@@ -639,6 +645,16 @@ class LocalNodeAdapter(NodeAdapter):
         if stats is None:
             raise Awg2ClientNotFoundError(f"AWG2 client not found: {client_name}")
         return stats
+
+    def get_warp_geo_status(self) -> dict:
+        from app.services.warp_geo import read_warp_status
+
+        return read_warp_status(self._service.base_path)
+
+    def check_warp_geo(self, scope: str) -> dict:
+        from app.services.warp_geo import check_warp_geo as _check_warp_geo
+
+        return _check_warp_geo(scope, self._service.base_path)
 
     def awg2_iter_install_stream(
         self,
@@ -1613,6 +1629,12 @@ class RemoteNodeAdapter(NodeAdapter):
 
     def get_awg2_client_stats(self, client_name: str) -> dict:
         return self._request("GET", f"/awg2/clients/{client_name}/stats", timeout=60.0)
+
+    def get_warp_geo_status(self) -> dict:
+        return self._request("GET", "/warp-geo/status", timeout=30.0)
+
+    def check_warp_geo(self, scope: str) -> dict:
+        return self._request("GET", "/warp-geo/check", params={"scope": scope}, timeout=30.0)
 
     def awg2_iter_install_stream(
         self,
