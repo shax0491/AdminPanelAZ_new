@@ -11,6 +11,7 @@ import {
   listFailoverPools,
   mirrorFailoverMemberIdentity,
   removeFailoverPoolMember,
+  updateFailoverPoolMember,
   resyncFailoverClient,
   setFailoverFront,
   switchCheckFailoverPool,
@@ -218,6 +219,21 @@ function FrontPanel({
         <p className="text-xs text-amber-600 dark:text-amber-400">Фронт ещё не назначен.</p>
       )}
 
+      {pool.front_node_id && (
+        <p className="rounded-md border border-sky-500/25 bg-sky-500/5 p-2.5 text-xs leading-relaxed">
+          <strong className="text-foreground">Какой конфиг раздавать клиенту:</strong> обычный
+          AmneziaWG 2.0 конфиг любого участника этого пула со страницы «Клиенты», но с полем{' '}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono">Endpoint</code> заменённым на{' '}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono">
+            {nodes.find((n) => n.id === pool.front_node_id)?.host ?? '?'}:{pool.front_port}
+          </code>{' '}
+          (адрес фронта, не узла-источника). Остальные поля конфига трогать не нужно — identity у
+          всех участников одинаковая. Именно из-за этого одного поля переключение остаётся
+          незаметным клиенту: он всегда стучится на фронт, а какой узел реально отвечает — решает
+          DNAT-правило.
+        </p>
+      )}
+
       <form
         className="flex flex-wrap items-end gap-2"
         onSubmit={async (e) => {
@@ -362,15 +378,25 @@ function FrontPanel({
                 <Button
                   size="sm"
                   disabled={switchingId === m.id}
-                  title="Переключить на этот узел вручную, даже если по health-check активен другой"
+                  title={
+                    idx === 0
+                      ? 'Переключить на этот узел вручную, даже если по health-check активен другой'
+                      : 'Сначала обновит identity с основного узла (чтобы не забыть и не словить рассинхрон клиентов), потом переключит'
+                  }
                   onClick={async () => {
                     setSwitchingId(m.id)
                     try {
+                      // Всегда переклонировать перед переключением (кроме основного - он и
+                      // есть источник) - забытое вручную "Обновить" было главной причиной,
+                      // почему переключение молча ломало хендшейк новым/удалённым клиентам.
+                      if (idx !== 0) {
+                        await mirrorFailoverMemberIdentity(pool.id, m.id)
+                      }
                       const result = await forceSwitchFailoverMember(pool.id, m.id)
                       if (result.errors.length > 0) {
                         notifyError(result.errors.join('; '))
                       } else {
-                        success(`Фронт переключён на ${m.node_name}`)
+                        success(`Identity обновлена, фронт переключён на ${m.node_name}`)
                       }
                       onChanged()
                     } catch (err) {
@@ -388,6 +414,99 @@ function FrontPanel({
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function MemberRow({
+  poolId,
+  member,
+  onChanged,
+}: {
+  poolId: number
+  member: FailoverPool['members'][number]
+  onChanged: () => void
+}) {
+  const { error: notifyError } = useNotifications()
+  const [renaming, setRenaming] = useState(false)
+  const [labelDraft, setLabelDraft] = useState(member.label ?? '')
+  const [saving, setSaving] = useState(false)
+  const [removing, setRemoving] = useState(false)
+
+  const saveLabel = async () => {
+    const trimmed = labelDraft.trim()
+    if (trimmed === (member.label ?? '')) {
+      setRenaming(false)
+      return
+    }
+    setSaving(true)
+    try {
+      await updateFailoverPoolMember(poolId, member.id, { label: trimmed || null })
+      setRenaming(false)
+      onChanged()
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : 'Ошибка')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card/40 px-3 py-2 text-sm">
+      <Badge variant="outline">#{member.priority}</Badge>
+      {renaming ? (
+        <Input
+          autoFocus
+          className="h-7 w-48 text-sm"
+          value={labelDraft}
+          placeholder={member.node_name}
+          disabled={saving}
+          onChange={(e) => setLabelDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void saveLabel()
+            if (e.key === 'Escape') {
+              setLabelDraft(member.label ?? '')
+              setRenaming(false)
+            }
+          }}
+          onBlur={() => void saveLabel()}
+        />
+      ) : (
+        <span className="font-medium">{member.label || member.node_name}</span>
+      )}
+      <span className="text-xs text-muted-foreground">{member.node_host}</span>
+      {!renaming && (
+        <Button
+          size="sm"
+          variant="ghost"
+          title="Переименовать (только отображаемая метка, на identity/DNAT не влияет)"
+          onClick={() => {
+            setLabelDraft(member.label ?? '')
+            setRenaming(true)
+          }}
+        >
+          <Pencil size={14} />
+        </Button>
+      )}
+      <Button
+        size="sm"
+        variant="ghost"
+        className={renaming ? '' : 'ml-auto'}
+        disabled={removing}
+        onClick={async () => {
+          setRemoving(true)
+          try {
+            await removeFailoverPoolMember(poolId, member.id)
+            onChanged()
+          } catch (err) {
+            notifyError(err instanceof Error ? err.message : 'Ошибка')
+          } finally {
+            setRemoving(false)
+          }
+        }}
+      >
+        <Trash2 size={14} />
+      </Button>
     </div>
   )
 }
@@ -411,7 +530,12 @@ function PoolCard({
   const [savingName, setSavingName] = useState(false)
   const linkedClients = pool.client_names
 
-  const availableNodes = nodes.filter((n) => !pool.members.some((m) => m.node_id === n.id))
+  // Участник пула - VPN-узел с живым AWG2, не прокси/фронт (тот выбирается
+  // отдельно ниже как front_node_id) - иначе список задваивался «сервер» +
+  // «сервер (фронт)» и было не разобрать, что из этого реально добавлять.
+  const availableNodes = nodes.filter(
+    (n) => (n.node_kind ?? 'vpn') !== 'proxy' && !pool.members.some((m) => m.node_id === n.id),
+  )
   const activeMember = pool.members.find((m) => m.id === pool.active_member_id)
 
   const saveName = async () => {
@@ -529,29 +653,7 @@ function PoolCard({
         ) : (
           <div className="space-y-1.5">
             {pool.members.map((m) => (
-              <div
-                key={m.id}
-                className="flex flex-wrap items-center gap-2 rounded-lg border bg-card/40 px-3 py-2 text-sm"
-              >
-                <Badge variant="outline">#{m.priority}</Badge>
-                <span className="font-medium">{m.label || m.node_name}</span>
-                <span className="text-xs text-muted-foreground">{m.node_host}</span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="ml-auto"
-                  onClick={async () => {
-                    try {
-                      await removeFailoverPoolMember(pool.id, m.id)
-                      onChanged()
-                    } catch (err) {
-                      notifyError(err instanceof Error ? err.message : 'Ошибка')
-                    }
-                  }}
-                >
-                  <Trash2 size={14} />
-                </Button>
-              </div>
+              <MemberRow key={m.id} poolId={pool.id} member={m} onChanged={onChanged} />
             ))}
           </div>
         )}
@@ -670,13 +772,17 @@ export default function FailoverPoolsPage() {
   const { success, error: notifyError } = useNotifications()
   const [pools, setPools] = useState<FailoverPool[]>([])
   const [nodes, setNodes] = useState<Node[]>([])
-  const [loading, setLoading] = useState(true)
+  const [initialLoading, setInitialLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [newPoolName, setNewPoolName] = useState('')
   const [newPoolStrategy, setNewPoolStrategy] = useState<FailoverPoolStrategy>('dnat_front')
 
+  // Deliberately doesn't toggle a "loading" flag that unmounts the pool
+  // cards - every button inside a card (переименовать/обновить/переключить/...)
+  // calls onChanged() -> load(), and swapping the whole list out for a
+  // spinner on every single click was wiping each card's local `expanded`
+  // state, collapsing it right back after every action.
   const load = useCallback(async () => {
-    setLoading(true)
     setLoadError(null)
     try {
       const [poolsData, nodesData] = await Promise.all([listFailoverPools(), getNodes()])
@@ -685,7 +791,7 @@ export default function FailoverPoolsPage() {
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Не удалось загрузить пулы автопереключения')
     } finally {
-      setLoading(false)
+      setInitialLoading(false)
     }
   }, [])
 
@@ -780,7 +886,7 @@ export default function FailoverPoolsPage() {
         </Button>
       </form>
 
-      {loading ? (
+      {initialLoading ? (
         <p className="text-sm text-muted-foreground">Загрузка…</p>
       ) : pools.length === 0 ? (
         <EmptyState

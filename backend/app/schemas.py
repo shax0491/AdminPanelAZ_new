@@ -1286,6 +1286,11 @@ class FailoverPoolMemberCreate(BaseModel):
     label: str | None = Field(default=None, max_length=128)
 
 
+class FailoverPoolMemberUpdate(BaseModel):
+    label: str | None = Field(default=None, max_length=128)
+    priority: int | None = Field(default=None, ge=0, le=10000)
+
+
 class FailoverPoolMemberResponse(BaseModel):
     id: int
     node_id: int

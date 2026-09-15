@@ -42,6 +42,17 @@ export async function addFailoverPoolMember(
   })
 }
 
+export async function updateFailoverPoolMember(
+  poolId: number,
+  memberId: number,
+  payload: { label?: string | null; priority?: number },
+) {
+  return apiFetch<FailoverPool>(`/failover-pools/${poolId}/members/${memberId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
 export async function removeFailoverPoolMember(poolId: number, memberId: number) {
   return apiFetch<FailoverPool>(`/failover-pools/${poolId}/members/${memberId}`, {
     method: 'DELETE',

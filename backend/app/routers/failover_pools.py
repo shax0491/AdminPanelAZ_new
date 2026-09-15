@@ -30,6 +30,7 @@ from app.schemas import (
     FailoverPoolFrontUpdate,
     FailoverPoolMemberCreate,
     FailoverPoolMemberResponse,
+    FailoverPoolMemberUpdate,
     FailoverPoolResponse,
     FailoverPoolUpdate,
     FailoverServerEntry,
@@ -275,6 +276,31 @@ def add_member(
     db.add(member)
     db.commit()
     db.refresh(pool)
+    return _pool_response(pool)
+
+
+@router.put("/{pool_id}/members/{member_id}", response_model=FailoverPoolResponse)
+def update_member(
+    pool_id: int,
+    member_id: int,
+    payload: FailoverPoolMemberUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Rename a member's display label (or re-priority it) - purely cosmetic/
+    ordering, does not touch identity, DNAT or the node itself."""
+    member = (
+        db.query(FailoverPoolMember)
+        .filter(FailoverPoolMember.id == member_id, FailoverPoolMember.pool_id == pool_id)
+        .first()
+    )
+    if member is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Участник пула не найден")
+    data = payload.model_dump(exclude_unset=True)
+    for key, value in data.items():
+        setattr(member, key, value)
+    db.commit()
+    pool = _get_pool_or_404(db, pool_id)
     return _pool_response(pool)
 
 
