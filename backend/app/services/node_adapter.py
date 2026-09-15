@@ -537,6 +537,9 @@ class LocalNodeAdapter(NodeAdapter):
     def import_amneziawg2_client_profiles_archive(self, data: bytes) -> None:
         self._service.import_amneziawg2_client_profiles_archive(data)
 
+    def rewrite_amneziawg2_client_endpoint(self, endpoint: str) -> int:
+        return self._service.rewrite_amneziawg2_client_endpoint(endpoint)
+
     def export_easyrsa3_archive(self) -> bytes:
         return self._service.export_easyrsa3_archive()
 
@@ -1275,6 +1278,15 @@ class RemoteNodeAdapter(NodeAdapter):
             files={"archive": ("amneziawg2-profiles.tar.gz", data, "application/gzip")},
             timeout=120.0,
         )
+
+    def rewrite_amneziawg2_client_endpoint(self, endpoint: str) -> int:
+        data = self._request(
+            "POST",
+            "/profiles/amneziawg2/rewrite-endpoint",
+            json={"endpoint": endpoint},
+            timeout=60.0,
+        )
+        return int(data.get("changed") or 0)
 
     def export_easyrsa3_archive(self) -> bytes:
         return self._request_bytes("GET", "/openvpn/easyrsa3/export", timeout=120.0)

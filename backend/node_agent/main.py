@@ -704,6 +704,19 @@ async def import_amneziawg2_profiles(
     return {"message": "Профили AmneziaWG 2.0 импортированы"}
 
 
+class RewriteAwg2EndpointBody(BaseModel):
+    endpoint: str
+
+
+@app.post("/profiles/amneziawg2/rewrite-endpoint")
+def rewrite_amneziawg2_endpoint(
+    body: RewriteAwg2EndpointBody,
+    _: None = Depends(verify_api_key),
+):
+    changed = service.rewrite_amneziawg2_client_endpoint(body.endpoint)
+    return {"changed": changed}
+
+
 @app.get("/openvpn/easyrsa3/index")
 def read_easyrsa_index(_: None = Depends(verify_api_key)):
     return {"content": service.read_easyrsa_index()}

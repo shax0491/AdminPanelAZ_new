@@ -45,6 +45,7 @@ from app.services.failover_front import (
     evaluate_and_switch,
     force_switch_member,
     mirror_member_identity,
+    rewrite_member_client_endpoints,
     teardown_front,
 )
 from app.services.failover_pool import (
@@ -179,6 +180,17 @@ def set_front(
     pool.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(pool)
+
+    # A client profile normally has Endpoint = whatever node.name it was
+    # generated on (primary, always) or copied verbatim from primary onto a
+    # mirrored backup - never the front. Point every member's files (that
+    # actually have profiles - primary always does, a backup only once
+    # mirrored) at the new front so a config downloaded from any of them is
+    # correct without manual editing.
+    for member in pool.members:
+        if member.priority == 0 or member.identity_mirrored_at is not None:
+            rewrite_member_client_endpoints(pool, member)
+
     return _pool_response(pool)
 
 

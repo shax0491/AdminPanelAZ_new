@@ -485,6 +485,35 @@ class AntiZapretService:
 
         return sync_all_native_awg2_interfaces()
 
+    def rewrite_amneziawg2_client_endpoint(self, endpoint: str) -> int:
+        """Rewrite the ``Endpoint = `` line in every AmneziaWG 2.0 client
+        profile on this node to ``endpoint`` (``host:port``).
+
+        Used by failover pools (dnat_front): a client profile generated the
+        normal way always points ``Endpoint`` at the node it was created on,
+        never at the pool's front - so a config downloaded as-is bypasses the
+        front entirely and can never fail over, on primary OR on a mirrored
+        backup (identity mirroring copies the primary's files verbatim,
+        Endpoint included). Called whenever a pool's front is assigned/changed
+        and after every identity clone, on every member, so a freshly
+        downloaded config is correct without the admin editing it by hand.
+        """
+        root = self.client_dir / "amneziawg2"
+        if not root.is_dir():
+            return 0
+        pattern = re.compile(r"^Endpoint\s*=.*$", re.MULTILINE)
+        changed = 0
+        for item in sorted(root.rglob("*.conf")):
+            try:
+                text = item.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            new_text, count = pattern.subn(f"Endpoint = {endpoint}", text)
+            if count and new_text != text:
+                item.write_text(new_text, encoding="utf-8")
+                changed += 1
+        return changed
+
     def export_amneziawg2_client_profiles_archive(self) -> bytes:
         buffer = io.BytesIO()
         with tarfile.open(fileobj=buffer, mode="w:gz") as archive:

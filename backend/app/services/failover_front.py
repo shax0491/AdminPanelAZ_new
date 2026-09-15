@@ -100,6 +100,33 @@ def require_front(pool: FailoverPool) -> tuple[Node, int]:
     return front, int(pool.front_port)
 
 
+def front_endpoint(pool: FailoverPool) -> str | None:
+    """``host:port`` clients should actually dial - the front, never a member
+    directly. ``None`` if no front is assigned yet."""
+    if pool.front_node_id is None or pool.front_port is None or pool.front_node is None:
+        return None
+    return f"{pool.front_node.host}:{pool.front_port}"
+
+
+def rewrite_member_client_endpoints(pool: FailoverPool, member: FailoverPoolMember) -> int:
+    """Point every AmneziaWG 2.0 client profile on ``member`` at the pool's
+    front instead of wherever client.sh normally wrote (that member's own
+    address) - best-effort, never raises, since a stale Endpoint in an
+    existing file is a correctness footgun for the *next* download, not a
+    reason to fail whatever the caller (assign front / clone identity) was
+    actually doing."""
+    endpoint = front_endpoint(pool)
+    if endpoint is None:
+        return 0
+    try:
+        return get_adapter_for_node(member.node).rewrite_amneziawg2_client_endpoint(endpoint)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "rewrite_member_client_endpoints: pool %s member %s failed: %s", pool.id, member.node.name, exc
+        )
+        return 0
+
+
 def primary_member(pool: FailoverPool) -> FailoverPoolMember | None:
     members = sorted(pool.members, key=lambda m: m.priority)
     return members[0] if members else None
@@ -154,6 +181,12 @@ def mirror_member_identity(db: Session, pool: FailoverPool, member: FailoverPool
             f"{detail}. Живой интерфейс может отставать от файла — перезапустите "
             f"amneziawg@<interface> на узле или попробуйте клонировать identity ещё раз."
         )
+
+    # Cloning just overwrote member's client files with byte-for-byte copies
+    # of primary's - Endpoint included, i.e. still pointing at primary's own
+    # address, not the front. A config downloaded from either node right now
+    # would bypass the front entirely and could never fail over.
+    rewrite_member_client_endpoints(pool, member)
 
     member.identity_mirrored_at = datetime.utcnow()
     db.commit()
