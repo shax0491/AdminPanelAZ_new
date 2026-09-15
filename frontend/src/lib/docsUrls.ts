@@ -25,6 +25,7 @@ export const DOCS = {
   nodes: docsUrl('uzly.md'),
   nodeSsh: docsUrl('node-ssh-transport.md'),
   nodeSync: docsUrl('NodeSync.md'),
+  failover: docsUrl('failover.md'),
   geoIp: docsUrl('GeoIP.md'),
   subscription: docsUrl('podpiska.md'),
   settings: docsUrl('nastrojki/README.md'),

@@ -28,6 +28,7 @@
 | AZ-WARP | [warper.md](warper.md) | Только админ |
 | Warp Geo | [warp-geo.md](warp-geo.md) | Только админ (модуль `warp_geo`, выключен по умолчанию) |
 | AZ-AWG2 | [awg2.md](awg2.md) | Админ (страница); пользователи — свои конфиги на Конфигурациях |
+| Автопереключение | [failover.md](failover.md) | Только админ |
 | Telegram | [Telegram.md](Telegram.md) | Только админ |
 | Редактор файлов | [edit-files.md](edit-files.md) | Только админ |
 | Журналы | [logs.md](logs.md) | Только админ |

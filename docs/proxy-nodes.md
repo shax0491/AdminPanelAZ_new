@@ -240,6 +240,7 @@ Mappings живут в conntrack на RU и забираются агентом;
 
 | Тема | Файл |
 |------|------|
+| Автопереключение (dnat_front) | [failover.md](failover.md) |
 | Узлы (VPN + кратко прокси) | [uzly.md](uzly.md) |
 | Установка `proxy_agent` | [proxy-agent.md](proxy-agent.md) |
 | Несколько `remote` / allow-ips | [antizapret-config.md](antizapret-config.md) |

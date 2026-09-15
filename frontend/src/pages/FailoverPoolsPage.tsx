@@ -24,6 +24,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import EmptyState from '@/components/ui/EmptyState'
 import SettingsAlert from '@/components/settings/SettingsAlert'
+import { DOCS } from '@/lib/docsUrls'
 import { cn } from '@/lib/utils'
 import { useNotifications } from '@/context/NotificationContext'
 import type { FailoverPool, FailoverPoolStrategy, FailoverStatusEntry, Node } from '@/types'
@@ -695,7 +696,17 @@ export default function FailoverPoolsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Автопереключение</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight">Автопереключение</h1>
+          <a
+            href={DOCS.failover}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-medium text-muted-foreground underline-offset-2 hover:underline"
+          >
+            Инструкция
+          </a>
+        </div>
         <p className="text-sm text-muted-foreground">
           Пулы серверов AmneziaWG 2.0 — при отказе одного узла клиент продолжает работать через
           другой без ручных действий. Только для нативного AmneziaWG 2.0 — OpenVPN и WireGuard 1.5
