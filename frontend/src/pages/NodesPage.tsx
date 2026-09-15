@@ -1125,7 +1125,7 @@ export default function NodesPage() {
                 onBulkDelete={() => openBulkConfirm('delete')}
               />
 
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+              <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2 2xl:grid-cols-3">
                 {topLevelNodes.map((node) => {
                   const pairedProxyNode = isProxyNode(node) ? null : (proxyByVpnId.get(node.id) ?? null)
                   return (
