@@ -24,6 +24,7 @@ const RoutingPage = lazy(() => import('./pages/RoutingPage'))
 const AntizapretConfigPage = lazy(() => import('./pages/AntizapretConfigPage'))
 const ProxyHubPage = lazy(() => import('./pages/ProxyHubPage'))
 const WarperPage = lazy(() => import('./pages/WarperPage'))
+const WarpGeoPage = lazy(() => import('./pages/WarpGeoPage'))
 const Awg2Page = lazy(() => import('./pages/Awg2Page'))
 const FailoverPoolsPage = lazy(() => import('./pages/FailoverPoolsPage'))
 const TelegramPage = lazy(() => import('./pages/TelegramPage'))
@@ -86,6 +87,7 @@ export default function App() {
                   <Route path="antizapret" element={<LazyPage><FeatureGuardRoute feature="antizapret_config"><AntizapretConfigPage /></FeatureGuardRoute></LazyPage>} />
                   <Route path="proxy" element={<LazyPage><FeatureGuardRoute feature="proxy_nodes"><ProxyHubPage /></FeatureGuardRoute></LazyPage>} />
                   <Route path="warper" element={<LazyPage><FeatureGuardRoute feature="warper"><WarperPage /></FeatureGuardRoute></LazyPage>} />
+                  <Route path="warp-geo" element={<LazyPage><FeatureGuardRoute feature="warp_geo"><WarpGeoPage /></FeatureGuardRoute></LazyPage>} />
                   <Route path="awg2" element={<LazyPage><FeatureGuardRoute feature="awg2"><Awg2Page /></FeatureGuardRoute></LazyPage>} />
                   <Route path="failover" element={<LazyPage><FeatureGuardRoute feature="failover_pools"><FailoverPoolsPage /></FeatureGuardRoute></LazyPage>} />
                   <Route path="telegram" element={<LazyPage><FeatureGuardRoute feature="telegram"><TelegramPage /></FeatureGuardRoute></LazyPage>} />

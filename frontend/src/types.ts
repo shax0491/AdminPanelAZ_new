@@ -1963,6 +1963,30 @@ export interface AntizapretSettingsUpdateResponse {
   warnings?: string[]
 }
 
+export interface WarpGeoNodesResponse {
+  nodes: { id: number; name: string; status: NodeStatus }[]
+}
+
+export interface WarpGeoStatusResponse {
+  warp_provider: string
+  antizapret_warp: string
+  vpn_warp: string
+  proton_antizapret_configured: boolean
+  proton_vpn_configured: boolean
+}
+
+export interface WarpGeoCheckResponse {
+  scope: 'antizapret' | 'vpn' | 'raw'
+  interface: string | null
+  error?: string
+  cloudflare_ip?: string
+  cloudflare_loc?: string
+  cloudflare_colo?: string
+  youtube_gl?: string | null
+  flagged_as_ru?: boolean
+  checked_fields?: number
+}
+
 export interface WarperHealthResponse {
   installed: boolean
   active: boolean

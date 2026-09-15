@@ -38,6 +38,7 @@ describe('SIDEBAR_NAV_GROUPS IA', () => {
       '/antizapret',
       '/proxy',
       '/warper',
+      '/warp-geo',
       '/awg2',
       '/failover',
     ])
