@@ -76,6 +76,24 @@
    при назначении и при каждом клонировании identity (см. шаг 5 выше). Отдайте клиенту
    свежий конфиг с «Клиенты», в нём уже правильный адрес.
 
+**Если на хосте-фронте уже крутится Docker** (например панель заодно держит что-то
+контейнерное) — Docker по умолчанию ставит `iptables -P FORWARD DROP` и пропускает
+только свои же контейнеры. DNAT/MASQUERADE от `proxy_agent` встанут корректно, но
+транзитный пакет срежет именно эта политика — снаружи это выглядит как «порт не
+отвечает», хотя правило в NAT-таблице на месте. Проверьте `iptables -S FORWARD` и при
+DROP добавьте точечные разрешения в цепочку `DOCKER-USER` (её Docker не перезаписывает):
+```bash
+iptables -I DOCKER-USER -p udp --dport <порт_фронта> -j ACCEPT
+```
+Если на сервере ещё никогда не запускался `proxy.sh` — скорее всего не установлен и
+`iptables-persistent`, тогда все правила `proxy_agent` (не только это) пропадут при
+следующей перезагрузке:
+```bash
+echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections
+DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent
+netfilter-persistent save
+```
+
 ## Identity — самое важное
 
 AmneziaWG 2.0 требует **побайтового совпадения** параметров обфускации
