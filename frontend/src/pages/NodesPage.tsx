@@ -1,9 +1,7 @@
-import { FormEvent, Fragment, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import {
   Activity,
-  Check,
   ExternalLink,
-  Globe,
   Loader2,
   MoreHorizontal,
   Pencil,
@@ -29,33 +27,22 @@ import {
 } from '@/api/client'
 import NodeUpdateDialog from '@/components/NodeUpdateDialog'
 import MtlsCaStatusAlert from '@/components/nodes/MtlsCaStatusAlert'
-import NodeActions from '@/components/nodes/NodeActions'
 import NodeBulkActionsBar from '@/components/nodes/NodeBulkActionsBar'
-import NodeCard from '@/components/nodes/NodeCard'
+import NodeCard, { type NodeActionHandlers } from '@/components/nodes/NodeCard'
 import NodeOfflineNotifyCard from '@/components/nodes/NodeOfflineNotifyCard'
-import NodeProxySection from '@/components/nodes/NodeProxySection'
 import NodeSyncGroupSection from '@/components/nodes/NodeSyncGroupSection'
-import NodeTransportBadge from '@/components/nodes/NodeTransportBadge'
 import { AZ_PROXY_SH_DOCS_URL } from '@/components/nodes/ProxyNodePanel'
-import {
-  formatLastSeen,
-  getNodeMeta,
-  getSelectedNodes,
-  isWrongVersionSslError,
-} from '@/components/nodes/nodeHelpers'
+import { getSelectedNodes } from '@/components/nodes/nodeHelpers'
 import { isProxyNode, PROXY_DEFAULT_PORT, VPN_DEFAULT_PORT } from '@/components/nodes/nodeKind'
-import ProxyLinkBadge from '@/components/proxy/ProxyLinkBadge'
 import ProxyLinkSelect from '@/components/proxy/ProxyLinkSelect'
-import { NodeBadge, NodeStatusBadge, statusLabels } from '@/components/NodeSelector'
+import { NodeBadge, statusLabels } from '@/components/NodeSelector'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import PageSectionHeader from '@/components/shared/PageSectionHeader'
 import SettingsAlert from '@/components/settings/SettingsAlert'
 import EmptyState from '@/components/ui/EmptyState'
-import ResponsiveDataView from '@/components/shared/ResponsiveDataView'
 import { InlineProgressBar } from '@/components/ui/ProgressBar'
 import Spinner from '@/components/ui/Spinner'
 import MetricCard from '@/components/noc/MetricCard'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -76,14 +63,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { useAuth } from '@/context/AuthContext'
 import { useFeatureModules } from '@/context/FeatureModulesContext'
 import { useNode } from '@/context/NodeContext'
@@ -916,6 +895,32 @@ export default function NodesPage() {
     statusFilter === 'all' ? nodes : nodes.filter((n) => n.status === statusFilter)
   const showMtlsStatus = Boolean(mtlsStatus && (!mtlsStatus.ready || !mtlsStatus.writable))
 
+  const buildNodeActions = (n: Node): NodeActionHandlers => ({
+    isActive: activeNode?.id === n.id,
+    healthLoading: healthLoading === n.id,
+    activateLoading: activateLoading === n.id,
+    onActivate: () => handleActivate(n),
+    onHealth: () => handleHealth(n),
+    onUpdate: () => setUpdateNodeTarget(n),
+    onRestart: () => handleRestartAgent(n),
+    onRotateKey: () => handleRotateKey(n),
+    onTransportChange: (transport) => handleTransportChange(n, transport),
+    onEdit: () => openEdit(n),
+    onDelete: () => handleDelete(n),
+  })
+
+  // A (front)-proxy paired to a VPN node nests inside that node's card
+  // instead of appearing as its own top-level card ("узлы к узлам, прокси к
+  // прокси, но парой вместе, свёрнуто").
+  const proxyByVpnId = new Map<number, Node>()
+  for (const n of nodes) {
+    if (isProxyNode(n) && n.linked_vpn_node_id != null) {
+      proxyByVpnId.set(n.linked_vpn_node_id, n)
+    }
+  }
+  const pairedProxyIds = new Set([...proxyByVpnId.values()].map((n) => n.id))
+  const topLevelNodes = filteredNodes.filter((n) => !pairedProxyIds.has(n.id))
+
   return (
     <div className="space-y-6">
       <PageSectionHeader
@@ -1120,229 +1125,26 @@ export default function NodesPage() {
                 onBulkDelete={() => openBulkConfirm('delete')}
               />
 
-              <ResponsiveDataView
-                breakpoint="xl"
-                mobile={filteredNodes.map((node) => (
-                  <NodeCard
-                    key={node.id}
-                    node={node}
-                    isActive={activeNode?.id === node.id}
-                    showProxyUi={proxyNodesEnabled}
-                    nodes={nodes}
-                    syncGroups={syncGroups}
-                    healthLoading={healthLoading === node.id}
-                    activateLoading={activateLoading === node.id}
-                    selected={selectedNodeIds.includes(node.id)}
-                    onToggleSelect={() => toggleNodeSelection(node.id)}
-                    onActivate={() => handleActivate(node)}
-                    onHealth={() => handleHealth(node)}
-                    onUpdate={() => setUpdateNodeTarget(node)}
-                    onRestart={() => handleRestartAgent(node)}
-                    onRotateKey={() => handleRotateKey(node)}
-                    onTransportChange={(transport) => handleTransportChange(node, transport)}
-                    onEdit={() => openEdit(node)}
-                    onDelete={() => handleDelete(node)}
-                    onProxyUpdated={() => void load()}
-                  />
-                ))}
-                desktop={
-                  <div className="overflow-x-auto rounded-lg border border-border/50">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="hover:bg-transparent">
-                          <TableHead className="w-10 bg-muted/30">
-                            <input
-                              type="checkbox"
-                              checked={
-                                filteredNodes.length > 0 &&
-                                filteredNodes.every((n) => selectedNodeIds.includes(n.id))
-                              }
-                              ref={(el) => {
-                                if (el) {
-                                  const selectedVisible = filteredNodes.filter((n) =>
-                                    selectedNodeIds.includes(n.id),
-                                  ).length
-                                  el.indeterminate =
-                                    selectedVisible > 0 && selectedVisible < filteredNodes.length
-                                }
-                              }}
-                              onChange={() => {
-                                const allVisibleSelected =
-                                  filteredNodes.length > 0 &&
-                                  filteredNodes.every((n) => selectedNodeIds.includes(n.id))
-                                if (allVisibleSelected) {
-                                  const visibleIds = new Set(filteredNodes.map((n) => n.id))
-                                  setSelectedNodeIds((prev) =>
-                                    prev.filter((id) => !visibleIds.has(id)),
-                                  )
-                                } else {
-                                  setSelectedNodeIds((prev) => [
-                                    ...new Set([...prev, ...filteredNodes.map((n) => n.id)]),
-                                  ])
-                                }
-                              }}
-                              aria-label="Выбрать все узлы"
-                              className="h-4 w-4 rounded border"
-                            />
-                          </TableHead>
-                          <TableHead className="bg-muted/30">Имя</TableHead>
-                          <TableHead className="bg-muted/30">Адрес</TableHead>
-                          <TableHead className="bg-muted/30">IP сервера</TableHead>
-                          <TableHead className="bg-muted/30">Agent</TableHead>
-                          <TableHead className="bg-muted/30">Службы</TableHead>
-                          <TableHead className="bg-muted/30">Статус</TableHead>
-                          <TableHead className="bg-muted/30">Тип</TableHead>
-                          <TableHead className="bg-muted/30">Транспорт</TableHead>
-                          <TableHead className="bg-muted/30 text-right">Действия</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredNodes.map((node) => {
-                          const isActive = activeNode?.id === node.id
-                          const meta = getNodeMeta(node)
-                          const lastSeen = formatLastSeen(node.last_seen_at)
-                          const address = node.is_local ? 'local' : `${node.host}:${node.port}`
-                          const isProxy = isProxyNode(node)
-                          const showProxyAffordance = proxyNodesEnabled && isProxy
-
-                          return (
-                            <Fragment key={node.id}>
-                              <TableRow
-                                className={cn(
-                                  'border-l-2 border-l-transparent transition-colors',
-                                  isActive && 'border-l-primary bg-primary/[0.06]',
-                                  node.status === 'offline' && !isActive && 'bg-destructive/[0.03]',
-                                )}
-                              >
-                                <TableCell>
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedNodeIds.includes(node.id)}
-                                    onChange={() => toggleNodeSelection(node.id)}
-                                    aria-label={`Выбрать ${node.name}`}
-                                    className="h-4 w-4 rounded border"
-                                  />
-                                </TableCell>
-                                <TableCell className="font-medium">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-[15px] font-semibold tracking-tight">
-                                      {node.name}
-                                    </span>
-                                    {isProxy && (
-                                      <Badge
-                                        variant="outline"
-                                        className="border-amber-500/40 text-[10px] text-amber-800 dark:text-amber-100"
-                                      >
-                                        Прокси
-                                      </Badge>
-                                    )}
-                                    {isProxy && !proxyNodesEnabled && (
-                                      <Badge variant="secondary" className="text-[10px]">
-                                        модуль выкл
-                                      </Badge>
-                                    )}
-                                    {showProxyAffordance && (
-                                      <ProxyLinkBadge
-                                        linkedVpnNodeId={node.linked_vpn_node_id}
-                                        nodes={nodes}
-                                        syncGroups={syncGroups}
-                                        showUnlinked
-                                      />
-                                    )}
-                                    {isActive && (
-                                      <Badge variant="default" className="text-[10px]">
-                                        <Check size={10} />
-                                        активный
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </TableCell>
-                                <TableCell className="font-mono text-xs tabular-nums text-muted-foreground">
-                                  {address}
-                                </TableCell>
-                                <TableCell className="font-mono text-xs tabular-nums">
-                                  {meta.serverIp ?? '—'}
-                                </TableCell>
-                                <TableCell className="font-mono text-xs tabular-nums">
-                                  {meta.agentVersion ?? '—'}
-                                </TableCell>
-                                <TableCell className="text-xs tabular-nums">
-                                  {meta.servicesLabel ?? '—'}
-                                </TableCell>
-                                <TableCell>
-                                  <NodeStatusBadge status={node.status} />
-                                  {lastSeen && (
-                                    <div className="mt-1 text-[10px] text-muted-foreground">
-                                      {lastSeen}
-                                    </div>
-                                  )}
-                                  {node.status === 'offline' && meta.lastError && (
-                                    <div
-                                      className="mt-1 max-w-xs text-[10px] text-destructive"
-                                      title={meta.lastError}
-                                    >
-                                      {isWrongVersionSslError(meta.lastError)
-                                        ? 'Несовпадение протокола HTTP/HTTPS — см. подсказку при раскрытии карточки'
-                                        : meta.lastError}
-                                    </div>
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  {node.is_local ? (
-                                    <Badge variant="secondary">Локальный</Badge>
-                                  ) : (
-                                    <Badge variant="outline">
-                                      <Globe size={10} />
-                                      Удалённый
-                                    </Badge>
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  <NodeTransportBadge node={node} />
-                                </TableCell>
-                                <TableCell>
-                                  <NodeActions
-                                    node={node}
-                                    isActive={isActive}
-                                    isProxy={isProxy}
-                                    healthLoading={healthLoading === node.id}
-                                    activateLoading={activateLoading === node.id}
-                                    onActivate={() => handleActivate(node)}
-                                    onHealth={() => handleHealth(node)}
-                                    onUpdate={() => setUpdateNodeTarget(node)}
-                                    onRestart={() => handleRestartAgent(node)}
-                                    onRotateKey={() => handleRotateKey(node)}
-                                    onTransportChange={(transport) =>
-                                      handleTransportChange(node, transport)
-                                    }
-                                    onEdit={() => openEdit(node)}
-                                    onDelete={() => handleDelete(node)}
-                                    compact
-                                  />
-                                </TableCell>
-                              </TableRow>
-                              {showProxyAffordance && (
-                                <TableRow>
-                                  <TableCell colSpan={10} className="bg-muted/20 py-2">
-                                    <NodeProxySection
-                                      node={node}
-                                      nodes={nodes}
-                                      syncGroups={syncGroups}
-                                      onUpdated={() => void load()}
-                                    />
-                                  </TableCell>
-                                </TableRow>
-                              )}
-                            </Fragment>
-                          )
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
-                }
-                mobileClassName="space-y-4"
-                desktopClassName="overflow-x-auto"
-              />
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+                {topLevelNodes.map((node) => {
+                  const pairedProxyNode = isProxyNode(node) ? null : (proxyByVpnId.get(node.id) ?? null)
+                  return (
+                    <NodeCard
+                      key={node.id}
+                      node={node}
+                      actions={buildNodeActions(node)}
+                      pairedProxyNode={pairedProxyNode}
+                      pairedActions={pairedProxyNode ? buildNodeActions(pairedProxyNode) : null}
+                      showProxyUi={proxyNodesEnabled}
+                      nodes={nodes}
+                      syncGroups={syncGroups}
+                      selected={selectedNodeIds.includes(node.id)}
+                      onToggleSelect={() => toggleNodeSelection(node.id)}
+                      onProxyUpdated={() => void load()}
+                    />
+                  )
+                })}
+              </div>
             </>
           )}
         </CardContent>
