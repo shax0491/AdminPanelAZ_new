@@ -1080,6 +1080,16 @@ apply_wiz_resource_profile() {
 }
 
 apply_wiz_env_settings() {
+  # --non-interactive/-y без явного WIZ_ADMIN_USERNAME/PASSWORD иначе падает
+  # позже в seed-admin-user.py с пустым паролем - подставляем документированный
+  # дефолт admin/admin (см. README "Вход по умолчанию"), а не молча ничего не пишем.
+  if [[ "${NON_INTERACTIVE:-false}" == true || "${ACCEPT_DEFAULTS:-false}" == true ]] \
+    && [[ -z "${WIZ_ADMIN_USERNAME:-}" ]]; then
+    export WIZ_ADMIN_USERNAME="admin"
+    export WIZ_ADMIN_PASSWORD="admin"
+  fi
+  export WIZ_ADMIN_MUST_CHANGE_PASSWORD="${WIZ_ADMIN_MUST_CHANGE_PASSWORD:-true}"
+
   if _wiz_should_apply WIZ_APP_ENV; then
     env_set APP_ENV "$WIZ_APP_ENV"
   fi
