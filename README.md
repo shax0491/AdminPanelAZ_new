@@ -1,67 +1,25 @@
 # 🛡️ AdminPanel AntiZapret
 
-Веб-панель для администрирования VPN-сервера [AntiZapret](https://github.com/shax0491/AntiZapret-VPN_new)
+Веб-панель для администрирования VPN-сервера [AntiZapret](https://github.com/shax0491/AntiZapret-VPN_new): клиенты, маршрутизация, мониторинг, бэкапы, Telegram.
 
 [![GitHub](https://img.shields.io/badge/GitHub-shax0491%2FAdminPanelAZ__new-181717?style=for-the-badge&logo=github)](https://github.com/shax0491/AdminPanelAZ_new)
 [![Version](https://img.shields.io/badge/Панель-2.25.0-blue?style=for-the-badge)](CHANGELOG.md)
 [![Node agent](https://img.shields.io/badge/Node_agent-1.8.0-555?style=for-the-badge)](CHANGELOG.md)
-[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](backend/)
-[![React](https://img.shields.io/badge/Frontend-React-61DAFB?style=for-the-badge&logo=react&logoColor=black)](frontend/)
 
-[🚀 Быстрый старт](#-быстрый-старт) · [✨ Возможности](#-возможности) · [🖼️ Обзор](#-обзор-панели) ·
-[📖 Руководства](docs/README.md) · [💬 Пожелания и баги](https://claymore0098.fider.io/) · [🔐 Безопасность](SECURITY.md) · [📝 Changelog](CHANGELOG.md)
+[🚀 Установка](#-быстрый-старт) · [✨ Возможности](#-возможности) · [📖 Все инструкции](docs/README.md) · [💬 Пожелания и баги](https://claymore0098.fider.io/)
 
 <p align="center">
   <img src="docs/assets/telegram-promo/01-hero-banner.png" alt="AdminPanel AntiZapret" width="900">
 </p>
 
-> [!NOTE]
-> **Статус проекта**
-> Проект **полностью перенесён** на новый стек: добавлен новый функционал, интерфейс и документация обновлены.
-> Разработка **продолжается** — планируются новые возможности и улучшения.
-> Предыдущая версия на Flask — [AdminAntizapret](https://github.com/Kirito0098/AdminAntizapret).
+> AntiZapret ставится **отдельно**, на сам VPN-сервер — см. [инструкцию AntiZapret-VPN](https://github.com/shax0491/AntiZapret-VPN_new). Эта панель только управляет им (или несколькими такими серверами) через веб-интерфейс.
 
-**Панель помогает администрировать VPN: клиенты, маршрутизация, мониторинг, бэкапы и Telegram.**
-
-- **Пользователи и администраторы** — **[docs/README.md](docs/README.md)** — простые инструкции по каждому разделу
-- **Разработчики** — [CONTRIBUTING.md](CONTRIBUTING.md) (MCP, skills, договорённости) · [SECURITY.md](SECURITY.md) · [CHANGELOG.md](CHANGELOG.md) · [docs/PROJECT_MAP.md](docs/PROJECT_MAP.md) · [HA / Node Sync](docs/NodeSync.md)
+---
 
 ## 🚀 Быстрый старт
 
-**Требования:** Ubuntu 24.04+ или Debian 13+, root / sudo, доступ в интернет.
-После полного `apt upgrade` (новое ядро) сначала **перезагрузите сервер**, затем запускайте `install.sh` — установщик сам предупредит, если reboot ещё не сделан.
-AntiZapret ставится **отдельно** на VPN-сервер — см. [AntiZapret-VPN](https://github.com/shax0491/AntiZapret-VPN_new).
-
-**Python:** установщик сам выбирает runtime через `scripts/python-runtime.sh` — на **Ubuntu 24.04** это **3.12**, на **Debian 13** — **3.13**.
-
-### Порты
-
-После `install.sh` панель сразу доступна по **HTTP** (`http://IP:порт/`, обычно **8000**). HTTPS и Nginx настраиваются позже в UI.
-
-| Порт | Назначение | Куда открывать |
-| --- | --- | --- |
-| **8000** (или выбранный) | Панель | LAN / интернет — пока панель на этом порту |
-| **9100** | Node agent | localhost или между панелью и VPN-узлом (при **SSH-транспорте** агент может слушать только `127.0.0.1`) |
-| **22** (типично) | SSH к VPN-узлу | только если включён модуль **SSH transport узлов** |
-| **80** / **443** | HTTP ACME / HTTPS | после публикации в **Настройки → Адрес сайта и HTTPS** |
-
-Порты **OpenVPN / WireGuard / AmneziaWG** задаёт **AntiZapret**, не панель.
-Откройте порт панели у хостера или вручную (`ufw` / security group). Подробнее: [SECURITY.md](SECURITY.md).
-
-### Варианты установки
-
-Первый вопрос мастера — **что ставим на этот сервер**:
-
-| Вариант | Что ставится | Когда выбирать |
-| --- | --- | --- |
-| **Только панель** | Веб-интерфейс управления | Отдельный **управляющий сервер**; к нему потом подключаются VPN-узлы (AntiZapret на других машинах) |
-| **Панель + узел** | Панель и **локальный узел** на одном хосте | **AntiZapret уже установлен** на этом же сервере (`/root/antizapret`) — типичный случай «всё на одном VDS» |
-| **Узел** | Только **node agent** (без панели) | Отдельный **VPN-сервер**, который нужно **подключить к уже работающей панели** на другом хосте |
-| **Прокси** | Только **proxy_agent** (без панели и без `proxy.sh`) | Отдельный **RU VPS**, где вы **уже** поставили AntiZapret `proxy.sh`; агент — мониторинг и смена DESTINATION из панели ([прокси](docs/proxy-nodes.md), [установка агента](docs/proxy-agent.md)) |
-
-#### Установка
-
-Один скрипт — `install.sh`:
+**Нужно:** Ubuntu 24.04+ или Debian 13+, root/sudo, интернет.
+Если недавно делали `apt upgrade` (обновилось ядро) — сначала **перезагрузите сервер**, потом ставьте панель.
 
 ```bash
 sudo apt update && sudo apt install -y git wget curl
@@ -69,270 +27,120 @@ wget -qO /tmp/install.sh https://raw.githubusercontent.com/shax0491/AdminPanelAZ
 sudo bash /tmp/install.sh
 ```
 
-Мастер спросит: тип установки, порты, логин/пароль администратора, ключ node agent (если ставите узел) и каталог бэкапов.
+Установщик задаст несколько вопросов: что ставим, порты, логин/пароль администратора, каталог бэкапов. После установки панель сразу открывается по `http://IP:порт/` (обычно **8000**).
 
-На **RU-прокси** (репозиторий уже на машине, `proxy.sh` установлен вручную):
+### Что именно ставить
 
-```bash
-cd /opt/AdminPanelAZ
-sudo ./install.sh --proxy-only --with-systemd -y
-```
+Первый вопрос мастера — какую роль играет этот сервер:
 
-Подробнее: [docs/proxy-agent.md](docs/proxy-agent.md) · полная схема: [docs/proxy-nodes.md](docs/proxy-nodes.md).
+| Вариант | Что ставится | Когда выбирать |
+| --- | --- | --- |
+| **Только панель** | Веб-интерфейс | Отдельный управляющий сервер; VPN-узлы подключаются к нему извне |
+| **Панель + узел** | Панель и агент на одном хосте | AntiZapret уже стоит на этом же сервере — «всё на одном VDS» |
+| **Узел** | Только node agent | VPN-сервер, который нужно подключить к панели на другом хосте |
+| **Прокси** | Только proxy_agent | RU VPS с уже установленным `proxy.sh` — агент даёт мониторинг и смену адреса из панели ([инструкция](docs/proxy-agent.md)) |
 
-После установки панели откройте `http://IP:порт/` из вывода мастера. Дальше в панели:
+### Порты
 
-- **Настройки → Адрес сайта и HTTPS** — DDNS, домен, Let's Encrypt. **Рекомендуем сразу перейти на HTTPS** — так доступ к панели защищён (шифрование трафика, безопасный вход).
-- **Telegram** — bot token / chat (раздел уже в меню)
+| Порт | Для чего | Кому открывать |
+| --- | --- | --- |
+| **8000** (или свой) | Панель | LAN/интернет |
+| **9100** | Node agent | Между панелью и узлом (localhost при SSH-транспорте) |
+| **80 / 443** | HTTPS | После настройки домена в панели |
 
-Подробнее: [после установки](#-после-установки) · [DDNS](#-бесплатный-адрес-для-панели-ddns) · [Production](#️-production-vds-redis-и-профили)
+Порты OpenVPN/WireGuard/AmneziaWG задаёт сам **AntiZapret**, не панель. Подробнее об открытии портов — [SECURITY.md](SECURITY.md).
 
-## 📑 Содержание
+### ✅ После установки — что сделать первым делом
 
-- [🚀 Быстрый старт](#-быстрый-старт)
-  - [Варианты установки](#варианты-установки)
-- [🖼️ Обзор панели](#-обзор-панели)
-- [✨ Возможности](#-возможности)
-- [✅ После установки](#-после-установки)
-- [📖 Руководства пользователя](#-руководства-пользователя)
-- [🌐 Бесплатный адрес (DDNS)](#-бесплатный-адрес-для-панели-ddns)
-- [🔗 StatusOpenVPN на одном домене](#-statusopenvpn-на-одном-домене)
-- [⚙️ Production: VDS, Redis и профили](#️-production-vds-redis-и-профили)
-- [🔐 Безопасность](#-безопасность)
-- [💻 Полезные команды](#-полезные-команды-на-сервере)
-- [📝 История изменений](#-история-изменений)
-- [💖 Поддержка проекта](#-поддержка-проекта)
+1. Открыть адрес из вывода установщика и войти. Логин по умолчанию, если не задавали в мастере: `admin` / `admin` — **сразу смените**.
+2. Включить **2FA** — [Настройки → Профиль](docs/nastrojki/profil.md).
+3. Перевести панель на **HTTPS** — [Настройки → Адрес сайта и HTTPS](docs/nastrojki/set-i-publikaciya.md) (свой домен или бесплатный DDNS, см. ниже).
+4. Если VPN на другом сервере — добавить узел: [docs/uzly.md](docs/uzly.md).
+5. На вкладке **Конфигурации** нажать **Синхронизировать**.
+6. Указать Telegram bot token, если нужен бот/уведомления — [docs/Telegram.md](docs/Telegram.md).
 
-## 🖼️ Обзор панели
+Авто-бэкап включается после установки сам (раз в 7 дней) — [настройка](docs/nastrojki/rezervnye-kopii.md).
+
+---
+
+## ✨ Возможности
 
 <p align="center">
   <img src="docs/assets/telegram-promo/02-features-overview.png" alt="Все модули AdminPanel AntiZapret" width="900">
 </p>
 
-| | | |
-| --- | --- | --- |
-| [<img src="docs/assets/telegram-promo/10-configurations.png" alt="Конфигурации" width="400">](docs/konfiguracii.md) | [<img src="docs/assets/telegram-promo/09-nodes.png" alt="Узлы VPN" width="400">](docs/uzly.md) | [<img src="docs/assets/telegram-promo/07-routing-cidr.png" alt="Маршрутизация CIDR" width="400">](docs/routing-cidr.md) |
-| [<img src="docs/assets/telegram-promo/08-routing-az-warp.png" alt="AZ-WARP" width="400">](docs/warper.md) | [<img src="docs/assets/telegram-promo/04-monitoring-noc.png" alt="Мониторинг и NOC" width="400">](docs/noc-monitoring.md) | [<img src="docs/assets/telegram-promo/03-telegram-integration.png" alt="Telegram" width="400">](docs/Telegram.md) |
-| [<img src="docs/assets/telegram-promo/11-client-portal.png" alt="Клиентский портал" width="400">](docs/podpiska.md) | [<img src="docs/assets/telegram-promo/12-unlock-keys.png" alt="Unlock-ключи" width="400">](docs/podpiska.md) | |
+**VPN и клиенты** — OpenVPN, WireGuard, AmneziaWG: создание, QR-коды, блокировка, лимиты трафика ([инструкция](docs/konfiguracii.md)). Несколько серверов из одной панели ([узлы](docs/uzly.md)), отказоустойчивость HA ([Node Sync](docs/NodeSync.md)), автопереключение между узлами без переустановки клиента ([автопереключение](docs/autoswitch-howto.html)). Подписка с unlock-кодами и постоянные ссылки для клиентов — раздел **Подписка** ([инструкция](docs/podpiska.md)).
 
-## ✨ Возможности
+**Маршрутизация** — списки провайдеров (CIDR), пресеты, редактор конфигов AntiZapret с применением на сервер ([маршрутизация](docs/routing-cidr.md), [конфиг](docs/antizapret-config.md)), точечная маршрутизация через Cloudflare WARP ([AZ-WARP](docs/warper.md)).
 
-### 🔌 VPN и клиенты
+**Мониторинг** — NOC: кто подключён, откуда, графики, состояние служб, сводки в Telegram ([инструкция](docs/noc-monitoring.md)); расход трафика по клиентам ([трафик](docs/traffic-monitoring.md)); живые CPU/RAM/диск и история за 30 дней ([сервер](docs/server-monitor.md)).
 
-<p align="center">
-  <img src="docs/assets/telegram-promo/10-configurations.png" alt="Конфигурации — VPN-клиенты" width="900">
-</p>
+**Безопасность** — роли администратор/пользователь, 2FA, белый список IP, защита от перебора паролей ([безопасность](docs/nastrojki/bezopasnost.md)), бэкапы вручную и по расписанию с отправкой в Telegram.
 
-- OpenVPN, WireGuard, AmneziaWG — создание, скачивание, QR-коды ([инструкция](docs/konfiguracii.md))
-- Блокировка, срок действия, лимиты трафика
-- **Подписка** — отдельный раздел меню (`/subscription`): unlock-коды и доступ до даты, настройка клиентского портала ([инструкция](docs/podpiska.md))
-- **Клиентский портал** — постоянные ссылки `https://portal…/p/…` для клиентов (статус, срок, трафик, установка профиля); автонастройка поддомена под текущий HTTPS
+**Telegram** — вход в панель (Login Widget или OpenID Connect), Mini App с конфигами, бот с командами, уведомления нескольким получателям ([инструкция](docs/Telegram.md)).
 
-<p align="center">
-  <img src="docs/assets/telegram-promo/11-client-portal.png" alt="Клиентский портал — постоянные ссылки для клиентов" width="900">
-</p>
+Полный список инструкций по каждому разделу: **[docs/README.md](docs/README.md)**.
 
-<p align="center">
-  <img src="docs/assets/telegram-promo/12-unlock-keys.png" alt="Unlock-ключи — продление доступа клиентов" width="900">
-</p>
-
-- Несколько VPN-серверов (узлов) из одной панели ([инструкция](docs/uzly.md))
-- **Способ связи с агентом** — HTTP, HTTPS+mTLS или **SSH-туннель** (модуль, по умолчанию выкл.); preflight перед сменой ([SSH](docs/node-ssh-transport.md))
-- **Прокси-узлы** (модуль, по умолчанию выкл.) — RU `proxy.sh` + `proxy_agent`, DESTINATION из панели, домашний IP в NOC ([прокси](docs/proxy-nodes.md))
-- **HA (отказоустойчивость)** — группы синхронизации primary + replica, один домен, Push full (с префлайтом связи), verify и авто-репликация с primary ([Node Sync](docs/NodeSync.md), UI: **Узлы → Группы синхронизации**)
-
-<p align="center">
-  <img src="docs/assets/telegram-promo/09-nodes.png" alt="Узлы VPN — несколько серверов из одной панели" width="900">
-</p>
-
-### 🧭 Маршрутизация
-
-<p align="center">
-  <img src="docs/assets/telegram-promo/07-routing-cidr.png" alt="Маршрутизация и CIDR" width="900">
-</p>
-
-- Списки провайдеров (CIDR), пресеты, конфиг AntiZapret ([маршрутизация](docs/routing-cidr.md), [конфиг](docs/antizapret-config.md))
-- Редактор файлов AntiZapret с применением на сервер ([инструкция](docs/edit-files.md))
-- AZ-WARP — точечная маршрутизация через Cloudflare WARP ([инструкция](docs/warper.md))
-
-<p align="center">
-  <img src="docs/assets/telegram-promo/08-routing-az-warp.png" alt="AZ-WARP — интеграция с github.com/Liafanx/AZ-WARP" width="900">
-</p>
-
-### 📊 Мониторинг
-
-<p align="center">
-  <img src="docs/assets/telegram-promo/04-monitoring-noc.png" alt="Мониторинг и NOC" width="900">
-</p>
-
-- **NOC** — кто подключён, откуда (город и провайдер), графики, состояние служб;
-  **Telegram-сводки** — ежедневный/еженедельный текст и еженедельный PNG-дашборд
-  ([инструкция](docs/noc-monitoring.md))
-- **Трафик** — расход по клиентам и доля в общем объёме, лимиты, окна 1д / 7д / 30д ([инструкция](docs/traffic-monitoring.md))
-- **Сервер** — live CPU/RAM/диск, **история ресурсов** за 1 / 7 / 30 дней, vnStat ([инструкция](docs/server-monitor.md))
-- **Локальная GeoIP** — MaxMind GeoLite2 в `data/geoip/` ([инструкция](docs/GeoIP.md))
-
-### 🔐 Безопасность и администрирование
-
-- Роли: администратор, пользователь ([пользователи](docs/nastrojki/polzovateli.md))
-- 2FA, белый список IP, защита от перебора паролей ([безопасность](docs/nastrojki/bezopasnost.md))
-- Вход через Telegram — Legacy Login Widget или OpenID Connect ([Telegram](docs/Telegram.md))
-- Бэкапы вручную и по расписанию, отправка в Telegram ([инструкция](docs/nastrojki/rezervnye-kopii.md))
-
-### 💬 Telegram
-
-<p align="center">
-  <img src="docs/assets/telegram-promo/03-telegram-integration.png" alt="Telegram — вход, Mini App, бот, уведомления" width="900">
-</p>
-
-- **Вход в панель** — Legacy Login Widget или OpenID Connect (настройка на вкладке «Бот и авторизация»)
-- **Mini App** — адаптированная панель и отправка VPN-конфигов из Telegram
-- **Бот** — webhook, команды (`/start`, `/link`, `/status`, …), привязка и отвязка аккаунтов администратором
-- **Уведомления** — несколько получателей (admin из «Пользователи» + chat ID групп/каналов),
-  карточный формат, тест каждого события
-- **NOC и бэкапы** — сводки по расписанию в Telegram, авто-отправка архивов выбранным получателям
-
-Пошаговая настройка и вкладки раздела: [docs/Telegram.md](docs/Telegram.md)
-
-## ✅ После установки
-
-<p align="center">
-  <img src="docs/assets/telegram-promo/06-quick-install.png" alt="Быстрая установка AdminPanel AntiZapret" width="900">
-</p>
-
-1. Откройте URL из вывода установщика (`http://IP:порт/`)
-2. Войдите под созданным администратором
-3. **Смените пароль** и включите **2FA** — [Настройки → Профиль](docs/nastrojki/profil.md)
-4. **Переключите панель на HTTPS** — **Настройки → Адрес сайта и HTTPS** (домен или DDNS + Let's Encrypt). HTTP удобен для первого входа, но для постоянной работы HTTPS надёжнее и безопаснее — [инструкция](docs/nastrojki/set-i-publikaciya.md)
-5. Если VPN на другом сервере — добавьте узел (HTTP / mTLS / SSH) — [Узлы](docs/uzly.md) · [SSH-транспорт](docs/node-ssh-transport.md)
-6. На **Конфигурации** нажмите **Синхронизировать** — [инструкция](docs/konfiguracii.md)
-7. **Подписка** — unlock-коды и **клиентский портал** (поддомен + «Настроить под текущую публикацию»)
-8. **Telegram** — раздел уже в меню; укажите bot token в UI — [инструкция](docs/Telegram.md)
-9. Для **HA** (два сервера на один домен): создайте группу синхронизации на **Узлах**, выполните **Настройку** (домен → Push full → verify) — [Node Sync](docs/NodeSync.md). После обновления панели перезапустите **node agent** на VPN-узлах (`systemctl restart adminpanelaz-node`), чтобы в «Узлах» отображалась версия **1.8.0**
-
-> [!NOTE]
-> **Вход по умолчанию** (если не задавали в мастере): `admin` / `admin` — смените сразу.
-> **Авто-бэкап** после install включён (каждые **7** дней) — изменить в [Настройки → Резервные копии](docs/nastrojki/rezervnye-kopii.md).
-
-### 🗑️ Удаление и переустановка
-
-```bash
-sudo ./install.sh              # меню: переустановка или удаление
-sudo ./install.sh --uninstall  # удалить сервисы панели
-```
-
-AntiZapret и VPN-конфиги при удалении панели **не трогаются**.
-
-## 📖 Руководства пользователя
-
-Полный список инструкций: **[docs/README.md](docs/README.md)**
-
-- **VPN-клиенты** — [docs/konfiguracii.md](docs/konfiguracii.md)
-- **Подписка и клиентский портал** — раздел меню **Подписка** (`/subscription`): unlock-коды, доступ до даты, постоянные ссылки `/p/…` (см. [CHANGELOG 2.25.0](CHANGELOG.md#2250---2026-09-13))
-- **Несколько серверов и HA** — [docs/uzly.md](docs/uzly.md) · [docs/NodeSync.md](docs/NodeSync.md) · [docs/node-ssh-transport.md](docs/node-ssh-transport.md)
-- **Прокси AntiZapret** — [docs/proxy-nodes.md](docs/proxy-nodes.md) · [docs/proxy-agent.md](docs/proxy-agent.md)
-- **NOC и трафик** — [docs/noc-monitoring.md](docs/noc-monitoring.md) · [docs/traffic-monitoring.md](docs/traffic-monitoring.md)
-- **Настройки и бэкапы** — [docs/nastrojki/README.md](docs/nastrojki/README.md)
-- **Адрес сайта, HTTPS, StatusOpenVPN** — [docs/nastrojki/set-i-publikaciya.md](docs/nastrojki/set-i-publikaciya.md)
-- **Telegram** — [docs/Telegram.md](docs/Telegram.md)
+---
 
 ## 🌐 Бесплатный адрес для панели (DDNS)
 
-Если нет своего домена, в панели: **Настройки → Адрес сайта и HTTPS** → блок **Динамический DNS**:
+Если нет своего домена: **Настройки → Адрес сайта и HTTPS → Динамический DNS**.
 
-### DuckDNS
+- **[DuckDNS](https://www.duckdns.org/)** — создайте два имени (одно для AntiZapret, другое для панели), укажите панельное + token. VPN-имя DuckDNS как домен панели использовать нельзя — [подробнее](docs/nastrojki/set-i-publikaciya.md#duckdns-duckdnsorg).
+- **[No-IP](https://www.noip.com)** или свой домен — на один hostname можно повесить несколько A-записей на разные IP.
 
-1. [www.duckdns.org](https://www.duckdns.org/) — войдите и создайте **два** имени (обычно до 5 бесплатно): одно для VPN AntiZapret, другое для панели.
-2. В DDNS панели укажите **панельный** поддомен + token.
-3. Не используйте VPN-имя DuckDNS как домен панели — [подробнее](docs/nastrojki/set-i-publikaciya.md#duckdns-duckdnsorg).
+Автообновление IP работает через systemd-таймер каждые 5 минут; вручную — `sudo ./scripts/ddns-update.sh update|status`.
 
-### No-IP и свой домен
+## 🔗 Если на этом же домене уже стоит StatusOpenVPN
 
-- [No-IP](https://www.noip.com) — `myvpn.ddns.net`
-- Свой домен: на один hostname можно (и рекомендуется) повесить несколько A-записей на разные IP — удобно для VPN при двух серверах; для панели заведите отдельное имя.
+[StatusOpenVPN](https://github.com/TheMurmabis/StatusOpenVPN) занимает `https://домен/status/` — если поставить оба сайта на nginx независимо, будет конфликт.
 
-Можно включить автообновление IP (systemd timer каждые 5 мин) и затем указать адрес панели в мастере HTTPS.
+Ставьте панель по HTTP, затем в **Настройки → Адрес сайта и HTTPS** включите Nginx + Let's Encrypt с подпутём `panel` и опцией **Интегрировать с StatusOpenVPN**. Получится `https://домен/status/` и `https://домен/panel/`. Не удаляйте StatusOpenVPN через его `uninstall` после интеграции — сломает nginx; если панель пропала — `sudo ./scripts/nginx-repair.sh`. Подробнее: [docs/nastrojki/set-i-publikaciya.md](docs/nastrojki/set-i-publikaciya.md#совместно-со-statusopenvpn-на-одном-домене).
 
-CLI (если нужно вручную): `sudo ./scripts/ddns-update.sh update|status`.
+## ⚙️ Продакшен: ресурсы и Redis
 
-> [!TIP]
-> Для HTTPS нужны открытые порты **80** и **443** на сервере. Свой домен тоже подойдёт — укажите его в том же разделе настроек.
+Ориентир по памяти (панель + локальный узел, профиль Full): ~400 МБ. Для одного VDS с VPN хватает 1-2 ГБ; только панель — 1 ГБ + swap.
 
-## 🔗 StatusOpenVPN на одном домене
+При нескольких workers (`UVICORN_WORKERS > 1` в `backend/.env`) нужен Redis: `AUTH_RATE_LIMIT_BACKEND=redis`, `API_RATE_LIMIT_BACKEND=redis`, `REDIS_URL=redis://127.0.0.1:6379/0` — подробнее в [SECURITY.md](SECURITY.md). Модули и профиль меняются в **Настройки → Модули** ([инструкция](docs/nastrojki/moduli.md)).
 
-[StatusOpenVPN](https://github.com/TheMurmabis/StatusOpenVPN) занимает `https://домен/status/`. Если оба поставят отдельный nginx-сайт на один домен — будет конфликт.
+Для приватных IP узлов (LAN) — `ALLOW_INTERNAL_NODES=true` в `.env`; mTLS/SSH настраиваются per-node в **Узлах** — [docs/uzly.md](docs/uzly.md) · [SSH-транспорт](docs/node-ssh-transport.md).
 
-**Установка → UI:** `sudo ./install.sh` (панель по HTTP) → **Настройки → Адрес сайта и HTTPS** → Nginx + Let's Encrypt → подпуть `panel` → **Интегрировать с StatusOpenVPN**. Итог: `https://домен/status/` и `https://домен/panel/`.
+- Health: `GET /api/health`, `GET /api/health/deep`
+- Метрики: `GET /metrics` (Prometheus)
 
-> [!WARNING]
-> Подпуть обязателен. Не удаляйте Status через его `uninstall` после интеграции — может сломать nginx и доступ к панели.
-> Если панель пропала — по SSH: `cd /opt/AdminPanelAZ && sudo ./scripts/nginx-repair.sh`
+## 🗑️ Удаление и переустановка
 
-Подробно: [docs/nastrojki/set-i-publikaciya.md](docs/nastrojki/set-i-publikaciya.md#совместно-со-statusopenvpn-на-одном-домене)
+```bash
+sudo ./install.sh              # меню: переустановка или удаление
+sudo ./install.sh --uninstall  # удалить только сервисы панели
+```
 
-## ⚙️ Production: VDS, Redis и профили
-
-После установки: профиль **Full**, `UVICORN_WORKERS=1`. Профиль и модули меняются в **Настройки → Модули** ([инструкция](docs/nastrojki/moduli.md)), затем `sudo systemctl restart adminpanelaz`.
-
-**Ориентир по RAM** (Full, панель + локальная нода): ~**411 MB** стек (ср. ~148 MB за 7 дней). Для одного VDS с VPN — **1–2 GB**; только панель на Minimal — **1 GB** + swap.
-
-**Workers > 1:** в `backend/.env` задайте `UVICORN_WORKERS=N` и Redis (`AUTH_RATE_LIMIT_BACKEND=redis`, `API_RATE_LIMIT_BACKEND=redis`, `REDIS_URL=redis://127.0.0.1:6379/0`), затем перезапустите панель. См. [SECURITY.md](SECURITY.md).
-
-**LAN-ноды / mTLS / SSH:** приватные IP узлов — `ALLOW_INTERNAL_NODES=true` в `.env`; mTLS и SSH — per-node в UI **Узлы** (SSH — модуль **SSH transport узлов**). Подробнее: [docs/uzly.md](docs/uzly.md) · [docs/node-ssh-transport.md](docs/node-ssh-transport.md).
-
-- **Health** — `GET /api/health`, `GET /api/health/deep`
-- **Метрики** — `GET /metrics` (Prometheus)
-- **Node agent** — **1.8.0** (для HA: ≥ 1.3.0; byte-copy `.ovpn` при Push full: ≥ 1.5.0; сроки сертификатов: ≥ 1.6.0; AZ-AWG2 / reboot: ≥ 1.7.0; uptime / `listen_tls` в `/health`: ≥ 1.8.0)
-
-## 🔐 Безопасность
-
-Перед выходом панели в интернет:
-
-- HTTPS
-- Смена пароля и **2FA**
-- Белый список IP
-
-- **Адрес сайта и HTTPS** — [docs/nastrojki/set-i-publikaciya.md](docs/nastrojki/set-i-publikaciya.md)
-- **Профиль и 2FA** — [docs/nastrojki/profil.md](docs/nastrojki/profil.md)
-- **Доступ к панели** — [docs/nastrojki/bezopasnost.md](docs/nastrojki/bezopasnost.md)
-- **Технические детали** — [SECURITY.md](SECURITY.md)
+AntiZapret и VPN-конфиги при удалении панели **не трогаются**.
 
 ## 💻 Полезные команды на сервере
 
 ```bash
 cd /opt/AdminPanelAZ
-sudo ./scripts/adminpanel-menu.sh   # меню: перезапуск, бэкап, обновление
-sudo systemctl restart adminpanelaz # перезапуск панели
+sudo ./scripts/adminpanel-menu.sh          # меню: перезапуск, бэкап, обновление
+sudo systemctl restart adminpanelaz        # перезапуск панели
 sudo systemctl restart adminpanelaz-proxy  # proxy_agent на RU (порт 9101)
-sudo ./scripts/nginx-setup.sh       # сменить HTTPS после установки
-sudo ./scripts/nginx-repair.sh      # восстановить nginx (например после uninstall StatusOpenVPN)
+sudo ./scripts/nginx-setup.sh              # сменить HTTPS после установки
+sudo ./scripts/nginx-repair.sh             # восстановить nginx
 ```
 
-## 📝 История изменений
+## 📖 Дальше
 
-<p align="center">
-  <img src="docs/assets/telegram-promo/05-whats-new.png" alt="Последние обновления AdminPanel AntiZapret" width="900">
-</p>
+- **Пользователям и администраторам** — [docs/README.md](docs/README.md), инструкция по каждому разделу
+- **Разработчикам** — [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) · [docs/PROJECT_MAP.md](docs/PROJECT_MAP.md)
+- **История изменений** — [CHANGELOG.md](CHANGELOG.md), текущая версия панель **2.25.0** / node agent **1.8.0**
+- **Предыдущая версия на Flask** — [AdminAntizapret](https://github.com/Kirito0098/AdminAntizapret) (архив)
 
-**Текущая версия: панель 2.25.0 · node agent 1.8.0** (2026-09-13)
+## 💬 Обратная связь и поддержка
 
-> **В 2.25.0:** раздел **Подписка** и **клиентский портал** (постоянные ссылки, unlock-коды); способ связи узлов HTTP / mTLS / SSH + preflight; диагностика связи и Push full; hub настроек и сайдбар по ролям; расширяемые модули; CIDR safe-fallback; бэкап после split `cidr.db`.
+Пожелания и баги — доска **[AdminPanelAZ на Fider](https://claymore0098.fider.io/)** (сначала поищите — вдруг тема уже есть).
 
-После установки панель сразу открывается по `http://IP:порт/`; домен и HTTPS — в **Настройки → Адрес сайта и HTTPS**. Python **3.12** (Ubuntu) / **3.13** (Debian) выбирается автоматически.
-
-Полный список: **[CHANGELOG.md](CHANGELOG.md)** · runbook аудита HA: [reviews/HA-sync-remediation-plan.md](reviews/HA-sync-remediation-plan.md)
-
-## 💬 Обратная связь
-
-Пожелания, баги и идеи — на доске **[AdminPanelAZ на Fider](https://claymore0098.fider.io/)**.
-
-Перед новой записью **поищите похожие** — если тема уже есть, проголосуйте за неё, а не создавайте дубликат. GitHub не нужен.
-
-## 💖 Поддержка проекта
-
-- Донат: [cloudtips.ru](https://pay.cloudtips.ru/p/3c6704ca)
-- Приватная группа Telegram: [Приватная группа в Telegram](https://t.me/+XJwXHTmMvUk3NTli)
-- Личные сообщения: [Личные сообщения](https://t.me/Claymore0098)
+Донат: [cloudtips.ru](https://pay.cloudtips.ru/p/3c6704ca) · Telegram-группа: [ссылка](https://t.me/+XJwXHTmMvUk3NTli) · Личные сообщения: [@Claymore0098](https://t.me/Claymore0098)
 
 ---
 
