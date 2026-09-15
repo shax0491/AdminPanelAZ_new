@@ -345,7 +345,7 @@ def check_warp_geo(scope: GeoScope, antizapret_path: Path | None = None) -> dict
     return result
 
 
-def preview_cloudflare_warp(tmp_dir: Path = Path("/tmp")) -> dict:
+def preview_cloudflare_warp(tmp_dir: Path | None = None) -> dict:
     """Зарегистрировать ВРЕМЕННЫЙ анонимный Cloudflare WARP-аккаунт, поднять его на
     отдельном временном интерфейсе, прогнать гео-проверку через него и сразу снести -
     не трогая реальные тоннели/конфиг узла вообще.
@@ -354,7 +354,11 @@ def preview_cloudflare_warp(tmp_dir: Path = Path("/tmp")) -> dict:
     и не обрывая текущие боевые сессии (в отличие от apply_warp_changes/up.sh).
     """
     import json as _json
+    import tempfile
     import uuid
+
+    if tmp_dir is None:
+        tmp_dir = Path(tempfile.gettempdir())
 
     iface = f"wgtest{uuid.uuid4().hex[:8]}"
     conf_path = tmp_dir / f"{iface}.conf"
