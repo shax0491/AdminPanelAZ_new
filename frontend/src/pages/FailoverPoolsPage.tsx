@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CheckCircle2, ChevronDown, Pencil, Plus, RefreshCw, Trash2, Unplug, XCircle } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronUp, Pencil, Plus, RefreshCw, Trash2, Unplug, XCircle } from 'lucide-react'
 import {
   addFailoverPoolMember,
   createFailoverPool,
@@ -421,10 +421,15 @@ function FrontPanel({
 function MemberRow({
   poolId,
   member,
+  prevMember,
+  nextMember,
   onChanged,
 }: {
   poolId: number
   member: FailoverPool['members'][number]
+  /** Immediate neighbor by priority order (pool.members comes pre-sorted by priority) - used to swap priorities on ↑/↓, e.g. so a healthy backup can be promoted to #0 / source-of-identity. */
+  prevMember: FailoverPool['members'][number] | null
+  nextMember: FailoverPool['members'][number] | null
   onChanged: () => void
 }) {
   const { error: notifyError } = useNotifications()
@@ -432,6 +437,22 @@ function MemberRow({
   const [labelDraft, setLabelDraft] = useState(member.label ?? '')
   const [saving, setSaving] = useState(false)
   const [removing, setRemoving] = useState(false)
+  const [reordering, setReordering] = useState(false)
+
+  const swapPriorityWith = async (other: FailoverPool['members'][number]) => {
+    setReordering(true)
+    try {
+      await Promise.all([
+        updateFailoverPoolMember(poolId, member.id, { priority: other.priority }),
+        updateFailoverPoolMember(poolId, other.id, { priority: member.priority }),
+      ])
+      onChanged()
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : 'Ошибка')
+    } finally {
+      setReordering(false)
+    }
+  }
 
   const saveLabel = async () => {
     const trimmed = labelDraft.trim()
@@ -453,6 +474,26 @@ function MemberRow({
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card/40 px-3 py-2 text-sm">
+      <div className="flex flex-col">
+        <button
+          type="button"
+          disabled={reordering || !prevMember}
+          title={prevMember ? `Поменять приоритет с ${prevMember.label || prevMember.node_name}` : 'Уже наивысший приоритет'}
+          className="text-muted-foreground hover:text-foreground disabled:opacity-25"
+          onClick={() => prevMember && void swapPriorityWith(prevMember)}
+        >
+          <ChevronUp size={14} />
+        </button>
+        <button
+          type="button"
+          disabled={reordering || !nextMember}
+          title={nextMember ? `Поменять приоритет с ${nextMember.label || nextMember.node_name}` : 'Уже низший приоритет'}
+          className="text-muted-foreground hover:text-foreground disabled:opacity-25"
+          onClick={() => nextMember && void swapPriorityWith(nextMember)}
+        >
+          <ChevronDown size={14} />
+        </button>
+      </div>
       <Badge variant="outline">#{member.priority}</Badge>
       {renaming ? (
         <Input
@@ -652,8 +693,15 @@ function PoolCard({
           <p className="text-xs text-muted-foreground">Пока нет ни одного сервера в пуле.</p>
         ) : (
           <div className="space-y-1.5">
-            {pool.members.map((m) => (
-              <MemberRow key={m.id} poolId={pool.id} member={m} onChanged={onChanged} />
+            {pool.members.map((m, idx) => (
+              <MemberRow
+                key={m.id}
+                poolId={pool.id}
+                member={m}
+                prevMember={idx > 0 ? pool.members[idx - 1] : null}
+                nextMember={idx < pool.members.length - 1 ? pool.members[idx + 1] : null}
+                onChanged={onChanged}
+              />
             ))}
           </div>
         )}

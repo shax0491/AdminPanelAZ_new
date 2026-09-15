@@ -339,17 +339,54 @@ def force_switch_member(db: Session, pool: FailoverPool, member: FailoverPoolMem
     return _apply_switch_to_target(db, pool, member)
 
 
-def teardown_front(pool: FailoverPool) -> None:
-    """Remove the front's DNAT rule for this pool (pool deleted / front detached).
+def teardown_front_node(pool: FailoverPool, node: Node, port: int) -> None:
+    """Remove a specific node's DNAT rule for this pool - used both to tear
+    down the current front (pool deleted / front detached) and, when the
+    front is *reassigned* to a different node, to clean up the OLD front's
+    now-orphaned rule (see ``reconcile_front`` - it never got torn down
+    automatically before, silently leaking a stale rule on the old front).
 
-    Best-effort — never raises. An unreachable front must never block deleting
-    the pool in the panel; worst case a stale rule is left on the front and can
-    be cleaned up manually (label is ``pool<id>``, see docs).
+    Best-effort — never raises. An unreachable front must never block the
+    caller; worst case a stale rule is left and can be cleaned up manually
+    (label is ``pool<id>``, see docs).
     """
+    try:
+        adapter = get_proxy_adapter(node)
+        adapter.failover_teardown(front_label(pool), int(port))
+    except Exception as exc:
+        logger.warning("Failover front teardown failed for pool %s on %s: %s", pool.id, node.name, exc)
+
+
+def teardown_front(pool: FailoverPool) -> None:
+    """Remove the CURRENT front's DNAT rule for this pool (pool deleted / front detached)."""
     if pool.front_node_id is None or pool.front_port is None or pool.front_node is None:
         return
+    teardown_front_node(pool, pool.front_node, int(pool.front_port))
+
+
+def reconcile_front(db: Session, pool: FailoverPool, *, old_front_node: Node | None, old_front_port: int | None) -> dict:
+    """Make the (new) front's actual DNAT state match ``pool.active_member_id``,
+    and best-effort remove the previous front's now-orphaned rule if it changed.
+
+    Assigning/changing a front used to only update the DB row - the new front
+    never got an actual rule installed (nothing routes there until the next
+    manual "Проверить и переключить"), and the old front's rule was simply
+    abandoned running forever, still pointing wherever it last was. A pool
+    with a freshly (re)assigned front looked fully configured in the UI while
+    being completely non-functional until someone remembered to re-switch.
+    """
+    changed_front = (
+        old_front_node is not None
+        and pool.front_node_id is not None
+        and old_front_node.id != pool.front_node_id
+    )
+    if changed_front and old_front_port is not None:
+        teardown_front_node(pool, old_front_node, old_front_port)
+
+    target = next((m for m in pool.members if m.id == pool.active_member_id), None) or primary_member(pool)
+    if target is None:
+        return {"pool_id": pool.id, "switched": False, "active_member_id": None, "errors": []}
     try:
-        adapter = get_proxy_adapter(pool.front_node)
-        adapter.failover_teardown(front_label(pool), int(pool.front_port))
-    except Exception as exc:
-        logger.warning("Failover front teardown failed for pool %s: %s", pool.id, exc)
+        return force_switch_member(db, pool, target)
+    except FailoverFrontError as exc:
+        return {"pool_id": pool.id, "switched": False, "active_member_id": pool.active_member_id, "errors": [str(exc)]}

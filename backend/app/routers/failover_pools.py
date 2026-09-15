@@ -45,6 +45,7 @@ from app.services.failover_front import (
     evaluate_and_switch,
     force_switch_member,
     mirror_member_identity,
+    reconcile_front,
     rewrite_member_client_endpoints,
     teardown_front,
 )
@@ -164,8 +165,11 @@ def set_front(
     pool_id: int, payload: FailoverPoolFrontUpdate, db: Session = Depends(get_db), _: User = Depends(require_admin)
 ):
     """Assign the dedicated front node (a Proxy Node running proxy_agent) +
-    UDP port for dnat_front switching. Does not itself install any rule —
-    that happens on the first successful switch-check."""
+    UDP port for dnat_front switching. Immediately installs the DNAT rule on
+    the (new) front for whatever member is/should be active, and best-effort
+    tears down the previous front's rule if the front actually changed -
+    previously this only touched the DB row, leaving the new front with no
+    real rule (nothing routed there) until a separate manual switch."""
     pool = _get_pool_or_404(db, pool_id)
     node = db.query(Node).filter(Node.id == payload.front_node_id).first()
     if node is None:
@@ -175,10 +179,18 @@ def set_front(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Фронтом может быть только узел типа «Прокси» (там установлен proxy_agent)",
         )
+    old_front_node = pool.front_node
+    old_front_port = pool.front_port
     pool.front_node_id = node.id
     pool.front_port = payload.front_port
     pool.updated_at = datetime.utcnow()
     db.commit()
+    db.refresh(pool)
+
+    reconcile_result = reconcile_front(db, pool, old_front_node=old_front_node, old_front_port=old_front_port)
+    if reconcile_result.get("errors"):
+        pool.last_switch_error = "; ".join(reconcile_result["errors"])
+        db.commit()
     db.refresh(pool)
 
     # A client profile normally has Endpoint = whatever node.name it was
