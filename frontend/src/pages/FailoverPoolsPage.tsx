@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CheckCircle2, Plus, RefreshCw, Trash2, XCircle } from 'lucide-react'
+import { CheckCircle2, ChevronDown, Pencil, Plus, RefreshCw, Trash2, Unplug, XCircle } from 'lucide-react'
 import {
   addFailoverPoolMember,
   createFailoverPool,
@@ -15,6 +15,8 @@ import {
   setFailoverFront,
   switchCheckFailoverPool,
   unlinkFailoverClient,
+  unsetFailoverFront,
+  updateFailoverPool,
 } from '@/api/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -22,6 +24,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import EmptyState from '@/components/ui/EmptyState'
 import SettingsAlert from '@/components/settings/SettingsAlert'
+import { cn } from '@/lib/utils'
 import { useNotifications } from '@/context/NotificationContext'
 import type { FailoverPool, FailoverPoolStrategy, FailoverStatusEntry, Node } from '@/types'
 
@@ -166,6 +169,7 @@ function FrontPanel({
   const [checking, setChecking] = useState(false)
   const [mirroringId, setMirroringId] = useState<number | null>(null)
   const [switchingId, setSwitchingId] = useState<number | null>(null)
+  const [disbanding, setDisbanding] = useState(false)
 
   const proxyNodes = nodes.filter((n) => n.node_kind === 'proxy')
   const activeMember = pool.members.find((m) => m.id === pool.active_member_id)
@@ -181,9 +185,33 @@ function FrontPanel({
             {nodes.find((n) => n.id === pool.front_node_id)?.name ?? `#${pool.front_node_id}`}
           </Badge>
           <span className="text-muted-foreground">порт {pool.front_port}</span>
-          <span className="ml-auto text-muted-foreground">
+          <span className="text-muted-foreground">
             активен: {activeMember ? activeMember.label || activeMember.node_name : '— ещё не переключалось'}
           </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto text-destructive hover:text-destructive"
+            disabled={disbanding}
+            title="Снять DNAT-правило на фронте и отвязать его от пула. Узлы, клонированная identity и привязанные клиенты не трогаются — фронт можно назначить заново."
+            onClick={async () => {
+              setDisbanding(true)
+              try {
+                await unsetFailoverFront(pool.id)
+                setFrontNodeId('')
+                setFrontPort('')
+                success('Фронт расформирован')
+                onChanged()
+              } catch (err) {
+                notifyError(err instanceof Error ? err.message : 'Ошибка')
+              } finally {
+                setDisbanding(false)
+              }
+            }}
+          >
+            <Unplug size={14} className={disbanding ? 'animate-pulse' : ''} />
+            Расформировать фронт
+          </Button>
         </div>
       ) : (
         <p className="text-xs text-amber-600 dark:text-amber-400">Фронт ещё не назначен.</p>
@@ -376,30 +404,104 @@ function PoolCard({
   const [memberNodeId, setMemberNodeId] = useState<string>('')
   const [memberLabel, setMemberLabel] = useState('')
   const [clientName, setClientName] = useState('')
+  const [expanded, setExpanded] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [nameDraft, setNameDraft] = useState(pool.name)
+  const [savingName, setSavingName] = useState(false)
   const linkedClients = pool.client_names
 
   const availableNodes = nodes.filter((n) => !pool.members.some((m) => m.node_id === n.id))
+  const activeMember = pool.members.find((m) => m.id === pool.active_member_id)
+
+  const saveName = async () => {
+    const trimmed = nameDraft.trim()
+    if (!trimmed || trimmed === pool.name) {
+      setRenaming(false)
+      setNameDraft(pool.name)
+      return
+    }
+    setSavingName(true)
+    try {
+      await updateFailoverPool(pool.id, { name: trimmed })
+      success('Пул переименован')
+      setRenaming(false)
+      onChanged()
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : 'Ошибка')
+    } finally {
+      setSavingName(false)
+    }
+  }
 
   return (
-    <div className="space-y-4 rounded-xl border bg-card/50 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="text-base font-semibold">{pool.name}</h3>
-            <StrategyBadge strategy={pool.strategy} />
-            {!pool.enabled && <Badge variant="warning">Выключен</Badge>}
+    <div className="rounded-xl border bg-card/50">
+      <div className="flex flex-wrap items-start justify-between gap-2 p-4">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-start gap-2 text-left"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          <ChevronDown
+            size={18}
+            className={cn('mt-0.5 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-180')}
+          />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              {renaming ? (
+                <Input
+                  autoFocus
+                  className="h-7 w-64 text-sm"
+                  value={nameDraft}
+                  disabled={savingName}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void saveName()
+                    if (e.key === 'Escape') {
+                      setRenaming(false)
+                      setNameDraft(pool.name)
+                    }
+                  }}
+                  onBlur={() => void saveName()}
+                />
+              ) : (
+                <h3 className="truncate text-base font-semibold">{pool.name}</h3>
+              )}
+              <StrategyBadge strategy={pool.strategy} />
+              {!pool.enabled && <Badge variant="warning">Выключен</Badge>}
+              {pool.strategy === 'dnat_front' && (
+                <span className="text-xs text-muted-foreground">
+                  {pool.members.length} узл(ов) · активен:{' '}
+                  {activeMember ? activeMember.label || activeMember.node_name : '—'}
+                </span>
+              )}
+            </div>
+            {pool.strategy === 'client_sync' && (
+              <p className="text-xs text-muted-foreground">
+                Устройство проверяет само: health-check {pool.health_check_target} · интервал{' '}
+                {pool.health_check_interval_s} с · порог {pool.down_threshold}
+              </p>
+            )}
           </div>
-          {pool.strategy === 'client_sync' && (
-            <p className="text-xs text-muted-foreground">
-              Устройство проверяет само: health-check {pool.health_check_target} · интервал{' '}
-              {pool.health_check_interval_s} с · порог {pool.down_threshold}
-            </p>
+        </button>
+        <div className="flex shrink-0 gap-2">
+          {!renaming && (
+            <Button
+              size="sm"
+              variant="ghost"
+              title="Переименовать пул"
+              onClick={() => {
+                setNameDraft(pool.name)
+                setRenaming(true)
+              }}
+            >
+              <Pencil size={14} />
+            </Button>
           )}
-        </div>
-        <div className="flex gap-2">
           <Button
             size="sm"
             variant="ghost"
+            title="Удалить пул"
             onClick={async () => {
               try {
                 await deleteFailoverPool(pool.id)
@@ -415,6 +517,8 @@ function PoolCard({
         </div>
       </div>
 
+      {expanded && (
+      <div className="space-y-4 border-t px-4 pb-4 pt-3">
       <div>
         <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Участники ({pool.members.length})
@@ -554,6 +658,8 @@ function PoolCard({
             </p>
           )}
         </div>
+      )}
+      </div>
       )}
     </div>
   )

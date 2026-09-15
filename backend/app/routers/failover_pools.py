@@ -181,6 +181,23 @@ def set_front(
     return _pool_response(pool)
 
 
+@router.delete("/{pool_id}/front", response_model=FailoverPoolResponse)
+def unset_front(pool_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """Disband the front: best-effort remove its DNAT rule, then clear
+    front_node_id/front_port/active_member_id. Members, their cloned
+    identities and linked clients are untouched — a new front can be
+    assigned later and members re-switched onto it."""
+    pool = _get_pool_or_404(db, pool_id)
+    teardown_front(pool)
+    pool.front_node_id = None
+    pool.front_port = None
+    pool.active_member_id = None
+    pool.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(pool)
+    return _pool_response(pool)
+
+
 @router.post("/{pool_id}/members/{member_id}/mirror-identity", response_model=FailoverPoolResponse)
 def mirror_identity(
     pool_id: int, member_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)

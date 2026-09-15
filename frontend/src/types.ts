@@ -2038,6 +2038,16 @@ export interface Awg2MonitoringResponse {
   node_host?: string | null
 }
 
+export interface Awg2MonitoringAllResponse {
+  nodes: Array<{
+    node_id: number
+    node_name: string
+    node_host: string
+    clients: Awg2MonitoringResponse['clients']
+    error?: string | null
+  }>
+}
+
 export interface Awg2ClientStatsDailyRow {
   day: string
   rx: number

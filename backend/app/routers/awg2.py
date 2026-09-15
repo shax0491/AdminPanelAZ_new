@@ -11,7 +11,7 @@ from app.auth import require_admin
 from app.database import get_db
 from app.models import User
 from app.services.awg2 import Awg2ClientNotFoundError, Awg2NotInstalledError
-from app.services.node_manager import get_active_adapter, get_active_node, get_adapter_for_node
+from app.services.node_manager import get_active_adapter, get_active_node, get_adapter_for_node, list_vpn_nodes
 from app.services.node_sync.groups import find_sync_group_for_primary, get_replica_nodes
 from app.services.node_sync.vpn_state_sync import sync_amneziawg2_state_from_primary
 
@@ -83,6 +83,27 @@ def get_monitoring(db: Session = Depends(get_db), _: User = Depends(require_admi
     except Exception as exc:  # noqa: BLE001
         raise _map_awg2_exc(exc) from exc
     return {**data, **_node_meta(node)}
+
+
+@router.get("/monitoring/all")
+def get_monitoring_all(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """Combined AWG2 client monitoring across every VPN node in one call, so the
+    panel can show one flat table instead of forcing an admin to switch the
+    active node and reload per server. Best-effort per node: a node where AWG2
+    isn't installed or is unreachable is reported with an error, never fails
+    the whole request."""
+    out: list[dict[str, Any]] = []
+    for node in list_vpn_nodes(db):
+        entry: dict[str, Any] = {**_node_meta(node), "clients": [], "error": None}
+        try:
+            data = get_adapter_for_node(node).get_awg2_monitoring()
+            entry["clients"] = data.get("clients", [])
+        except Awg2NotInstalledError:
+            continue
+        except Exception as exc:  # noqa: BLE001 — one unreachable node must not break the rest
+            entry["error"] = str(exc)
+        out.append(entry)
+    return {"nodes": out}
 
 
 @router.get("/clients/{name}/stats")

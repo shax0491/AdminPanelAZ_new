@@ -82,6 +82,12 @@ export async function setFailoverFront(poolId: number, payload: FailoverPoolFron
   })
 }
 
+export async function unsetFailoverFront(poolId: number) {
+  return apiFetch<FailoverPool>(`/failover-pools/${poolId}/front`, {
+    method: 'DELETE',
+  })
+}
+
 export async function mirrorFailoverMemberIdentity(poolId: number, memberId: number) {
   return apiFetch<FailoverPool>(`/failover-pools/${poolId}/members/${memberId}/mirror-identity`, {
     method: 'POST',

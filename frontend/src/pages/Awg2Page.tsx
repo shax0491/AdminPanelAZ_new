@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CloudOff } from 'lucide-react'
-import { getAwg2Health, getAwg2Monitoring } from '@/api/client'
+import { getAwg2Health, getAwg2Monitoring, getAwg2MonitoringAll } from '@/api/client'
 import Awg2ClientsTable from '@/components/awg2/Awg2ClientsTable'
 import Awg2HelpStub from '@/components/awg2/Awg2HelpStub'
 import Awg2Hero from '@/components/awg2/Awg2Hero'
@@ -9,14 +9,19 @@ import { formatAwg2NodeLabel } from '@/components/awg2/utils'
 import EmptyState from '@/components/ui/EmptyState'
 import SettingsAlert from '@/components/settings/SettingsAlert'
 import { useNode } from '@/context/NodeContext'
-import type { Awg2HealthResponse, Awg2MonitoringResponse } from '@/types'
+import type { Awg2HealthResponse, Awg2MonitoringAllResponse, Awg2MonitoringResponse } from '@/types'
+
+type ViewMode = 'current' | 'all'
 
 export default function Awg2Page() {
   const { activeNode } = useNode()
   const [health, setHealth] = useState<Awg2HealthResponse | null>(null)
   const [monitoring, setMonitoring] = useState<Awg2MonitoringResponse | null>(null)
+  const [monitoringAll, setMonitoringAll] = useState<Awg2MonitoringAllResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadingAll, setLoadingAll] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>('current')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -39,12 +44,32 @@ export default function Awg2Page() {
     }
   }, [])
 
+  const loadAll = useCallback(async () => {
+    setLoadingAll(true)
+    try {
+      setMonitoringAll(await getAwg2MonitoringAll())
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Не удалось загрузить сводный список узлов')
+    } finally {
+      setLoadingAll(false)
+    }
+  }, [])
+
   useEffect(() => {
     void load()
   }, [load, activeNode?.id])
 
+  useEffect(() => {
+    if (viewMode === 'all' && !monitoringAll) {
+      void loadAll()
+    }
+  }, [viewMode, monitoringAll, loadAll])
+
   const nodeLabel = formatAwg2NodeLabel(health, activeNode)
   const ready = Boolean(health?.installed)
+
+  const combinedRows =
+    monitoringAll?.nodes.flatMap((n) => n.clients.map((c) => ({ ...c, nodeName: n.node_name }))) ?? []
 
   return (
     <div className="space-y-6">
@@ -56,10 +81,51 @@ export default function Awg2Page() {
         </SettingsAlert>
       )}
 
-      {ready && <Awg2OverviewCards health={health} monitoring={monitoring} loading={loading} />}
+      <div className="flex overflow-hidden rounded-md border text-xs w-fit">
+        <button
+          type="button"
+          onClick={() => setViewMode('current')}
+          className={`px-3 py-1.5 transition-colors ${
+            viewMode === 'current' ? 'bg-primary text-primary-foreground' : 'bg-card hover:bg-muted/60'
+          }`}
+        >
+          Текущий узел
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setViewMode('all')
+            void loadAll()
+          }}
+          className={`px-3 py-1.5 transition-colors ${
+            viewMode === 'all' ? 'bg-primary text-primary-foreground' : 'bg-card hover:bg-muted/60'
+          }`}
+        >
+          Все узлы
+        </button>
+      </div>
 
-      {ready ? (
+      {viewMode === 'all' ? (
         <div className="space-y-4">
+          {loadingAll && !monitoringAll ? (
+            <p className="text-sm text-muted-foreground">Загрузка со всех узлов…</p>
+          ) : (
+            <>
+              {monitoringAll?.nodes.some((n) => n.error) && (
+                <SettingsAlert variant="warning" title="Некоторые узлы недоступны">
+                  {monitoringAll.nodes
+                    .filter((n) => n.error)
+                    .map((n) => `${n.node_name}: ${n.error}`)
+                    .join(' · ')}
+                </SettingsAlert>
+              )}
+              <Awg2ClientsTable monitoring={null} rows={combinedRows} />
+            </>
+          )}
+        </div>
+      ) : ready ? (
+        <div className="space-y-4">
+          <Awg2OverviewCards health={health} monitoring={monitoring} loading={loading} />
           <Awg2ClientsTable monitoring={monitoring} />
           <Awg2HelpStub />
         </div>
