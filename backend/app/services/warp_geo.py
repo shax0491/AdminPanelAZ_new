@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import time
 from pathlib import Path
 from typing import Literal
 
@@ -395,7 +396,7 @@ def preview_cloudflare_warp(tmp_dir: Path | None = None) -> dict:
             return {"error": f"Неожиданный ответ Cloudflare API: {exc}"}
 
         conf_path.write_text(
-            f"[Interface]\nPrivateKey = {private_key}\nAddress = {address}/32\nMTU = 1280\n\n"
+            f"[Interface]\nPrivateKey = {private_key}\nAddress = {address}/32\nDNS = 1.1.1.1, 1.0.0.1\nMTU = 1280\n\n"
             f"[Peer]\nPublicKey = {peer_public_key}\nAllowedIPs = 0.0.0.0/0\nEndpoint = {endpoint}\n",
             encoding="utf-8",
         )
@@ -403,6 +404,13 @@ def preview_cloudflare_warp(tmp_dir: Path | None = None) -> dict:
         if up.returncode != 0:
             return {"error": f"Не удалось поднять временный интерфейс: {up.stderr.strip()[:200]}"}
         interface_up = True
+
+        # Свежезарегистрированному пиру нужен момент, чтобы хендшейк и маршрут
+        # у Cloudflare реально заработали - без паузы youtube.com/gemini.google.com
+        # (тяжелее по TLS, чем первый же curl к 1.1.1.1) иногда не успевают и
+        # тихо выпадают из проверки, оставляя вердикт только на сыром Cloudflare
+        # loc, который сам по себе может не совпадать с youtube/gemini.
+        time.sleep(1.5)
 
         result = _run_geo_checks(iface)
         result["preview"] = True

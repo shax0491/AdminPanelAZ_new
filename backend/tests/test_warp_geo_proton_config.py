@@ -266,6 +266,7 @@ def test_preview_cloudflare_warp_happy_path(monkeypatch, tmp_path):
         "app.services.warp_geo.subprocess",
         SimpleNamespace(run=fake_run, TimeoutExpired=Exception),
     )
+    monkeypatch.setattr("app.services.warp_geo.time.sleep", lambda *_: None)
 
     result = preview_cloudflare_warp(tmp_path)
 

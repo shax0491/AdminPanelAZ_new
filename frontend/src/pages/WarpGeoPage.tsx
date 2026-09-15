@@ -222,6 +222,14 @@ export default function WarpGeoPage() {
               <CircleCheck className="h-3 w-3" /> Не Россия
             </Badge>
           )}
+          {(result.checked_fields ?? 0) < 2 && (
+            <Badge
+              variant="warning"
+              title="YouTube и/или Gemini не ответили за время проверки - вердикт опирается только на один источник (обычно Cloudflare loc), может ошибаться. Нажмите «Обновить» ещё раз."
+            >
+              мало данных, попробуйте ещё раз
+            </Badge>
+          )}
         </>
       )}
     </div>
