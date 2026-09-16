@@ -66,6 +66,28 @@ export default function ProxyHubView() {
 
   const proxyNodes = useMemo(() => nodes.filter(isProxyNode), [nodes])
 
+  // A proxy node auto-installed alongside node_agent on the SAME box as its
+  // linked VPN node (same host) is just latent dnat_front capability, not a
+  // real RU-relay - it'll never have proxy.sh and showing that warning for
+  // every single VPN node here is pure noise ("у тебя все прокси фронты и
+  // нихуя не ясно кто из них кто" - same complaint already fixed on Узлы).
+  // A genuine standalone RU-proxy (different host from its linked VPN node,
+  // e.g. a home/RU box relaying to a foreign backend) still gets full billing.
+  const { standaloneProxyNodes, dormantProxyNodes } = useMemo(() => {
+    const standalone: typeof proxyNodes = []
+    const dormant: typeof proxyNodes = []
+    for (const node of proxyNodes) {
+      const linkedVpn = nodes.find((n) => n.id === node.linked_vpn_node_id)
+      if (linkedVpn && linkedVpn.host === node.host) {
+        dormant.push(node)
+      } else {
+        standalone.push(node)
+      }
+    }
+    return { standaloneProxyNodes: standalone, dormantProxyNodes: dormant }
+  }, [proxyNodes, nodes])
+  const [showDormant, setShowDormant] = useState(false)
+
   const load = useCallback(async () => {
     setRefreshing(true)
     setLoadError(null)
@@ -136,7 +158,7 @@ export default function ProxyHubView() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold tracking-tight">Прокси-узлы</h3>
           {bootstrapped && !loadError && (
-            <Badge variant="secondary">{proxyNodes.length}</Badge>
+            <Badge variant="secondary">{standaloneProxyNodes.length}</Badge>
           )}
         </div>
 
@@ -163,9 +185,13 @@ export default function ProxyHubView() {
               </Button>
             }
           />
+        ) : standaloneProxyNodes.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Нет отдельных RU-прокси — только автопарные узлы для автопереключения ниже.
+          </p>
         ) : (
           <div className="space-y-4">
-            {proxyNodes.map((node) => (
+            {standaloneProxyNodes.map((node) => (
               <Card key={node.id}>
                 <CardHeader className="pb-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -202,6 +228,69 @@ export default function ProxyHubView() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        )}
+
+        {bootstrapped && !loadError && dormantProxyNodes.length > 0 && (
+          <div className="space-y-3 border-t pt-3">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={() => setShowDormant((v) => !v)}
+            >
+              {showDormant ? 'Скрыть' : 'Показать'} автопарные узлы для автопереключения (
+              {dormantProxyNodes.length})
+            </Button>
+            {showDormant && (
+              <div className="space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  Эти прокси стоят на том же сервере, что и их VPN-узел — авто-установлены вместе с
+                  node_agent, чтобы любой узел мог стать фронтом пула автопереключения без отдельной
+                  установки. Пока не назначены фронтом — ничего не делают, и{' '}
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono">proxy.sh</code> на них не
+                  нужен.
+                </p>
+                {dormantProxyNodes.map((node) => (
+                  <Card key={node.id}>
+                    <CardHeader className="pb-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <CardTitle className="text-base">{node.name}</CardTitle>
+                            <Badge variant="outline" className="text-[10px]">
+                              Прокси
+                            </Badge>
+                            <ProxyLinkBadge
+                              linkedVpnNodeId={node.linked_vpn_node_id}
+                              nodes={nodes}
+                              syncGroups={syncGroups}
+                              showUnlinked
+                            />
+                            <NodeStatusBadge status={node.status} />
+                          </div>
+                          <CardDescription className="font-mono text-xs">
+                            {node.host}:{node.port}
+                          </CardDescription>
+                        </div>
+                        <Button type="button" variant="ghost" size="sm" asChild>
+                          <Link to="/nodes">Открыть на Узлах</Link>
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <ProxyNodePanel
+                        node={node}
+                        nodes={nodes}
+                        syncGroups={syncGroups}
+                        onUpdated={handlePanelUpdated}
+                      />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </section>
