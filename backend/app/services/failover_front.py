@@ -32,6 +32,7 @@ import logging
 import socket
 from datetime import datetime
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models import FailoverPool, FailoverPoolMember, FailoverPoolStrategy, Node, NodeStatus
@@ -252,7 +253,13 @@ def _apply_switch_to_target(db: Session, pool: FailoverPool, target: FailoverPoo
         return result
 
     label = front_label(pool)
-    adapter = get_proxy_adapter(front)
+    try:
+        adapter = get_proxy_adapter(front)
+    except HTTPException as exc:
+        pool.last_switch_error = f"Фронт недоступен: {exc.detail}"
+        db.commit()
+        result["errors"].append(pool.last_switch_error)
+        return result
     real_port = backend_port(pool) or port
     real_port_kwarg = real_port if real_port != port else None
 
