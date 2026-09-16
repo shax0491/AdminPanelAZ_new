@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Activity,
+  ChevronDown,
+  ChevronRight,
   ExternalLink,
   Network,
   Puzzle,
@@ -26,9 +28,69 @@ import EmptyState from '@/components/ui/EmptyState'
 import Spinner from '@/components/ui/Spinner'
 import { useNode } from '@/context/NodeContext'
 import { useNotifications } from '@/context/NotificationContext'
+import type { Node, NodeSyncGroup } from '@/types'
 
 
 const ANTIZAPRET_REMOTES_HASH = encodeURIComponent('section-Адреса подключения')
+
+function DormantProxyCard({
+  node,
+  nodes,
+  syncGroups,
+  onUpdated,
+}: {
+  node: Node
+  nodes: Node[]
+  syncGroups: NodeSyncGroup[]
+  onUpdated: () => Promise<void>
+}) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <Card>
+      <button
+        type="button"
+        className="flex w-full flex-wrap items-start justify-between gap-3 p-4 text-left"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <div className="flex min-w-0 items-start gap-2">
+          {expanded ? (
+            <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          )}
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle className="text-base">{node.name}</CardTitle>
+              <Badge variant="outline" className="text-[10px]">
+                Прокси
+              </Badge>
+              <ProxyLinkBadge
+                linkedVpnNodeId={node.linked_vpn_node_id}
+                nodes={nodes}
+                syncGroups={syncGroups}
+                showUnlinked
+              />
+              <NodeStatusBadge status={node.status} />
+            </div>
+            <CardDescription className="font-mono text-xs">
+              {node.host}:{node.port}
+            </CardDescription>
+          </div>
+        </div>
+      </button>
+      {expanded && (
+        <CardContent className="pt-0">
+          <div className="flex justify-end pb-2">
+            <Button type="button" variant="ghost" size="sm" asChild>
+              <Link to="/nodes">Открыть на Узлах</Link>
+            </Button>
+          </div>
+          <ProxyNodePanel node={node} nodes={nodes} syncGroups={syncGroups} onUpdated={onUpdated} />
+        </CardContent>
+      )}
+    </Card>
+  )
+}
 
 const QUICK_LINKS = [
   {
@@ -155,6 +217,29 @@ export default function ProxyHubView() {
       />
 
       <section className="space-y-3">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold tracking-tight">Адреса подключения (активный VPN)</h3>
+          <p className="text-xs text-muted-foreground">
+            Список remote OpenVPN для{' '}
+            {activeNodeLabel ? (
+              <span className="font-medium text-foreground">{activeNodeLabel}</span>
+            ) : (
+              'активного узла'
+            )}
+            . Полный блок setup — в{' '}
+            <Link
+              to={`/antizapret#${ANTIZAPRET_REMOTES_HASH}`}
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Конфиг AntiZapret
+            </Link>
+            .
+          </p>
+        </div>
+        <RemoteHostsCard nodeId={activeNode?.id ?? null} variant="card" />
+      </section>
+
+      <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold tracking-tight">Прокси-узлы</h3>
           {bootstrapped && !loadError && (
@@ -253,69 +338,18 @@ export default function ProxyHubView() {
                   нужен.
                 </p>
                 {dormantProxyNodes.map((node) => (
-                  <Card key={node.id}>
-                    <CardHeader className="pb-3">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <CardTitle className="text-base">{node.name}</CardTitle>
-                            <Badge variant="outline" className="text-[10px]">
-                              Прокси
-                            </Badge>
-                            <ProxyLinkBadge
-                              linkedVpnNodeId={node.linked_vpn_node_id}
-                              nodes={nodes}
-                              syncGroups={syncGroups}
-                              showUnlinked
-                            />
-                            <NodeStatusBadge status={node.status} />
-                          </div>
-                          <CardDescription className="font-mono text-xs">
-                            {node.host}:{node.port}
-                          </CardDescription>
-                        </div>
-                        <Button type="button" variant="ghost" size="sm" asChild>
-                          <Link to="/nodes">Открыть на Узлах</Link>
-                        </Button>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <ProxyNodePanel
-                        node={node}
-                        nodes={nodes}
-                        syncGroups={syncGroups}
-                        onUpdated={handlePanelUpdated}
-                      />
-                    </CardContent>
-                  </Card>
+                  <DormantProxyCard
+                    key={node.id}
+                    node={node}
+                    nodes={nodes}
+                    syncGroups={syncGroups}
+                    onUpdated={handlePanelUpdated}
+                  />
                 ))}
               </div>
             )}
           </div>
         )}
-      </section>
-
-      <section className="space-y-3">
-        <div className="space-y-1">
-          <h3 className="text-sm font-semibold tracking-tight">Адреса подключения (активный VPN)</h3>
-          <p className="text-xs text-muted-foreground">
-            Список remote OpenVPN для{' '}
-            {activeNodeLabel ? (
-              <span className="font-medium text-foreground">{activeNodeLabel}</span>
-            ) : (
-              'активного узла'
-            )}
-            . Полный блок setup — в{' '}
-            <Link
-              to={`/antizapret#${ANTIZAPRET_REMOTES_HASH}`}
-              className="font-medium text-primary underline-offset-4 hover:underline"
-            >
-              Конфиг AntiZapret
-            </Link>
-            .
-          </p>
-        </div>
-        <RemoteHostsCard nodeId={activeNode?.id ?? null} variant="card" />
       </section>
 
       <section className="space-y-3">
