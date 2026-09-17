@@ -262,7 +262,7 @@ export default function WarpGeoPage() {
       <div className="flex items-center gap-3">
         <Satellite className="h-6 w-6 text-muted-foreground" />
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Warp Geo</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Geo</h1>
           <p className="text-sm text-muted-foreground">
             Провайдер WARP и гео-проверка исходящего трафика по узлам — Cloudflare colo/страна и
             то, какой страной сервер видит YouTube. Проверка привязана к реальному WARP-интерфейсу
