@@ -79,7 +79,14 @@ export default function ProxyHubView() {
     () =>
       proxyNodes.filter((node) => {
         const linkedVpn = nodes.find((n) => n.id === node.linked_vpn_node_id)
-        return !(linkedVpn && linkedVpn.host === node.host)
+        // Auto-installed co-located proxies are registered with their VPN
+        // sibling's DOMAIN NAME as their own host (e.g. proxy host
+        // "de1.hoststatus2346.ru" for VPN node named "de1.hoststatus2346.ru")
+        // - the VPN node's own `host` field is its raw IP, so comparing
+        // node.host to linkedVpn.host (IP vs domain) never matches and let
+        // every dormant shadow straight through. Compare against the VPN
+        // node's `name` instead - confirmed against live data for all 4.
+        return !(linkedVpn && linkedVpn.name === node.host)
       }),
     [proxyNodes, nodes],
   )
