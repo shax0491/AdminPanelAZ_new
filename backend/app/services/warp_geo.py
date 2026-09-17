@@ -434,6 +434,16 @@ def preview_cloudflare_warp(tmp_dir: Path | None = None) -> dict:
         time.sleep(1.5)
 
         result = _run_geo_checks(iface)
+        if result.get("error"):
+            # Интерфейс уже поднят (interface_up=True) - если геочек всё равно не
+            # прошёл, это не "интерфейс недоступен" (общее сообщение _run_geo_checks
+            # писалось для check_warp_geo, где интерфейс реально может не существовать),
+            # а тоннель ещё не пропускает трафик: свежему анонимному WARP-пиру иногда
+            # не хватает четырёх попыток по 10с, чтобы Cloudflare начал отвечать.
+            result["error"] = (
+                "Временный WARP-туннель поднялся, но пока не пропускает трафик "
+                "(Cloudflare медленно отвечает для нового анонимного пира) - попробуйте ещё раз."
+            )
         result["preview"] = True
         return result
     except (subprocess.TimeoutExpired, OSError) as exc:

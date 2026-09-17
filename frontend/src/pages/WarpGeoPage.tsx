@@ -380,6 +380,10 @@ export default function WarpGeoPage() {
                   </button>
                   {expanded && (
                     <>
+                      <p className="text-xs text-muted-foreground">
+                        Вставьте сюда целиком WireGuard-конфиг из личного кабинета Proton VPN — весь
+                        текст, ничего вручную набирать или менять не нужно.
+                      </p>
                       <Textarea
                         placeholder={'[Interface]\nPrivateKey = ...\nAddress = 10.2.0.2/32\n\n[Peer]\nPublicKey = ...\nEndpoint = host:port'}
                         value={protonDraft[scope]}
