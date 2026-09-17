@@ -151,14 +151,17 @@ def update_pool(
 @router.delete("/{pool_id}", response_model=MessageResponse)
 def delete_pool(pool_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     """Removes only the pool's own rows (members/client links cascade) — never
-    touches the referenced nodes or any peer already synced onto them. For
-    dnat_front pools also best-effort removes the front's DNAT rule (never
-    blocks deletion if the front is unreachable)."""
+    touches the peers/keys themselves. For dnat_front pools also best-effort
+    removes the front's DNAT rule and restores every rewritten member's
+    client .conf Endpoint back to that member's own address (never blocks
+    deletion if a node is unreachable)."""
     pool = _get_pool_or_404(db, pool_id)
     teardown_front(pool)
     db.delete(pool)
     db.commit()
-    return MessageResponse(message=f"Пул '{pool.name}' удалён (узлы и уже синхронизированные пиры не затронуты)")
+    return MessageResponse(
+        message=f"Пул '{pool.name}' удалён (узлы и пиры не затронуты, Endpoint в конфигах восстановлен на свой)"
+    )
 
 
 @router.put("/{pool_id}/front", response_model=FailoverPoolResponse)
@@ -210,10 +213,11 @@ def set_front(
 
 @router.delete("/{pool_id}/front", response_model=FailoverPoolResponse)
 def unset_front(pool_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
-    """Disband the front: best-effort remove its DNAT rule, then clear
-    front_node_id/front_port/active_member_id. Members, their cloned
-    identities and linked clients are untouched — a new front can be
-    assigned later and members re-switched onto it."""
+    """Disband the front: best-effort remove its DNAT rule and restore every
+    rewritten member's client .conf Endpoint back to its own address, then
+    clear front_node_id/front_port/active_member_id. Members, their cloned
+    identities and linked clients are otherwise untouched — a new front can
+    be assigned later and members re-switched onto it."""
     pool = _get_pool_or_404(db, pool_id)
     teardown_front(pool)
     pool.front_node_id = None

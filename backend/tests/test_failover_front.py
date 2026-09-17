@@ -495,6 +495,31 @@ def test_teardown_front_calls_adapter_teardown(monkeypatch):
     adapter.failover_teardown.assert_called_once_with(f"pool{pool.id}", 39001)
 
 
+def test_teardown_front_restores_mirrored_member_client_endpoint(monkeypatch):
+    """Disbanding a pool must stop client configs from dangling on a front
+    that no longer routes anywhere for it - the exact bug report: pool
+    deleted, but the served .conf still had the old front's Endpoint."""
+    db = _make_db()
+    pool, _primary, replica_member = _pool_with_two_members(db, replica_mirrored=True)
+
+    proxy_adapter = MagicMock()
+    monkeypatch.setattr(failover_front, "get_proxy_adapter", lambda node: proxy_adapter)
+
+    node_adapters: dict[int, MagicMock] = {}
+
+    def _adapter_for(node):
+        adapter = node_adapters.setdefault(node.id, MagicMock())
+        adapter.read_amneziawg2_server_config.return_value = "ListenPort = 53445\n"
+        return adapter
+
+    monkeypatch.setattr(failover_front, "get_adapter_for_node", _adapter_for)
+
+    failover_front.teardown_front(pool)
+
+    replica_adapter = node_adapters[replica_member.node_id]
+    replica_adapter.rewrite_amneziawg2_client_endpoint.assert_called_once_with("2.2.2.2:53445")
+
+
 def test_teardown_front_noop_without_front_assigned():
     db = _make_db()
     pool = _make_pool(db)

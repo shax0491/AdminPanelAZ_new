@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import re
 import socket
 from datetime import datetime
 
@@ -133,6 +134,26 @@ def rewrite_member_client_endpoints(pool: FailoverPool, member: FailoverPoolMemb
         logger.warning(
             "rewrite_member_client_endpoints: pool %s member %s failed: %s", pool.id, member.node.name, exc
         )
+        return 0
+
+
+def restore_member_client_endpoint(member: FailoverPoolMember) -> int:
+    """Point member's client profiles back at its own real address - the
+    reverse of ``rewrite_member_client_endpoints()``. Without this, deleting
+    a pool or detaching its front left every rewritten member's client .conf
+    files permanently pointing at a front that no longer routes anywhere -
+    the regular Clients/Configurations tab (which just reads whatever's on
+    disk, with no idea pools exist) kept serving that dead Endpoint forever,
+    and re-syncing configs couldn't fix it since the file itself was wrong."""
+    node = member.node
+    try:
+        adapter = get_adapter_for_node(node)
+        conf = adapter.read_amneziawg2_server_config(NATIVE_AWG2_IFACE)
+        port_match = re.search(r"^ListenPort\s*=\s*(\d+)", conf, re.MULTILINE)
+        port = port_match.group(1) if port_match else "53443"
+        return adapter.rewrite_amneziawg2_client_endpoint(f"{node.host}:{port}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("restore_member_client_endpoint: member %s failed: %s", node.name, exc)
         return 0
 
 
@@ -378,7 +399,15 @@ def teardown_front_node(pool: FailoverPool, node: Node, port: int) -> None:
 
 
 def teardown_front(pool: FailoverPool) -> None:
-    """Remove the CURRENT front's DNAT rule for this pool (pool deleted / front detached)."""
+    """Remove the CURRENT front's DNAT rule for this pool (pool deleted / front
+    detached), and restore every rewritten member's client profiles back to
+    that member's own real address - the same set ``set_front`` rewrites
+    (primary + any mirrored member). Without this, disbanding a pool left
+    client configs permanently pointing at a front that no longer routes
+    anywhere for that pool."""
+    for member in pool.members:
+        if member.priority == 0 or member.identity_mirrored_at is not None:
+            restore_member_client_endpoint(member)
     if pool.front_node_id is None or pool.front_port is None or pool.front_node is None:
         return
     teardown_front_node(pool, pool.front_node, int(pool.front_port))
