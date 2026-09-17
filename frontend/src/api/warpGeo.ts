@@ -20,6 +20,21 @@ export async function saveWarpProtonConfig(nodeId: number, scope: 'antizapret' |
   })
 }
 
+export type ProtonFields = {
+  private_key: string
+  public_key: string
+  address: string
+  endpoint_host: string
+  endpoint_port: string
+}
+
+export async function saveWarpProtonFields(nodeId: number, scope: 'antizapret' | 'vpn', fields: ProtonFields) {
+  return apiFetch<{ success: boolean; scope: string }>(`/warp-geo/${nodeId}/proton-fields?scope=${scope}`, {
+    method: 'POST',
+    body: JSON.stringify(fields),
+  })
+}
+
 export async function setWarpProvider(nodeId: number, provider: 'proton' | 'cloudflare') {
   return apiFetch<{ success: boolean; warp_provider: string }>(`/warp-geo/${nodeId}/provider`, {
     method: 'POST',

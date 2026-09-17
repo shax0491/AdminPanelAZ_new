@@ -1969,12 +1969,21 @@ export interface WarpGeoNodesResponse {
   nodes: { id: number; name: string; status: NodeStatus }[]
 }
 
+export interface WarpGeoProtonFields {
+  public_key: string
+  address: string
+  endpoint_host: string
+  endpoint_port: string
+}
+
 export interface WarpGeoStatusResponse {
   warp_provider: string
   antizapret_warp: string
   vpn_warp: string
   proton_antizapret_configured: boolean
   proton_vpn_configured: boolean
+  proton_antizapret_fields: WarpGeoProtonFields
+  proton_vpn_fields: WarpGeoProtonFields
 }
 
 export interface WarpGeoCheckResponse {

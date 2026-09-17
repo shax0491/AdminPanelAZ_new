@@ -65,11 +65,21 @@ def _read_setup_file(antizapret_path: Path) -> dict[str, str]:
 
 
 def read_warp_status(antizapret_path: Path) -> dict:
-    """Безопасный снимок настроек WARP: без приватных ключей и эндпоинтов."""
+    """Снимок настроек WARP для панели: PrivateKey никогда не возвращается (секрет),
+    остальные поля Proton-конфига (PublicKey/Address/Endpoint) - да, чтобы их можно
+    было увидеть и точечно поменять (например порт) прямо в панели, а не только
+    вставлять целый блок текста заново при каждой правке."""
     raw = _read_setup_file(antizapret_path)
     status: dict[str, object] = {key.lower(): raw.get(key, "") for key in _SAFE_SETUP_KEYS}
     for src_key, out_key in _PROTON_PRESENCE_KEYS.items():
         status[out_key] = bool(raw.get(src_key, "").strip())
+    for scope, field_keys in _PROTON_FIELD_KEYS.items():
+        status[f"proton_{scope}_fields"] = {
+            "public_key": raw.get(field_keys["public_key"], ""),
+            "address": raw.get(field_keys["address"], ""),
+            "endpoint_host": raw.get(field_keys["endpoint_host"], ""),
+            "endpoint_port": raw.get(field_keys["endpoint_port"], ""),
+        }
     return status
 
 
@@ -182,6 +192,30 @@ class ProtonConfigError(ValueError):
     """Вставленный WireGuard-конфиг Proton не прошёл валидацию."""
 
 
+def _validate_proton_wg_key(value: str, field_name: str) -> str:
+    value = (value or "").strip()
+    if not _WG_KEY_RE.match(value):
+        raise ProtonConfigError(f"{field_name} не похож на настоящий WireGuard-ключ")
+    return value
+
+
+def _validate_proton_address(address_raw: str) -> str:
+    address = (address_raw or "").split(",")[0].strip().split("/")[0].strip()
+    if not _IPV4_RE.match(address):
+        raise ProtonConfigError(f"Address должен быть IPv4-адресом, получено: {address_raw!r}")
+    return address
+
+
+def _validate_proton_endpoint(endpoint_host: str, endpoint_port: str) -> tuple[str, str]:
+    endpoint_host = (endpoint_host or "").strip()
+    endpoint_port = str(endpoint_port or "").strip()
+    if not _HOST_RE.match(endpoint_host):
+        raise ProtonConfigError(f"Endpoint host некорректен: {endpoint_host!r}")
+    if not endpoint_port.isdigit() or not (1 <= int(endpoint_port) <= 65535):
+        raise ProtonConfigError(f"Endpoint port должен быть 1-65535, получено: {endpoint_port!r}")
+    return endpoint_host, endpoint_port
+
+
 def parse_proton_wg_conf(raw: str) -> dict[str, str]:
     """Разобрать вставленный WireGuard-конфиг Proton - порт parse_proton_wg_conf() из setup.sh.
 
@@ -210,22 +244,14 @@ def parse_proton_wg_conf(raw: str) -> dict[str, str]:
     if not (private_key and public_key and address_raw and endpoint_raw):
         raise ProtonConfigError("В конфиге должны быть PrivateKey, PublicKey, Address и Endpoint")
 
-    if not _WG_KEY_RE.match(private_key):
-        raise ProtonConfigError("PrivateKey не похож на настоящий WireGuard-ключ")
-    if not _WG_KEY_RE.match(public_key):
-        raise ProtonConfigError("PublicKey не похож на настоящий WireGuard-ключ")
-
-    address = address_raw.split(",")[0].strip().split("/")[0].strip()
-    if not _IPV4_RE.match(address):
-        raise ProtonConfigError(f"Address должен быть IPv4-адресом, получено: {address_raw!r}")
+    private_key = _validate_proton_wg_key(private_key, "PrivateKey")
+    public_key = _validate_proton_wg_key(public_key, "PublicKey")
+    address = _validate_proton_address(address_raw)
 
     if ":" not in endpoint_raw:
         raise ProtonConfigError("Endpoint должен быть в формате host:port")
-    endpoint_host, _, endpoint_port = endpoint_raw.rpartition(":")
-    if not _HOST_RE.match(endpoint_host):
-        raise ProtonConfigError(f"Endpoint host некорректен: {endpoint_host!r}")
-    if not endpoint_port.isdigit() or not (1 <= int(endpoint_port) <= 65535):
-        raise ProtonConfigError(f"Endpoint port должен быть 1-65535, получено: {endpoint_port!r}")
+    endpoint_host_raw, _, endpoint_port_raw = endpoint_raw.rpartition(":")
+    endpoint_host, endpoint_port = _validate_proton_endpoint(endpoint_host_raw, endpoint_port_raw)
 
     return {
         "private_key": private_key,
@@ -262,18 +288,59 @@ def save_proton_config(scope: Literal["antizapret", "vpn"], raw_config: str, ant
     """
     parsed = parse_proton_wg_conf(raw_config)
 
-    other_scope = "vpn" if scope == "antizapret" else "antizapret"
-    other_keys = _PROTON_FIELD_KEYS[other_scope]
     raw = _read_setup_file(antizapret_path)
-    other_private_key = raw.get(other_keys["private_key"], "").strip()
-    if other_private_key and other_private_key == parsed["private_key"]:
-        raise ProtonConfigError(
-            "Этот ключ уже используется для другого scope (antizapret/vpn) - Proton не даёт "
-            "одновременно держать два туннеля на одном ключе, вставьте другой конфиг."
-        )
+    _check_proton_key_not_reused(scope, parsed["private_key"], raw)
 
     field_keys = _PROTON_FIELD_KEYS[scope]
     updates = {field_keys[name]: value for name, value in parsed.items()}
+    _write_setup_fields(antizapret_path, updates)
+    return {"success": True, "scope": scope}
+
+
+def _check_proton_key_not_reused(scope: Literal["antizapret", "vpn"], private_key: str, raw: dict[str, str]) -> None:
+    other_scope = "vpn" if scope == "antizapret" else "antizapret"
+    other_private_key = raw.get(_PROTON_FIELD_KEYS[other_scope]["private_key"], "").strip()
+    if other_private_key and other_private_key == private_key:
+        raise ProtonConfigError(
+            "Этот ключ уже используется для другого scope (antizapret/vpn) - Proton не даёт "
+            "одновременно держать два туннеля на одном ключе, вставьте другой ключ."
+        )
+
+
+def save_proton_fields(scope: Literal["antizapret", "vpn"], fields: dict[str, str], antizapret_path: Path) -> dict:
+    """Сохранить Proton-конфиг из отдельных полей панели (PublicKey/Address/Endpoint host+port
+    и опционально PrivateKey), а не одним блоком текста.
+
+    PrivateKey никогда не отдаётся панели обратно (см. read_warp_status), так что пустое
+    значение здесь означает "оставить текущий как есть" - только тогда, когда он уже задан.
+    Остальные поля обязательны и перезатираются всегда, даже если совпадают со старыми.
+    """
+    field_keys = _PROTON_FIELD_KEYS[scope]
+    raw = _read_setup_file(antizapret_path)
+    current_private_key = raw.get(field_keys["private_key"], "").strip()
+
+    private_key_input = (fields.get("private_key") or "").strip()
+    private_key = private_key_input or current_private_key
+    if not private_key:
+        raise ProtonConfigError("PrivateKey не задан")
+    private_key = _validate_proton_wg_key(private_key, "PrivateKey")
+
+    public_key = _validate_proton_wg_key(fields.get("public_key", ""), "PublicKey")
+    address = _validate_proton_address(fields.get("address", ""))
+    endpoint_host, endpoint_port = _validate_proton_endpoint(
+        fields.get("endpoint_host", ""), fields.get("endpoint_port", "")
+    )
+
+    if private_key != current_private_key:
+        _check_proton_key_not_reused(scope, private_key, raw)
+
+    updates = {
+        field_keys["private_key"]: private_key,
+        field_keys["public_key"]: public_key,
+        field_keys["address"]: address,
+        field_keys["endpoint_host"]: endpoint_host,
+        field_keys["endpoint_port"]: endpoint_port,
+    }
     _write_setup_fields(antizapret_path, updates)
     return {"success": True, "scope": scope}
 

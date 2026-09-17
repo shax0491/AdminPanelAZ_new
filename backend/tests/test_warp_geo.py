@@ -28,7 +28,7 @@ VPN_DNS=1
 """
 
 
-def test_read_warp_status_returns_safe_fields_without_keys(tmp_path):
+def test_read_warp_status_returns_safe_fields_without_private_key(tmp_path):
     (tmp_path / "setup").write_text(SETUP_CONTENT, encoding="utf-8")
 
     status = read_warp_status(tmp_path)
@@ -39,10 +39,12 @@ def test_read_warp_status_returns_safe_fields_without_keys(tmp_path):
     # Proton configured for antizapret (private key non-empty), not for vpn (empty).
     assert status["proton_antizapret_configured"] is True
     assert status["proton_vpn_configured"] is False
-    # Никакие ключи не должны попасть в ответ ни под каким именем.
+    # PublicKey/Address/Endpoint - можно показать и точечно поменять в панели,
+    # это не секрет. PrivateKey - секрет, не должен попасть в ответ никогда.
+    assert status["proton_antizapret_fields"]["public_key"] == "pubkeyhere"
+    assert status["proton_antizapret_fields"]["address"] == "10.2.0.2"
     dumped = str(status)
     assert "abcdef1234567890" not in dumped
-    assert "pubkeyhere" not in dumped
 
 
 def test_read_warp_status_missing_setup_file_returns_empty_safe_defaults(tmp_path):

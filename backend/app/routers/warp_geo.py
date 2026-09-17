@@ -18,6 +18,14 @@ class ProtonConfigBody(BaseModel):
     raw_config: str = Field(min_length=1, max_length=4096)
 
 
+class ProtonFieldsBody(BaseModel):
+    private_key: str = Field("", max_length=256)
+    public_key: str = Field("", max_length=256)
+    address: str = Field("", max_length=64)
+    endpoint_host: str = Field("", max_length=255)
+    endpoint_port: str = Field("", max_length=8)
+
+
 class ProviderBody(BaseModel):
     provider: str
 
@@ -71,6 +79,21 @@ def warp_geo_save_proton_config(
     node = _get_vpn_node_or_404(node_id, db)
     adapter = get_adapter_for_node(node)
     return adapter.save_warp_proton_config(scope, body.raw_config)
+
+
+@router.post("/{node_id}/proton-fields")
+def warp_geo_save_proton_fields(
+    node_id: int,
+    scope: str,
+    body: ProtonFieldsBody,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    if scope not in ("antizapret", "vpn"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scope должен быть antizapret или vpn")
+    node = _get_vpn_node_or_404(node_id, db)
+    adapter = get_adapter_for_node(node)
+    return adapter.save_warp_proton_fields(scope, body.model_dump())
 
 
 @router.post("/{node_id}/provider")

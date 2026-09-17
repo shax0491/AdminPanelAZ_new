@@ -18,6 +18,7 @@ from app.services.warp_geo import (
     apply_warp_changes,
     parse_proton_wg_conf,
     save_proton_config,
+    save_proton_fields,
     set_warp_provider,
     preview_cloudflare_warp,
 )
@@ -145,6 +146,73 @@ Endpoint = 79.127.186.164:51820
     content = (tmp_path / "setup").read_text(encoding="utf-8")
     assert f"PROTON_VPN_PRIVATE_KEY={VALID_KEY_C}" in content
     assert f"PROTON_ANTIZAPRET_PRIVATE_KEY={VALID_KEY_A}" in content
+
+
+def _proton_fields(**overrides) -> dict[str, str]:
+    fields = {
+        "private_key": VALID_KEY_A,
+        "public_key": VALID_KEY_B,
+        "address": "10.2.0.2",
+        "endpoint_host": "79.127.186.163",
+        "endpoint_port": "51820",
+    }
+    fields.update(overrides)
+    return fields
+
+
+def test_save_proton_fields_writes_all_fields(tmp_path):
+    _write_setup(tmp_path)
+
+    result = save_proton_fields("antizapret", _proton_fields(), tmp_path)
+
+    assert result == {"success": True, "scope": "antizapret"}
+    content = (tmp_path / "setup").read_text(encoding="utf-8")
+    assert f"PROTON_ANTIZAPRET_PRIVATE_KEY={VALID_KEY_A}" in content
+    assert f"PROTON_ANTIZAPRET_PUBLIC_KEY={VALID_KEY_B}" in content
+    assert "PROTON_ANTIZAPRET_ADDRESS=10.2.0.2" in content
+    assert "PROTON_ANTIZAPRET_ENDPOINT_HOST=79.127.186.163" in content
+    assert "PROTON_ANTIZAPRET_ENDPOINT_PORT=51820" in content
+
+
+def test_save_proton_fields_blank_private_key_keeps_existing(tmp_path):
+    _write_setup(tmp_path, f"PROTON_ANTIZAPRET_PRIVATE_KEY={VALID_KEY_A}\n")
+
+    result = save_proton_fields(
+        "antizapret", _proton_fields(private_key="", endpoint_port="51821"), tmp_path
+    )
+
+    assert result["success"] is True
+    content = (tmp_path / "setup").read_text(encoding="utf-8")
+    assert f"PROTON_ANTIZAPRET_PRIVATE_KEY={VALID_KEY_A}" in content
+    assert "PROTON_ANTIZAPRET_ENDPOINT_PORT=51821" in content
+
+
+def test_save_proton_fields_blank_private_key_without_existing_one_fails(tmp_path):
+    _write_setup(tmp_path)
+
+    with pytest.raises(ProtonConfigError, match="PrivateKey не задан"):
+        save_proton_fields("antizapret", _proton_fields(private_key=""), tmp_path)
+
+
+def test_save_proton_fields_rejects_reused_key_across_scopes(tmp_path):
+    _write_setup(tmp_path, f"PROTON_ANTIZAPRET_PRIVATE_KEY={VALID_KEY_A}\n")
+
+    with pytest.raises(ProtonConfigError, match="уже используется для другого scope"):
+        save_proton_fields("vpn", _proton_fields(endpoint_host="79.127.186.164"), tmp_path)
+
+
+def test_save_proton_fields_rejects_bad_port(tmp_path):
+    _write_setup(tmp_path)
+
+    with pytest.raises(ProtonConfigError, match="Endpoint port"):
+        save_proton_fields("antizapret", _proton_fields(endpoint_port="99999"), tmp_path)
+
+
+def test_save_proton_fields_rejects_non_ipv4_address(tmp_path):
+    _write_setup(tmp_path)
+
+    with pytest.raises(ProtonConfigError, match="Address"):
+        save_proton_fields("antizapret", _proton_fields(address="; touch /tmp/pwned #"), tmp_path)
 
 
 def test_set_warp_provider_writes_field(tmp_path):

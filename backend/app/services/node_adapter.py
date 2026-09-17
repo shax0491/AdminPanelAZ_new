@@ -283,6 +283,9 @@ class NodeAdapter(ABC):
     def save_warp_proton_config(self, scope: str, raw_config: str) -> dict: ...
 
     @abstractmethod
+    def save_warp_proton_fields(self, scope: str, fields: dict[str, str]) -> dict: ...
+
+    @abstractmethod
     def set_warp_provider(self, provider: str) -> dict: ...
 
     @abstractmethod
@@ -675,6 +678,11 @@ class LocalNodeAdapter(NodeAdapter):
         from app.services.warp_geo import save_proton_config
 
         return save_proton_config(scope, raw_config, self._service.base_path)
+
+    def save_warp_proton_fields(self, scope: str, fields: dict[str, str]) -> dict:
+        from app.services.warp_geo import save_proton_fields
+
+        return save_proton_fields(scope, fields, self._service.base_path)
 
     def set_warp_provider(self, provider: str) -> dict:
         from app.services.warp_geo import set_warp_provider as _set_warp_provider
@@ -1684,6 +1692,12 @@ class RemoteNodeAdapter(NodeAdapter):
         return self._request(
             "POST", "/warp-geo/proton-config",
             json={"scope": scope, "raw_config": raw_config}, timeout=30.0,
+        )
+
+    def save_warp_proton_fields(self, scope: str, fields: dict[str, str]) -> dict:
+        return self._request(
+            "POST", "/warp-geo/proton-fields",
+            json={"scope": scope, **fields}, timeout=30.0,
         )
 
     def set_warp_provider(self, provider: str) -> dict:

@@ -44,6 +44,7 @@ from app.services.warp_geo import (
     check_warp_geo,
     read_warp_status,
     save_proton_config,
+    save_proton_fields,
     set_warp_provider,
     preview_cloudflare_warp,
 )
@@ -308,6 +309,15 @@ class ProtonConfigRequest(BaseModel):
     raw_config: str = Field(min_length=1, max_length=4096)
 
 
+class ProtonFieldsRequest(BaseModel):
+    scope: str
+    private_key: str = Field("", max_length=256)
+    public_key: str = Field("", max_length=256)
+    address: str = Field("", max_length=64)
+    endpoint_host: str = Field("", max_length=255)
+    endpoint_port: str = Field("", max_length=8)
+
+
 class WarpProviderRequest(BaseModel):
     provider: str
 
@@ -318,6 +328,23 @@ def warp_geo_save_proton_config(payload: ProtonConfigRequest, _: None = Depends(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scope должен быть antizapret или vpn")
     try:
         return save_proton_config(payload.scope, payload.raw_config, ANTIZAPRET_PATH)
+    except ProtonConfigError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@app.post("/warp-geo/proton-fields")
+def warp_geo_save_proton_fields(payload: ProtonFieldsRequest, _: None = Depends(verify_api_key)):
+    if payload.scope not in ("antizapret", "vpn"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scope должен быть antizapret или vpn")
+    fields = {
+        "private_key": payload.private_key,
+        "public_key": payload.public_key,
+        "address": payload.address,
+        "endpoint_host": payload.endpoint_host,
+        "endpoint_port": payload.endpoint_port,
+    }
+    try:
+        return save_proton_fields(payload.scope, fields, ANTIZAPRET_PATH)
     except ProtonConfigError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

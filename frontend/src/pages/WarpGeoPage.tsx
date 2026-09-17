@@ -5,16 +5,25 @@ import {
   checkWarpGeo,
   getWarpGeoStatus,
   listWarpGeoNodes,
-  saveWarpProtonConfig,
+  saveWarpProtonFields,
   setWarpProvider,
   testCloudflareWarpPreview,
+  type ProtonFields,
 } from '@/api/warpGeo'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
 import type { WarpGeoCheckResponse, WarpGeoNodesResponse, WarpGeoStatusResponse } from '@/types'
+
+const EMPTY_PROTON_FIELDS: ProtonFields = {
+  private_key: '',
+  public_key: '',
+  address: '',
+  endpoint_host: '',
+  endpoint_port: '',
+}
 
 const SCOPE_LABELS: Record<'antizapret' | 'vpn' | 'raw', string> = {
   antizapret: 'AntiZapret VPN (antizapret-*)',
@@ -37,7 +46,10 @@ export default function WarpGeoPage() {
   const [statusError, setStatusError] = useState<string | null>(null)
   const [checkResults, setCheckResults] = useState<Partial<Record<'antizapret' | 'vpn' | 'raw', WarpGeoCheckResponse>>>({})
   const [checking, setChecking] = useState<string | null>(null)
-  const [protonDraft, setProtonDraft] = useState<{ antizapret: string; vpn: string }>({ antizapret: '', vpn: '' })
+  const [protonFieldsDraft, setProtonFieldsDraft] = useState<{ antizapret: ProtonFields; vpn: ProtonFields }>({
+    antizapret: EMPTY_PROTON_FIELDS,
+    vpn: EMPTY_PROTON_FIELDS,
+  })
   const [savingScope, setSavingScope] = useState<'antizapret' | 'vpn' | null>(null)
   const [manageError, setManageError] = useState<string | null>(null)
   const [manageMessage, setManageMessage] = useState<string | null>(null)
@@ -96,6 +108,10 @@ export default function WarpGeoPage() {
       getWarpGeoStatus(id)
         .then((data) => {
           setStatus(data)
+          setProtonFieldsDraft({
+            antizapret: { ...EMPTY_PROTON_FIELDS, ...data.proton_antizapret_fields },
+            vpn: { ...EMPTY_PROTON_FIELDS, ...data.proton_vpn_fields },
+          })
           runAllChecks(id)
         })
         .catch((err) => setStatusError(err instanceof Error ? err.message : 'Не удалось загрузить статус WARP'))
@@ -106,7 +122,7 @@ export default function WarpGeoPage() {
 
   useEffect(() => {
     if (nodeId !== null) loadStatus(nodeId)
-    setProtonDraft({ antizapret: '', vpn: '' })
+    setProtonFieldsDraft({ antizapret: EMPTY_PROTON_FIELDS, vpn: EMPTY_PROTON_FIELDS })
     setManageError(null)
     setManageMessage(null)
     setExpandedProtonScope(null)
@@ -114,23 +130,28 @@ export default function WarpGeoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeId])
 
-  const handleSaveProtonConfig = async (scope: 'antizapret' | 'vpn') => {
+  const handleSaveProtonFields = async (scope: 'antizapret' | 'vpn') => {
     if (nodeId === null) return
-    const raw = protonDraft[scope].trim()
-    if (!raw) return
+    const fields = protonFieldsDraft[scope]
+    if (!fields.public_key.trim() || !fields.address.trim() || !fields.endpoint_host.trim() || !fields.endpoint_port.trim()) {
+      return
+    }
     setSavingScope(scope)
     setManageError(null)
     setManageMessage(null)
     try {
-      await saveWarpProtonConfig(nodeId, scope, raw)
-      setProtonDraft((prev) => ({ ...prev, [scope]: '' }))
-      setManageMessage('Ключ сохранён в конфиг. Нажмите «Применить», чтобы поднять туннель.')
+      await saveWarpProtonFields(nodeId, scope, fields)
+      setManageMessage('Конфиг сохранён. Нажмите «Применить», чтобы поднять туннель.')
       loadStatus(nodeId)
     } catch (err) {
       setManageError(err instanceof Error ? err.message : 'Не удалось сохранить конфиг')
     } finally {
       setSavingScope(null)
     }
+  }
+
+  const updateProtonField = (scope: 'antizapret' | 'vpn', field: keyof ProtonFields, value: string) => {
+    setProtonFieldsDraft((prev) => ({ ...prev, [scope]: { ...prev[scope], [field]: value } }))
   }
 
   const handleSwitchProvider = async (provider: 'proton' | 'cloudflare') => {
@@ -381,23 +402,74 @@ export default function WarpGeoPage() {
                   {expanded && (
                     <>
                       <p className="text-xs text-muted-foreground">
-                        Вставьте сюда целиком WireGuard-конфиг из личного кабинета Proton VPN — весь
-                        текст, ничего вручную набирать или менять не нужно.
+                        Значения — из <code className="font-mono">setup</code> на узле, те же поля, что в
+                        WireGuard-конфиге из личного кабинета Proton VPN. Правьте точечно (например только
+                        порт) — остальное менять не нужно.
                       </p>
-                      <Textarea
-                        placeholder={'[Interface]\nPrivateKey = ...\nAddress = 10.2.0.2/32\n\n[Peer]\nPublicKey = ...\nEndpoint = host:port'}
-                        value={protonDraft[scope]}
-                        onChange={(e) => setProtonDraft((prev) => ({ ...prev, [scope]: e.target.value }))}
-                        className="min-h-[120px] font-mono text-xs"
-                      />
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <label className="flex flex-col gap-1 text-xs">
+                          PublicKey
+                          <Input
+                            value={protonFieldsDraft[scope].public_key}
+                            onChange={(e) => updateProtonField(scope, 'public_key', e.target.value)}
+                            placeholder="base64-ключ"
+                            className="font-mono text-xs"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs">
+                          Address
+                          <Input
+                            value={protonFieldsDraft[scope].address}
+                            onChange={(e) => updateProtonField(scope, 'address', e.target.value)}
+                            placeholder="10.2.0.2"
+                            className="font-mono text-xs"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs">
+                          Endpoint host
+                          <Input
+                            value={protonFieldsDraft[scope].endpoint_host}
+                            onChange={(e) => updateProtonField(scope, 'endpoint_host', e.target.value)}
+                            placeholder="146.70.xxx.xxx"
+                            className="font-mono text-xs"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs">
+                          Endpoint port
+                          <Input
+                            value={protonFieldsDraft[scope].endpoint_port}
+                            onChange={(e) => updateProtonField(scope, 'endpoint_port', e.target.value)}
+                            placeholder="51820"
+                            className="font-mono text-xs"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs sm:col-span-2">
+                          PrivateKey
+                          <Input
+                            value={protonFieldsDraft[scope].private_key}
+                            onChange={(e) => updateProtonField(scope, 'private_key', e.target.value)}
+                            placeholder={configured ? 'оставьте пустым, чтобы не менять текущий' : 'base64-ключ'}
+                            className="font-mono text-xs"
+                            type="password"
+                          />
+                        </label>
+                      </div>
                       <Button
                         size="sm"
                         variant="outline"
                         className="self-start"
-                        disabled={nodeId === null || !protonDraft[scope].trim() || savingScope === scope}
-                        onClick={() => handleSaveProtonConfig(scope)}
+                        disabled={
+                          nodeId === null ||
+                          savingScope === scope ||
+                          !protonFieldsDraft[scope].public_key.trim() ||
+                          !protonFieldsDraft[scope].address.trim() ||
+                          !protonFieldsDraft[scope].endpoint_host.trim() ||
+                          !protonFieldsDraft[scope].endpoint_port.trim() ||
+                          (!configured && !protonFieldsDraft[scope].private_key.trim())
+                        }
+                        onClick={() => handleSaveProtonFields(scope)}
                       >
-                        {savingScope === scope ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Сохранить ключ'}
+                        {savingScope === scope ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Сохранить'}
                       </Button>
                     </>
                   )}
