@@ -144,6 +144,75 @@ def _apply_iptables_plan(plan: list[list[str]]) -> None:
         raise HTTPException(status_code=code, detail=detail) from exc
 
 
+def _ensure_docker_forward_allows(*ports: int) -> bool:
+    """Best-effort self-heal for the Docker-on-a-front-node footgun.
+
+    Docker installs its own DOCKER-USER chain and, via its default
+    ``iptables -P FORWARD DROP`` policy, silently swallows any DNAT-relayed
+    traffic for a front node that also happens to run Docker (e.g. MTProxy
+    on the same box as the AntiZapret front). Confirmed live: DNAT+MASQUERADE
+    forwarding works fine until Docker is present, then the forward leg (and,
+    separately, the return leg unless ESTABLISHED,RELATED is allowed too)
+    just vanishes with no error anywhere. Idempotent — safe to call on every
+    switch; no-ops entirely if Docker/DOCKER-USER isn't present on this host.
+    Returns True if any rule was actually inserted (caller may want to persist).
+    """
+    try:
+        probe = subprocess.run(
+            ["iptables", "-L", "DOCKER-USER", "-n"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    if probe.returncode != 0:
+        return False  # no DOCKER-USER chain on this host — nothing to heal
+
+    def _ensure_rule(rule: list[str]) -> bool:
+        try:
+            exists = subprocess.run(
+                ["iptables", "-C", "DOCKER-USER", *rule],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if exists.returncode != 0:
+                subprocess.run(
+                    ["iptables", "-I", "DOCKER-USER", "1", *rule],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                return True
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+        return False
+
+    changed = _ensure_rule(["-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"])
+    for port in {p for p in ports if p}:
+        changed = _ensure_rule(["-p", "udp", "--dport", str(port), "-j", "ACCEPT"]) or changed
+        changed = _ensure_rule(["-p", "tcp", "--dport", str(port), "-j", "ACCEPT"]) or changed
+    return changed
+
+
+def _persist_iptables() -> None:
+    """Persist if netfilter-persistent is available (best-effort)."""
+    try:
+        subprocess.run(
+            ["netfilter-persistent", "save"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+
 def _status_from_rules(rules_text: str) -> dict:
     installed = is_proxy_installed(rules_text)
     dest = detect_proxy_destination(rules_text)
@@ -209,17 +278,7 @@ def proxy_destination(payload: DestinationBody, _: None = Depends(verify_api_key
             detail="Нет правил для замены DESTINATION",
         )
     _apply_iptables_plan(plan)
-    # Persist if netfilter-persistent available (best-effort)
-    try:
-        subprocess.run(
-            ["netfilter-persistent", "save"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+    _persist_iptables()
     return _status_from_rules(_run_iptables_save_nat())
 
 
@@ -271,23 +330,18 @@ def failover_set_destination(label: str, payload: FailoverDestinationBody, _: No
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+    docker_healed = _ensure_docker_forward_allows(payload.port, payload.backend_port)
+
     rules = _run_iptables_save_nat()
     plan = plan_failover_switch(rules, label, payload.port, new_ip, payload.backend_port)
     if plan:
         _apply_iptables_plan(plan)
-        try:
-            subprocess.run(
-                ["netfilter-persistent", "save"],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+        _persist_iptables()
         _flush_conntrack_for_port(payload.port)
         if payload.backend_port and payload.backend_port != payload.port:
             _flush_conntrack_for_port(payload.backend_port)
+    elif docker_healed:
+        _persist_iptables()
     return failover_status_from_rules(_run_iptables_save_nat(), label, payload.port)
 
 
@@ -303,16 +357,7 @@ def failover_teardown(label: str, port: int, backend_port: int | None = None, _:
     plan = plan_failover_teardown(rules, label, port, backend_port)
     if plan:
         _apply_iptables_plan(plan)
-        try:
-            subprocess.run(
-                ["netfilter-persistent", "save"],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+        _persist_iptables()
     return {"label": label, "port": port, "installed": False, "destination_ip": None}
 
 

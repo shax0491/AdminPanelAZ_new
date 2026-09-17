@@ -40,10 +40,32 @@ sed \
   -e "s|/var/lib/adminpanelaz-proxy|$STATE_DIR|g" \
   -e "s|^User=root|User=$INSTALL_USER|" \
   -e "s|^Group=root|Group=$INSTALL_GROUP|" \
-  -e "s|Environment=PROXY_AGENT_PORT=9101|Environment=PROXY_AGENT_PORT=${PROXY_AGENT_PORT:-9101}|" \
-  -e "s|PROXY_AGENT_API_KEY=change-me-proxy-agent-key|PROXY_AGENT_API_KEY=${PROXY_AGENT_API_KEY:-change-me-proxy-agent-key}|" \
   -e "s|EnvironmentFile=-/opt/AdminPanelAZ/backend/proxy_agent.env|EnvironmentFile=-$ROOT_DIR/backend/proxy_agent.env|" \
   "$UNIT_SRC" >"$UNIT_DST"
+
+# PROXY_AGENT_PORT/PROXY_AGENT_API_KEY идут ТОЛЬКО в proxy_agent.env (EnvironmentFile),
+# никогда как Environment= в юните — иначе systemd применит их после EnvironmentFile
+# и любая последующая правка .env-файла (например ротация ключа) молча проигнорируется.
+PROXY_ENV_FILE="$ROOT_DIR/backend/proxy_agent.env"
+_set_env_kv() {
+  local file="$1" key="$2" value="$3"
+  touch "$file"
+  if grep -q "^${key}=" "$file" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$file"
+  else
+    echo "${key}=${value}" >>"$file"
+  fi
+}
+_set_env_kv "$PROXY_ENV_FILE" PROXY_AGENT_PORT "${PROXY_AGENT_PORT:-9101}"
+_set_env_kv "$PROXY_ENV_FILE" PROXY_AGENT_API_KEY "${PROXY_AGENT_API_KEY:-change-me-proxy-agent-key}"
+chmod 600 "$PROXY_ENV_FILE"
+chown "$INSTALL_USER:$INSTALL_GROUP" "$PROXY_ENV_FILE"
+
+if ! command -v netfilter-persistent >/dev/null 2>&1; then
+  log "Установка iptables-persistent (нужен для сохранения DNAT-правил фронта после ребута)..."
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq iptables-persistent >/dev/null 2>&1 || \
+    log "ВНИМАНИЕ: не удалось поставить iptables-persistent автоматически — поставьте вручную, иначе правила DNAT фронта пропадут после ребута."
+fi
 
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"

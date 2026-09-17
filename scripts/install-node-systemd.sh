@@ -41,10 +41,25 @@ sed \
   -e "s|/var/lib/adminpanelaz-node|$STATE_DIR|g" \
   -e "s|^User=root|User=$INSTALL_USER|" \
   -e "s|^Group=root|Group=$INSTALL_GROUP|" \
-  -e "s|Environment=NODE_AGENT_PORT=9100|Environment=NODE_AGENT_PORT=${NODE_AGENT_PORT:-9100}|" \
-  -e "s|NODE_AGENT_API_KEY=change-me-node-agent-key|NODE_AGENT_API_KEY=${NODE_AGENT_API_KEY:-change-me-node-agent-key}|" \
   -e "s|EnvironmentFile=-/opt/AdminPanelAZ/backend/node_agent.env|EnvironmentFile=-$ROOT_DIR/backend/node_agent.env|" \
   "$UNIT_SRC" >"$UNIT_DST"
+
+# NODE_AGENT_PORT/NODE_AGENT_API_KEY идут ТОЛЬКО в node_agent.env (EnvironmentFile),
+# никогда как Environment= в юните — та же причина, что и у proxy_agent (см. там).
+NODE_ENV_FILE="$ROOT_DIR/backend/node_agent.env"
+_set_env_kv() {
+  local file="$1" key="$2" value="$3"
+  touch "$file"
+  if grep -q "^${key}=" "$file" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$file"
+  else
+    echo "${key}=${value}" >>"$file"
+  fi
+}
+_set_env_kv "$NODE_ENV_FILE" NODE_AGENT_PORT "${NODE_AGENT_PORT:-9100}"
+_set_env_kv "$NODE_ENV_FILE" NODE_AGENT_API_KEY "${NODE_AGENT_API_KEY:-change-me-node-agent-key}"
+chmod 600 "$NODE_ENV_FILE"
+chown "$INSTALL_USER:$INSTALL_GROUP" "$NODE_ENV_FILE"
 
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
