@@ -23,8 +23,7 @@
 
 ```bash
 sudo apt update && sudo apt install -y git wget curl
-wget -qO /tmp/install.sh https://raw.githubusercontent.com/shax0491/AdminPanelAZ_new/refs/heads/main/install.sh
-sudo bash /tmp/install.sh
+curl -fsSL https://raw.githubusercontent.com/shax0491/AdminPanelAZ_new/refs/heads/main/install.sh | sudo bash
 ```
 
 Установщик задаст несколько вопросов: что ставим, порты, логин/пароль администратора, каталог бэкапов. После установки панель сразу открывается по `http://IP:порт/` (обычно **8000**).

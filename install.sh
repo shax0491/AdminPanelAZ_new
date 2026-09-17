@@ -272,24 +272,33 @@ require_tty_or_explicit_intent() {
     return 0
   fi
 
+  # stdin - это pipe (типичный случай: `curl ... | sudo bash` или
+  # `wget -qO- ... | sudo bash`), а не терминал: read будет читать из уже
+  # вычерпанного пайпа, а не с клавиатуры. Переоткрываем stdin из
+  # управляющего терминала - тот же приём, что read_proton_config в
+  # AntiZapret-VPN (< /dev/tty), только на весь процесс через exec, а не на
+  # один read. Если управляющего терминала нет вообще (реальная автоматизация/CI) -
+  # ниже сохраняется прежний отказ с явными флагами.
+  if [[ -r /dev/tty && -w /dev/tty ]] && exec < /dev/tty; then
+    return 0
+  fi
+
   cat >&2 <<'EOF'
-[install] ОШИБКА: нет TTY (stdin не терминал) — интерактивный мастер и меню недоступны.
-Установка через pipe (wget|curl | sudo bash) без явных флагов не поддерживается:
-скрипт не может определить тип установки и не будет устанавливать панель «молча».
+[install] ОШИБКА: нет TTY и не удалось открыть управляющий терминал (/dev/tty) —
+интерактивный мастер и меню недоступны. Это не обычный `curl|wget | sudo bash`
+(тот теперь сам переключается на клавиатуру) — похоже, скрипт запущен там, где
+терминала нет вообще (CI / automation / без псевдо-tty у ssh).
 
-Рекомендуемый способ (интерактивно):
-  wget -qO /tmp/install.sh https://raw.githubusercontent.com/shax0491/AdminPanelAZ_new/refs/heads/main/install.sh
-  sudo bash /tmp/install.sh
-  # или из клона: cd /opt/AdminPanelAZ && sudo ./install.sh
-
-Без TTY (CI / automation) — передайте явные флаги, например:
+Передайте явные флаги, например:
   sudo bash install.sh --non-interactive --with-systemd -y
   sudo bash install.sh --node-only --with-systemd -y
   sudo bash install.sh --proxy-only --with-systemd -y
 
-ERROR: no TTY — interactive wizard unavailable.
-Do not use wget|curl | sudo bash without flags. Download and run: sudo bash /tmp/install.sh
-Or pass explicit flags: --non-interactive --with-systemd, --node-only, or --proxy-only
+Либо (для ssh без tty) добавьте -t: ssh -t host 'curl -fsSL ... | sudo bash'
+
+ERROR: no TTY and /dev/tty is unavailable — interactive wizard unusable.
+Pass explicit flags: --non-interactive --with-systemd, --node-only, or --proxy-only
+Or, over ssh without a tty, add -t: ssh -t host 'curl -fsSL ... | sudo bash'
 EOF
   exit 1
 }
