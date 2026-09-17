@@ -1305,7 +1305,7 @@ class FailoverPoolCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     vpn_type: str = "amneziawg2"
     mode: str = Field(default="auto", pattern="^(auto|manual)$")
-    strategy: str = Field(default="client_sync", pattern="^(client_sync|dnat_front)$")
+    strategy: str = Field(default="dnat_front", pattern="^(dnat_front)$")
     health_check_target: str = Field(default="1.1.1.1", max_length=255)
     health_check_interval_s: int = Field(default=15, ge=5, le=3600)
     health_check_timeout_s: int = Field(default=5, ge=1, le=60)
@@ -1336,7 +1336,7 @@ class FailoverPoolResponse(BaseModel):
     name: str
     vpn_type: str
     mode: str
-    strategy: str = "client_sync"
+    strategy: str = "dnat_front"
     health_check_target: str
     health_check_interval_s: int
     health_check_timeout_s: int

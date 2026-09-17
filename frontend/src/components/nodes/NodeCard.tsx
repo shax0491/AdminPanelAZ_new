@@ -273,7 +273,7 @@ export default function NodeCard({
             onProxyUpdated={onProxyUpdated}
           />
 
-          {pairedProxyNode && pairedActions && (
+          {pairedProxyNode && pairedActions && pairedFrontPoolName && (
             <div className="rounded-lg border border-border/60">
               <button
                 type="button"

@@ -758,15 +758,17 @@ class FailoverPoolMode(str, enum.Enum):
 
 
 class FailoverPoolStrategy(str, enum.Enum):
-    # Client (Android app / router watchdog) holds N configs and switches itself —
-    # the original mechanism, for platforms that can run custom automation.
-    client_sync = "client_sync"
     # Client holds ONE static config pointing at a dedicated front node; the panel
     # flips a DNAT rule on the front (proxy_agent) to change which pool member
     # actually receives the traffic — client never reconfigures. Requires pool
     # members to share an identical AmneziaWG 2.0 server identity (see
     # failover_front.py) so the client's handshake succeeds against whichever
     # member is currently live.
+    #
+    # The old ``client_sync`` alternative (switch decision left to a custom
+    # Android app / router watchdog, no server-side switching at all) was
+    # dropped - unused in practice, and it only added a mode with no real
+    # switching logic behind it. ``dnat_front`` is the only strategy now.
     dnat_front = "dnat_front"
 
 
@@ -777,12 +779,9 @@ class FailoverPool(Base):
     "disband destroys everything" behavior — removing a pool only removes the pool
     rows themselves (members/links cascade), never touches the nodes or their configs.
 
-    Two switching strategies (``strategy``):
-    - ``client_sync``: the switch decision stays on the client device (Android app /
-      router watchdog) — this table only tracks which servers are candidates, in
-      what order, and (via FailoverClientLink) which peers must stay in sync.
-    - ``dnat_front``: the switch happens server-side on ``front_node`` via
-      proxy_agent DNAT (see failover_front.py) — client config never changes.
+    ``strategy`` is always ``dnat_front``: the switch happens server-side on
+    ``front_node`` via proxy_agent DNAT (see failover_front.py) — client config
+    never changes.
     """
 
     __tablename__ = "failover_pools"
@@ -792,7 +791,7 @@ class FailoverPool(Base):
     vpn_type: Mapped[VpnType] = mapped_column(Enum(VpnType), default=VpnType.amneziawg2)
     mode: Mapped[FailoverPoolMode] = mapped_column(Enum(FailoverPoolMode), default=FailoverPoolMode.auto)
     strategy: Mapped[FailoverPoolStrategy] = mapped_column(
-        Enum(FailoverPoolStrategy), default=FailoverPoolStrategy.client_sync
+        Enum(FailoverPoolStrategy), default=FailoverPoolStrategy.dnat_front
     )
     health_check_target: Mapped[str] = mapped_column(String(255), default="1.1.1.1")
     health_check_interval_s: Mapped[int] = mapped_column(Integer, default=15)

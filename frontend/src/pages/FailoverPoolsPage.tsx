@@ -28,19 +28,7 @@ import SettingsAlert from '@/components/settings/SettingsAlert'
 import { DOCS } from '@/lib/docsUrls'
 import { cn } from '@/lib/utils'
 import { useNotifications } from '@/context/NotificationContext'
-import type { FailoverPool, FailoverPoolStrategy, FailoverStatusEntry, Node } from '@/types'
-
-function StrategyBadge({ strategy }: { strategy: FailoverPoolStrategy }) {
-  return strategy === 'dnat_front' ? (
-    <Badge variant="outline" title="Один статический конфиг у клиента, переключает панель на фронте">
-      Фронт (DNAT)
-    </Badge>
-  ) : (
-    <Badge variant="outline" title="Несколько конфигов, переключается само устройство">
-      На устройстве
-    </Badge>
-  )
-}
+import type { FailoverPool, FailoverStatusEntry, Node } from '@/types'
 
 function StatusRow({ entry }: { entry: FailoverStatusEntry }) {
   const age = Date.now() - new Date(entry.reported_at).getTime()
@@ -652,21 +640,12 @@ function PoolCard({
               ) : (
                 <h3 className="truncate text-base font-semibold">{pool.name}</h3>
               )}
-              <StrategyBadge strategy={pool.strategy} />
               {!pool.enabled && <Badge variant="warning">Выключен</Badge>}
-              {pool.strategy === 'dnat_front' && (
-                <span className="text-xs text-muted-foreground">
-                  {pool.members.length} узл(ов) · активен:{' '}
-                  {activeMember ? activeMember.label || activeMember.node_name : '—'}
-                </span>
-              )}
+              <span className="text-xs text-muted-foreground">
+                {pool.members.length} узл(ов) · активен:{' '}
+                {activeMember ? activeMember.label || activeMember.node_name : '—'}
+              </span>
             </div>
-            {pool.strategy === 'client_sync' && (
-              <p className="text-xs text-muted-foreground">
-                Устройство проверяет само: health-check {pool.health_check_target} · интервал{' '}
-                {pool.health_check_interval_s} с · порог {pool.down_threshold}
-              </p>
-            )}
           </div>
         </button>
         <div className="flex shrink-0 gap-2">
@@ -842,7 +821,6 @@ export default function FailoverPoolsPage() {
   const [initialLoading, setInitialLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [newPoolName, setNewPoolName] = useState('')
-  const [newPoolStrategy, setNewPoolStrategy] = useState<FailoverPoolStrategy>('dnat_front')
 
   // Deliberately doesn't toggle a "loading" flag that unmounts the pool
   // cards - every button inside a card (переименовать/обновить/переключить/...)
@@ -886,22 +864,9 @@ export default function FailoverPoolsPage() {
           сюда не входят.
         </p>
         <p className="mt-1.5 text-sm text-muted-foreground">
-          <strong className="text-foreground">«На фронт-сервере» — рекомендуется</strong>, работает
-          со штатным приложением AmneziaWG (Android, Windows, роутер): у клиента один конфиг,
-          который никогда не меняется, а какой сервер реально отвечает — решает панель через
-          выделенный узел-фронт (проверено вживую).{' '}
-          <strong className="text-foreground">«На устройстве»</strong> — для случаев, когда фронта
-          нет: клиенту нужно отдельное приложение (например{' '}
-          <a
-            href="https://github.com/shax0491/panel_auto_reverce"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline underline-offset-2"
-          >
-            panel_auto_reverce
-          </a>
-          ), которое само хранит несколько конфигов и переключается по своему пингу — переключение
-          происходит на самом устройстве, не на сервере.
+          Работает со штатным приложением AmneziaWG (Android, Windows, роутер): у клиента один
+          конфиг, который никогда не меняется, а какой сервер реально отвечает — решает панель
+          через выделенный узел-фронт.
         </p>
       </div>
 
@@ -918,7 +883,7 @@ export default function FailoverPoolsPage() {
           const name = newPoolName.trim()
           if (!name) return
           try {
-            await createFailoverPool({ name, strategy: newPoolStrategy })
+            await createFailoverPool({ name })
             setNewPoolName('')
             success(`Пул «${name}» создан`)
             void load()
@@ -935,17 +900,6 @@ export default function FailoverPoolsPage() {
             value={newPoolName}
             onChange={(e) => setNewPoolName(e.target.value)}
           />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Как переключается</Label>
-          <select
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-            value={newPoolStrategy}
-            onChange={(e) => setNewPoolStrategy(e.target.value as FailoverPoolStrategy)}
-          >
-            <option value="dnat_front">На фронт-сервере — рекомендуется (один конфиг, штатное приложение)</option>
-            <option value="client_sync">На устройстве (нужно отдельное приложение на клиенте)</option>
-          </select>
         </div>
         <Button size="sm" type="submit" disabled={!newPoolName.trim()}>
           <Plus size={14} />

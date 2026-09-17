@@ -438,7 +438,7 @@ export interface MonitoringOverview {
 }
 
 export type FailoverPoolMode = 'auto' | 'manual'
-export type FailoverPoolStrategy = 'client_sync' | 'dnat_front'
+export type FailoverPoolStrategy = 'dnat_front'
 
 export interface FailoverPoolMember {
   id: number
@@ -475,7 +475,6 @@ export interface FailoverPoolCreate {
   name: string
   vpn_type?: string
   mode?: FailoverPoolMode
-  strategy?: FailoverPoolStrategy
   health_check_target?: string
   health_check_interval_s?: number
   health_check_timeout_s?: number

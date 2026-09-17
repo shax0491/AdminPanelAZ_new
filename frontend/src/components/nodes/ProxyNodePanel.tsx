@@ -5,21 +5,13 @@ import {
   getProxyNodeStatus,
   putProxyDestination,
   putProxyNodeStatus,
-  updateNode,
 } from '@/api/client'
-import ProxyLinkSelect from '@/components/proxy/ProxyLinkSelect'
 import SettingsAlert from '@/components/settings/SettingsAlert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useNotifications } from '@/context/NotificationContext'
-import {
-  PROXY_LINK_NONE,
-  linkedVpnNodeIdFromSelectorValue,
-  proxyLinkSelectorOptions,
-  resolveProxyLinkSelectorValue,
-} from '@/lib/proxyLinkTarget'
 import type { Node, NodeSyncGroup, ProxyStatusResponse } from '@/types'
 import { AZ_PROXY_SH_DOCS_URL } from '@/lib/docsUrls'
 
@@ -35,19 +27,13 @@ type ProxyNodePanelProps = {
 
 export default function ProxyNodePanel({
   node,
-  nodes = [],
-  syncGroups = [],
   onUpdated,
 }: ProxyNodePanelProps) {
   const { success, error: notifyError } = useNotifications()
   const [status, setStatus] = useState<ProxyStatusResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [savingLink, setSavingLink] = useState(false)
   const [destination, setDestination] = useState(node.destination_ip ?? '')
-  const [linkValue, setLinkValue] = useState(() =>
-    resolveProxyLinkSelectorValue(node.linked_vpn_node_id, nodes, syncGroups),
-  )
 
   const applyStatus = useCallback((payload: ProxyStatusResponse) => {
     setStatus(payload)
@@ -71,10 +57,6 @@ export default function ProxyNodePanel({
   useEffect(() => {
     void loadStatus()
   }, [loadStatus])
-
-  useEffect(() => {
-    setLinkValue(resolveProxyLinkSelectorValue(node.linked_vpn_node_id, nodes, syncGroups))
-  }, [node.linked_vpn_node_id, node.id, nodes, syncGroups])
 
   const handleRefresh = async () => {
     setLoading(true)
@@ -107,33 +89,6 @@ export default function ProxyNodePanel({
     }
   }
 
-  const handleLinkChange = async (value: string) => {
-    const previous = linkValue
-    setLinkValue(value)
-    const linkedVpnNodeId = linkedVpnNodeIdFromSelectorValue(
-      value,
-      proxyLinkSelectorOptions(nodes, syncGroups),
-    )
-    const current = node.linked_vpn_node_id ?? null
-    if (linkedVpnNodeId === current) return
-
-    setSavingLink(true)
-    try {
-      await updateNode(node.id, { linked_vpn_node_id: linkedVpnNodeId })
-      await onUpdated?.()
-      success(
-        linkedVpnNodeId == null ? 'Привязка прокси снята' : 'Привязка прокси сохранена',
-      )
-    } catch (err) {
-      setLinkValue(previous)
-      notifyError(err instanceof ApiError ? err.message : 'Не удалось сохранить привязку')
-    } finally {
-      setSavingLink(false)
-    }
-  }
-
-  const showLinkSelect = nodes.length > 0
-
   const showProxyShWarning = Boolean(status && !status.installed)
 
   return (
@@ -161,25 +116,13 @@ export default function ProxyNodePanel({
           type="button"
           variant="outline"
           size="sm"
-          disabled={loading || saving || savingLink}
+          disabled={loading || saving}
           onClick={() => void handleRefresh()}
         >
           {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
           Статус
         </Button>
       </div>
-
-      {showLinkSelect && (
-        <ProxyLinkSelect
-          id={`proxy-link-${node.id}`}
-          value={linkValue || PROXY_LINK_NONE}
-          onChange={(value) => void handleLinkChange(value)}
-          nodes={nodes}
-          syncGroups={syncGroups}
-          disabled={savingLink || loading || saving}
-          orphanNodeId={node.linked_vpn_node_id ?? null}
-        />
-      )}
 
       {loading && !status ? (
         <p className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -225,7 +168,7 @@ export default function ProxyNodePanel({
               <Button
                 type="button"
                 size="sm"
-                disabled={saving || loading || savingLink}
+                disabled={saving || loading}
                 onClick={() => void handleSaveDestination()}
               >
                 {saving ? (
