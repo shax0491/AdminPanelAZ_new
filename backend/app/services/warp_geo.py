@@ -367,14 +367,29 @@ def check_warp_geo(scope: GeoScope, antizapret_path: Path | None = None) -> dict
     return result
 
 
-def preview_cloudflare_warp(tmp_dir: Path | None = None) -> dict:
+def preview_cloudflare_warp(tmp_dir: Path | None = None, *, attempts: int = 2) -> dict:
     """Зарегистрировать ВРЕМЕННЫЙ анонимный Cloudflare WARP-аккаунт, поднять его на
     отдельном временном интерфейсе, прогнать гео-проверку через него и сразу снести -
     не трогая реальные тоннели/конфиг узла вообще.
 
     Нужно для превью "как будет видеть нас Cloudflare WARP", не переключая провайдера
     и не обрывая текущие боевые сессии (в отличие от apply_warp_changes/up.sh).
+
+    Cloudflare's anonymous registration endpoint иногда выдаёт пира, который просто
+    не поднимает трафик (не "медленный", а мёртвый) - ждать на нём дольше бессмысленно.
+    Поэтому при ошибке (не считая явного сбоя самого wg-quick/API) пробуем целиком
+    заново: новый ключ, новая регистрация, новый пир - это чинит "плохого" пира,
+    в отличие от простого увеличения таймаута на том же самом.
     """
+    last: dict = {"error": "no attempts made"}
+    for attempt in range(attempts):
+        last = _try_preview_cloudflare_warp(tmp_dir)
+        if not last.get("error"):
+            return last
+    return last
+
+
+def _try_preview_cloudflare_warp(tmp_dir: Path | None) -> dict:
     import json as _json
     import tempfile
     import uuid
@@ -441,8 +456,8 @@ def preview_cloudflare_warp(tmp_dir: Path | None = None) -> dict:
             # а тоннель ещё не пропускает трафик: свежему анонимному WARP-пиру иногда
             # не хватает четырёх попыток по 10с, чтобы Cloudflare начал отвечать.
             result["error"] = (
-                "Временный WARP-туннель поднялся, но пока не пропускает трафик "
-                "(Cloudflare медленно отвечает для нового анонимного пира) - попробуйте ещё раз."
+                "Временный WARP-туннель поднялся, но не пропускает трафик "
+                "(Cloudflare не отвечает для нового анонимного пира) - попробуйте ещё раз позже."
             )
         result["preview"] = True
         return result

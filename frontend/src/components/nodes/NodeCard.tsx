@@ -222,8 +222,8 @@ export default function NodeCard({
             {isProxy && (
               <Badge
                 variant="outline"
-                className="border-amber-500/40 text-[10px] text-amber-800 dark:text-amber-100"
-                title={frontPoolName ? `Сейчас активный фронт пула «${frontPoolName}»` : 'proxy_agent есть, но фронтом ни одного пула сейчас не назначен'}
+                className="max-w-[14rem] truncate border-amber-500/40 text-[10px] text-amber-800 dark:text-amber-100"
+                title={frontPoolName ? `Сейчас активный фронт: ${frontPoolName}` : 'proxy_agent есть, но фронтом ни одного пула сейчас не назначен'}
               >
                 {frontPoolName ? `Фронт: ${frontPoolName}` : 'Прокси'}
               </Badge>
@@ -290,10 +290,10 @@ export default function NodeCard({
                 <span className="truncate text-sm font-medium">{pairedProxyNode.name}</span>
                 <Badge
                   variant="outline"
-                  className="border-amber-500/40 text-[10px] text-amber-800 dark:text-amber-100"
+                  className="max-w-[14rem] truncate border-amber-500/40 text-[10px] text-amber-800 dark:text-amber-100"
                   title={
                     pairedFrontPoolName
-                      ? `Сейчас активный фронт пула «${pairedFrontPoolName}»`
+                      ? `Сейчас активный фронт: ${pairedFrontPoolName}`
                       : 'proxy_agent есть, но фронтом ни одного пула сейчас не назначен'
                   }
                 >

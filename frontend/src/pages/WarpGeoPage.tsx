@@ -354,8 +354,8 @@ export default function WarpGeoPage() {
             </div>
             {previewLoading && (
               <p className="text-xs text-muted-foreground">
-                Проверяем (с повторами на нестабильном временном тоннеле) — обычно несколько секунд,
-                иногда до минуты…
+                Проверяем (с повторами на нестабильном временном тоннеле, при неудаче — с полной
+                перерегистрацией нового пира) — обычно несколько секунд, иногда до полутора минут…
               </p>
             )}
             {previewResult && renderCheckBadges(previewResult)}
