@@ -59,14 +59,23 @@ function NodeCardBody({
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-        <div>
-          <p className="text-xs text-muted-foreground">IP сервера</p>
-          <p className="font-mono text-xs">{meta.serverIp ?? '—'}</p>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">Службы</p>
-          <p>{meta.servicesLabel ?? '—'}</p>
-        </div>
+        {isProxy ? (
+          <div>
+            <p className="text-xs text-muted-foreground">Назначение (destination)</p>
+            <p className="font-mono text-xs">{node.destination_ip ?? '—'}</p>
+          </div>
+        ) : (
+          <>
+            <div>
+              <p className="text-xs text-muted-foreground">IP сервера</p>
+              <p className="font-mono text-xs">{meta.serverIp ?? '—'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Службы</p>
+              <p>{meta.servicesLabel ?? '—'}</p>
+            </div>
+          </>
+        )}
         <div>
           <p className="text-xs text-muted-foreground">Agent</p>
           <p className="font-mono text-xs">{meta.agentVersion ?? '—'}</p>
