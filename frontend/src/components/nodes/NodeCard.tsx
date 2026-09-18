@@ -273,9 +273,7 @@ export default function NodeCard({
             onProxyUpdated={onProxyUpdated}
           />
 
-          {pairedProxyNode &&
-            pairedActions &&
-            (pairedFrontPoolName || pairedProxyNode.host !== node.name) && (
+          {pairedProxyNode && pairedActions && pairedFrontPoolName && (
             <div className="rounded-lg border border-border/60">
               <button
                 type="button"
@@ -293,13 +291,9 @@ export default function NodeCard({
                 <Badge
                   variant="outline"
                   className="max-w-[14rem] truncate border-amber-500/40 text-[10px] text-amber-800 dark:text-amber-100"
-                  title={
-                    pairedFrontPoolName
-                      ? `Сейчас активный фронт: ${pairedFrontPoolName}`
-                      : 'proxy_agent есть, но фронтом ни одного пула сейчас не назначен'
-                  }
+                  title={`Сейчас активный фронт: ${pairedFrontPoolName}`}
                 >
-                  {pairedFrontPoolName ? `Фронт: ${pairedFrontPoolName}` : 'Прокси (не фронт)'}
+                  {`Фронт: ${pairedFrontPoolName}`}
                 </Badge>
                 <span className="ml-auto shrink-0">
                   <NodeStatusBadge status={pairedProxyNode.status} />

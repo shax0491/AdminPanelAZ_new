@@ -934,13 +934,23 @@ export default function NodesPage() {
     onDelete: () => handleDelete(n),
   })
 
-  // A (front)-proxy paired to a VPN node nests inside that node's card
-  // instead of appearing as its own top-level card ("узлы к узлам, прокси к
-  // прокси, но парой вместе, свёрнуто").
+  // Only a CO-LOCATED proxy (auto-installed alongside node_agent on the same
+  // box - host equals its VPN sibling's own domain) nests inside that node's
+  // card. A genuinely separate proxy (different host entirely, e.g. a
+  // home-hosted RU relay) is its own real node and stays top-level even when
+  // linked_vpn_node_id points at a VPN node - nesting it there would make it
+  // look like part of that VPN node instead of an independent machine.
+  const vpnNodesById = new Map<number, Node>()
+  for (const n of nodes) {
+    if (!isProxyNode(n)) vpnNodesById.set(n.id, n)
+  }
   const proxyByVpnId = new Map<number, Node>()
   for (const n of nodes) {
     if (isProxyNode(n) && n.linked_vpn_node_id != null) {
-      proxyByVpnId.set(n.linked_vpn_node_id, n)
+      const vpnSibling = vpnNodesById.get(n.linked_vpn_node_id)
+      if (vpnSibling && n.host === vpnSibling.name) {
+        proxyByVpnId.set(n.linked_vpn_node_id, n)
+      }
     }
   }
   const pairedProxyIds = new Set([...proxyByVpnId.values()].map((n) => n.id))
