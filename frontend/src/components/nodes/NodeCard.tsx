@@ -273,7 +273,9 @@ export default function NodeCard({
             onProxyUpdated={onProxyUpdated}
           />
 
-          {pairedProxyNode && pairedActions && pairedFrontPoolName && (
+          {pairedProxyNode &&
+            pairedActions &&
+            (pairedFrontPoolName || pairedProxyNode.host !== node.name) && (
             <div className="rounded-lg border border-border/60">
               <button
                 type="button"
