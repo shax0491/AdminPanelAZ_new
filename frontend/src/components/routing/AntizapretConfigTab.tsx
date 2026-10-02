@@ -109,6 +109,8 @@ const FIELD_SECTIONS: {
       'scan_protection',
       'torrent_guard',
       'restrict_forward',
+      'ANTIZAPRET_OUT_IP',
+      'VPN_OUT_IP',
     ],
   },
   {
@@ -121,7 +123,7 @@ const FIELD_SECTIONS: {
     title: 'Cloudflare WARP',
     description: 'Отправка трафика через Cloudflare WARP',
     icon: Cloud,
-    keys: ['ANTIZAPRET_WARP', 'VPN_WARP'],
+    keys: ['ANTIZAPRET_WARP', 'VPN_WARP', 'WARP_PROTECTION'],
   },
   {
     title: 'AdBlock',
