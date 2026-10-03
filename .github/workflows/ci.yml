@@ -112,7 +112,30 @@ jobs:
 
       - name: npm audit
         working-directory: frontend
-        run: npm audit --audit-level=high
+        # GHSA-vfj7-8cjw-p6xm (braces, pulled in by tailwindcss's dev-only file
+        # watcher) has no patched version as of this writing — the only "fix"
+        # npm offers is a major tailwindcss v4 bump. braces here never runs
+        # against untrusted input (local source files only, build-time), so
+        # fail only if a *new*, non-allowlisted high/critical advisory shows up.
+        run: |
+          npm audit --audit-level=high --json > audit.json || true
+          node -e '
+            const allow = new Set(["GHSA-vfj7-8cjw-p6xm"]);
+            const data = JSON.parse(require("fs").readFileSync("audit.json", "utf8"));
+            const bad = [];
+            for (const [name, info] of Object.entries(data.vulnerabilities || {})) {
+              if (!["high", "critical"].includes(info.severity)) continue;
+              const ids = (info.via || [])
+                .filter((v) => typeof v === "object")
+                .map((v) => (v.url || "").split("/").pop());
+              if (ids.some((id) => !allow.has(id))) bad.push(name);
+            }
+            if (bad.length) {
+              console.error("Unallowlisted high/critical vulnerabilities:", bad.join(", "));
+              process.exit(1);
+            }
+            console.log("Only allowlisted advisories present (see workflow comment).");
+          '
 
   shell:
     name: shell scripts

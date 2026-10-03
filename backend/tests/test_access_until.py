@@ -24,6 +24,7 @@ from app.models import (
     WgAccessPolicy,
 )
 from app.routers import client_access, users
+from app.services import node_manager
 from app.services.access_until import (
     apply_due_access_blocks,
     effective_access_until_for_client,
@@ -53,13 +54,14 @@ def _make_node(db):
         api_key_hash="",
         api_key_encrypted="",
         status=NodeStatus.online,
-        is_local=True,
+        is_local=False,
         node_kind="vpn",
         node_metadata="{}",
     )
     db.add(node)
     db.commit()
     db.refresh(node)
+    node_manager.set_active_node_id(db, node.id)
     return node
 
 
@@ -597,7 +599,10 @@ def test_wg_set_expiry_conflict_returns_409_without_override():
         )
         client = _client_access_api(db, admin=admin)
 
-        with patch.object(client_access.AccessPolicyService, "wg_set_expiry") as set_expiry:
+        with (
+            patch.object(client_access, "get_active_adapter", return_value=_adapter()),
+            patch.object(client_access.AccessPolicyService, "wg_set_expiry") as set_expiry,
+        ):
             response = client.post(
                 "/api/client-access/wireguard/set-expiry",
                 json={"client_name": "Alice", "days": 30},
