@@ -420,9 +420,14 @@ def sync_amneziawg2_state_from_primary(
     """Copy native AmneziaWG 2.0 server configs + client profiles from primary to replica."""
     health = replica_adapter.get_awg2_health()
     if not health.get("installed"):
-        raise RuntimeError(
-            "Нативный AmneziaWG 2.0 не найден на replica (бинарь awg отсутствует). "
-            "Пересоберите его через setup.sh (amneziawg-go + amneziawg-tools)."
+        cmd = health.get("install_command")
+        detail = (
+            f"Пересоберите его: {cmd}"
+            if cmd
+            else "Пересоберите его через setup.sh (amneziawg-go + amneziawg-tools)."
+        )
+        raise Awg2NotInstalledError(
+            f"Нативный AmneziaWG 2.0 не найден на replica (бинарь awg отсутствует). {detail}"
         )
 
     archive = primary_adapter.export_amneziawg2_client_profiles_archive()

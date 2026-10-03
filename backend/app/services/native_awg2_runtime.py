@@ -390,6 +390,11 @@ def block_client_runtime(client_name: str) -> dict:
     }
 
 
+def block_clients_runtime(client_names: list[str]) -> dict[str, dict]:
+    """Batch ``block_client_runtime``: one result per client, in its return shape."""
+    return {name: block_client_runtime(name) for name in client_names}
+
+
 def sync_all_native_awg2_interfaces(*, timeout: int = COMMAND_TIMEOUT_SECONDS) -> dict:
     """Apply on-disk native AmneziaWG 2.0 server configs to running interfaces via awg syncconf."""
     synced: list[str] = []

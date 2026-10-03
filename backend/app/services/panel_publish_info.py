@@ -1008,18 +1008,6 @@ def build_portal_publish_status(
     cert_ok = False
     warnings: list[str] = []
     nginx_config_broken = False
-    if vhost_ok and mode in {"nginx_le", "nginx_selfsigned", "nginx_custom"}:
-        # A vhost file existing isn't enough — if nginx itself is currently
-        # broken (this vhost or an unrelated one), "Готов" must not lie about
-        # it: a client link to a portal nginx can't actually serve is worse
-        # than an honest "not ready".
-        if not nginx_config_test_ok():
-            nginx_config_broken = True
-            vhost_ok = False
-            warnings.append(
-                "Vhost портала на диске есть, но текущий конфиг nginx не проходит `nginx -t` — "
-                "портал не отдаётся. Нажмите «Настроить под текущую публикацию» или проверьте nginx вручную."
-            )
     dns_hint = ""
     primary_ip = server_primary_ip()
     if portal and primary_ip:
@@ -1045,6 +1033,7 @@ def build_portal_publish_status(
                     "Nginx vhost для портала ещё не настроен — нажмите «Настроить под текущую публикацию»."
                 )
             elif not nginx_ok:
+                nginx_config_broken = True
                 warnings.append(
                     "Глобальный nginx -t не проходит — портал не готов "
                     "(причина может быть не в vhost портала: любой битый site или conf.d). "

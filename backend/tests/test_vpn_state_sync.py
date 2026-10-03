@@ -497,8 +497,8 @@ def test_sync_amneziawg2_reblocks_when_runtime_apply_raises(db):
     primary = MagicMock()
     replica = MagicMock()
     replica.get_awg2_health.return_value = {"installed": True}
-    primary.export_awg2_state_archive.return_value = b"fake-tar"
-    replica.apply_awg2_runtime.side_effect = RuntimeError("agent timeout after apply")
+    primary.export_amneziawg2_client_profiles_archive.return_value = b"fake-tar"
+    replica.apply_amneziawg2_runtime.side_effect = RuntimeError("agent timeout after apply")
 
     with pytest.raises(RuntimeError, match="agent timeout after apply"):
         vpn_state_sync.sync_amneziawg2_state_from_primary(primary, replica, db=db, replica_node=replica_node)
@@ -516,7 +516,7 @@ def test_sync_amneziawg2_not_installed_raises_without_reblock(db):
     with pytest.raises(vpn_state_sync.Awg2NotInstalledError, match="install-awg2"):
         vpn_state_sync.sync_amneziawg2_state_from_primary(MagicMock(), replica, db=db, replica_node=replica_node)
 
-    replica.import_awg2_state_archive.assert_not_called()
+    replica.import_amneziawg2_client_profiles_archive.assert_not_called()
     replica.block_awg2_clients_runtime.assert_not_called()
 
 
