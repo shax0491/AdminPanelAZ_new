@@ -62,7 +62,6 @@ _set_env_kv() {
   fi
 }
 _set_env_kv "$NODE_ENV_FILE" NODE_AGENT_PORT "${NODE_AGENT_PORT:-9100}"
-_set_env_kv "$NODE_ENV_FILE" NODE_AGENT_API_KEY "${NODE_AGENT_API_KEY:-change-me-node-agent-key}"
 chmod 600 "$NODE_ENV_FILE"
 chown "$INSTALL_USER:$INSTALL_GROUP" "$NODE_ENV_FILE"
 

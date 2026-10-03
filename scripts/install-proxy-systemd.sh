@@ -62,7 +62,6 @@ _set_env_kv() {
   fi
 }
 _set_env_kv "$PROXY_ENV_FILE" PROXY_AGENT_PORT "${PROXY_AGENT_PORT:-9101}"
-_set_env_kv "$PROXY_ENV_FILE" PROXY_AGENT_API_KEY "${PROXY_AGENT_API_KEY:-change-me-proxy-agent-key}"
 chmod 600 "$PROXY_ENV_FILE"
 chown "$INSTALL_USER:$INSTALL_GROUP" "$PROXY_ENV_FILE"
 
