@@ -47,7 +47,12 @@ def match_client_ip(
 ) -> tuple[str | None, bool, bool]:
     """Match a VPN session endpoint against proxy IPs and sport mappings.
 
-    Returns ``(resolved_ip_or_None, via_proxy, proxy_resolved)``.
+    Returns ``(resolved_ip_or_None, via_proxy, proxy_resolved)``. A proxy IP
+    (``host``) can legitimately also be a VPN client's own home IP (same
+    network as the proxy box) - matching the IP alone is not proof the
+    session was actually relayed. ``via_proxy`` is only reported true once
+    an actual sport mapping confirms it; without that, the IP match alone
+    stays unreported rather than showing an unresolved "via proxy" guess.
     """
     parsed = parse_client_endpoint(endpoint)
     lookup_ip = parsed.get("lookup_ip")
@@ -56,12 +61,12 @@ def match_client_ip(
 
     port_raw = parsed.get("port")
     if port_raw is None:
-        return None, True, False
+        return None, False, False
 
     try:
         port = int(port_raw)
     except (TypeError, ValueError):
-        return None, True, False
+        return None, False, False
 
     for item in mappings or []:
         sport = item.get("proxy_sport")
@@ -77,7 +82,7 @@ def match_client_ip(
             continue
         return str(client_ip), True, True
 
-    return None, True, False
+    return None, False, False
 
 
 def get_mappings_for_proxy(

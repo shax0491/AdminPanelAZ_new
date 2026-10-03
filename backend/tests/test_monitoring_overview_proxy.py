@@ -135,7 +135,10 @@ def test_enrich_resolved_uses_home_ip_for_display_and_geo():
     assert peers[0].city == "HomeCity"
 
 
-def test_enrich_wrong_port_via_unresolved_uses_proxy_geo():
+def test_enrich_wrong_port_not_marked_via_proxy_uses_proxy_geo():
+    # The IP matches a proxy but no sport mapping confirms relaying (could just be
+    # the client's own home IP, same network as the proxy box) - via_proxy must
+    # stay false rather than show an unresolved "via proxy" guess.
     proxy_ips = {PROXY_IP}
     mappings = {PROXY_IP: [{"client_ip": HOME_IP, "proxy_sport": 40001}]}
     geo_map = {
@@ -155,7 +158,7 @@ def test_enrich_wrong_port_via_unresolved_uses_proxy_geo():
         mappings_by_proxy_ip=mappings,
     )
 
-    assert clients[0].via_proxy is True
+    assert clients[0].via_proxy is False
     assert clients[0].proxy_resolved is False
     assert clients[0].client_ip == PROXY_IP
     assert clients[0].display_address == f"{PROXY_IP}:40002"
@@ -185,7 +188,7 @@ def test_match_scoped_per_proxy_ip_avoids_cross_proxy_sport():
     resolved, via, proxy_resolved = mo._match_endpoint_proxy(
         f"{PROXY_IP}:40001", proxy_ips, mappings
     )
-    assert via is True
+    assert via is False
     assert proxy_resolved is False
     assert resolved is None
 
@@ -272,7 +275,7 @@ def test_build_overview_resolved_and_geo_uses_home(monkeypatch):
     assert client.city == "HomeCity"
 
 
-def test_build_overview_agent_failure_still_marks_via_proxy(monkeypatch):
+def test_build_overview_agent_failure_does_not_mark_via_proxy(monkeypatch):
     monkeypatch.setattr(mo, "is_proxy_nodes_enabled", lambda _db: True)
     proxy = _proxy_node()
     query = MagicMock()
@@ -313,10 +316,12 @@ def test_build_overview_agent_failure_still_marks_via_proxy(monkeypatch):
 
     overview = mo.build_monitoring_overview_for_node(db, vpn_node)
 
-    assert overview.openvpn_clients[0].via_proxy is True
+    # Agent down means no mappings at all - can't confirm relaying either way,
+    # so via_proxy must not claim it (see match_client_ip's contract).
+    assert overview.openvpn_clients[0].via_proxy is False
     assert overview.openvpn_clients[0].proxy_resolved is False
     assert overview.openvpn_clients[0].client_ip == PROXY_IP
-    assert overview.wireguard_peers[0].via_proxy is True
+    assert overview.wireguard_peers[0].via_proxy is False
     assert overview.wireguard_peers[0].proxy_resolved is False
 
 

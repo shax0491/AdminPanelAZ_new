@@ -29,10 +29,13 @@ def test_match_resolves_by_sport():
     assert via and resolved and ip == "203.0.113.10"
 
 
-def test_match_wrong_port_via_unresolved():
+def test_match_wrong_port_not_reported_as_via_proxy():
+    # An IP match alone isn't proof of relaying (it can be the client's own home IP,
+    # same network as the proxy box) - without a confirmed sport mapping, don't claim
+    # via_proxy at all rather than showing an unresolved "via proxy" guess.
     mappings = [{"client_ip": "203.0.113.10", "proxy_sport": 40001}]
     ip, via, resolved = match_client_ip("198.51.100.1:40002", mappings, {"198.51.100.1"})
-    assert via and not resolved and ip is None
+    assert not via and not resolved and ip is None
 
 
 def test_non_proxy_ip():
