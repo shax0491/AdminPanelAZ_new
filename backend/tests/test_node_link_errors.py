@@ -40,6 +40,17 @@ def test_classify_401_is_node_auth():
     assert "X-Node-Key" in message
 
 
+def test_classify_http_status_ignores_incidental_ssl_substring():
+    # A successful HTTP response (even a 4xx one) proves the connection already
+    # worked - it must never be reclassified as a TLS mismatch just because the
+    # agent's own error text happens to contain "ssl"/"tls" (e.g. an install
+    # hint with `curl -fsSL ...`).
+    detail = "AZ-AWG2 не установлен. Установите: bash <(curl -fsSL https://example.com/install.sh)"
+    code, message = link.classify_http_status(409, detail, mtls_enabled=False)
+    assert code == link.CODE_ERROR
+    assert message == detail
+
+
 def test_classify_timeout():
     code, _ = link.classify_request_error(httpx.TimeoutException("t"), mtls_enabled=False)
     assert code == link.CODE_TIMEOUT

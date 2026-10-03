@@ -78,15 +78,17 @@ def classify_request_error(exc: httpx.RequestError, *, mtls_enabled: bool) -> tu
 
 
 def classify_http_status(status_code: int, detail: Any, *, mtls_enabled: bool) -> tuple[str, str]:
+    # A parsed HTTP response means the connection (and any TLS handshake) already
+    # succeeded - never reclassify it as a TLS mismatch. (Previously this ran the
+    # agent's error text through _ssl_message(), which only makes sense for
+    # httpx.RequestError messages; an agent detail string can legitimately contain
+    # "ssl"/"tls" substrings - e.g. a `curl -fsSL ...` install hint - with nothing
+    # to do with TLS, and that false-matched here.)
     text = _detail_to_text(detail)
     if status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN):
         if status_code == status.HTTP_401_UNAUTHORIZED:
             return CODE_AUTH, "Неверный API-ключ узла (заголовок X-Node-Key)"
         return CODE_AUTH, text or "Доступ запрещён — проверьте NODE_AGENT_ALLOWED_IPS на узле"
-    lower = text.lower()
-    ssl_msg = _ssl_message(lower, mtls_enabled=mtls_enabled)
-    if ssl_msg:
-        return CODE_TLS_MISMATCH, ssl_msg
     return CODE_ERROR, text or f"Ошибка агента HTTP {status_code}"
 
 
