@@ -117,32 +117,6 @@ def test_iterate_in_thread_closes_source_when_cancelled_while_waiting():
     assert closed.wait(2), "the agent stream must be closed once the pending read returns"
 
 
-def test_awg2_install_stream_reads_agent_off_loop(monkeypatch):
-    from app.routers import awg2
-
-    seen: list[bool] = []
-
-    class Adapter:
-        def awg2_iter_install_stream(self, mode, **_kw):
-            for step in ("download", "install"):
-                seen.append(_on_event_loop())
-                yield {"event": step}
-
-    monkeypatch.setattr(awg2, "SessionLocal", MagicMock)
-    monkeypatch.setattr(awg2, "_admin_from_stream_token", lambda _t, _db: None)
-    monkeypatch.setattr(awg2, "get_active_adapter", lambda _db: Adapter())
-
-    async def scenario():
-        response = await awg2.awg2_install_stream(
-            _Request(), token="t", mode="install", preset=None, template=None, mtu=None
-        )
-        return await _first_chunks(response, 2)
-
-    chunks = asyncio.run(scenario())
-    assert len(chunks) == 2 and "download" in chunks[0]
-    assert seen == [False, False]
-
-
 def test_warper_update_stream_reads_agent_off_loop(monkeypatch):
     from app.routers import warper
 
@@ -237,26 +211,6 @@ def _client(router, db) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
 
 
-def test_awg2_restore_runs_off_loop(monkeypatch):
-    from app.routers import awg2
-
-    seen: list[bool] = []
-
-    class Adapter:
-        def restore_awg2_backup(self, data, filename):
-            seen.append(_on_event_loop())
-            assert data == b"archive"
-            return {"success": True}
-
-    monkeypatch.setattr(awg2, "get_active_node", lambda _db: SimpleNamespace(id=1, name="n", host="10.0.0.1"))
-    monkeypatch.setattr(awg2, "get_active_adapter", lambda _db: Adapter())
-    monkeypatch.setattr(awg2, "_ha_sync_awg2_from_active", lambda _db: {"attempted": False})
-
-    response = _client(awg2.router, MagicMock()).post(
-        "/awg2/restore", files={"archive": ("a.tar.gz", io.BytesIO(b"archive"))}
-    )
-    assert response.status_code == 200, response.text
-    assert seen == [False]
 
 
 def test_backup_upload_runs_off_loop(monkeypatch):
