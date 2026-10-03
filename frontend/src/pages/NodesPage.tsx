@@ -2,7 +2,6 @@ import { FormEvent, useEffect, useState } from 'react'
 import {
   Activity,
   BellOff,
-  Check,
   ExternalLink,
   Loader2,
   MoreHorizontal,
