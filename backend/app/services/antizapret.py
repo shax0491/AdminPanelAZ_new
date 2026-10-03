@@ -1137,6 +1137,10 @@ class AntiZapretService:
             if len(parts) < 9:
                 continue
             interface, public_key, _psk, endpoint, allowed_ips, latest_handshake, rx, tx = parts[:8]
+            if interface.startswith("warp-"):
+                # warp-antizapret/warp-vpn - наш собственный пир до Proton/Cloudflare WARP,
+                # не клиент; "wg show all dump" отдаёт все интерфейсы без разбора.
+                continue
             client_name = wg_clients.get(public_key)
             handshake = None
             if latest_handshake and latest_handshake != "0":
