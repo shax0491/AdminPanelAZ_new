@@ -159,15 +159,6 @@ ANTIZAPRET_PARAMS = [
         "description": "MTU интерфейсов встроенного WARP. Пусто — 1280. Уменьшайте, если через WARP не открываются часть сайтов или обрываются загрузки",
     },
     {
-        "key": "WARP_PROTECTION",
-        "env": "WARP_PROTECTION",
-        "type": "flag",
-        "default": "y",
-        "html_id": "WARP_PROTECTION-toggle",
-        "title": "WARP Protection",
-        "description": "Если WARP не смог подключиться — блокирует трафик AntiZapret/full VPN целиком, вместо отправки его напрямую (защита от утечки реального IP при сбое WARP)",
-    },
-    {
         "key": "ANTIZAPRET_OUT_IP",
         "env": "ANTIZAPRET_OUT_IP",
         "type": "string",

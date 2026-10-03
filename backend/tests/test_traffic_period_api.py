@@ -20,8 +20,10 @@ from app.routers import traffic as traffic_router
 @pytest.fixture(autouse=True)
 def _settings(monkeypatch):
     monkeypatch.setenv("TRAFFIC_SAMPLE_RETENTION_DAYS", "90")
-    monkeypatch.setenv("LOCAL_ANTIZAPRET_ENABLED", "true")
     get_settings.cache_clear()
+    # node_manager binds `settings = get_settings()` at import time, so an env var set
+    # here never reaches its already-cached object — patch that object directly instead.
+    monkeypatch.setattr("app.services.node_manager.settings.local_antizapret_enabled", True)
     yield
     get_settings.cache_clear()
 

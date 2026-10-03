@@ -18,6 +18,10 @@ from app.models import (
     ClientTemplate,
     ConfigTag,
     ConnectionCountSample,
+    FailoverClientLink,
+    FailoverPool,
+    FailoverPoolMember,
+    FailoverStatusReport,
     Node,
     NodeResourceSample,
     NodeStatus,
@@ -345,6 +349,12 @@ def purge_node_related(db: Session, node_id: int) -> None:
         synchronize_session=False,
     )
 
+    # The pool itself survives losing its front node — same as linked_vpn_node_id above.
+    db.query(FailoverPool).filter(FailoverPool.front_node_id == node_id).update(
+        {FailoverPool.front_node_id: None},
+        synchronize_session=False,
+    )
+
     config_ids = [
         row[0] for row in db.query(VpnConfig.id).filter(VpnConfig.node_id == node_id).all()
     ]
@@ -386,8 +396,16 @@ def purge_node_related(db: Session, node_id: int) -> None:
         ConfigTag,
         ClientTemplate,
         AlertRule,
+        FailoverPoolMember,
     ):
         db.query(model).filter(model.node_id == node_id).delete(synchronize_session=False)
+
+    db.query(FailoverClientLink).filter(FailoverClientLink.primary_node_id == node_id).delete(
+        synchronize_session=False
+    )
+    db.query(FailoverStatusReport).filter(FailoverStatusReport.active_node_id == node_id).delete(
+        synchronize_session=False
+    )
 
 
 def _remove_local_node(db: Session, local: Node) -> None:

@@ -200,7 +200,7 @@ def test_legacy_token_without_version_valid_until_first_change(db_factory):
 
 
 def test_stream_and_docs_token_checks_reject_stale_tokens(db_factory):
-    from app.routers import awg2, monitoring, warper
+    from app.routers import monitoring, warper
     from app.services import openapi_docs_gate
 
     stale = _token_for(db_factory, "admin")
@@ -209,8 +209,6 @@ def test_stream_and_docs_token_checks_reject_stale_tokens(db_factory):
 
     with pytest.raises(HTTPException):
         monitoring._user_from_access_token(stale, db)
-    with pytest.raises(HTTPException):
-        awg2._admin_from_stream_token(stale, db)
     with pytest.raises(HTTPException):
         warper._admin_from_stream_token(stale, db)
     assert openapi_docs_gate._is_admin_token(stale, db) is False

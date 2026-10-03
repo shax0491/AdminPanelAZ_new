@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models import FailoverPool, FailoverPoolMode, FailoverPoolStrategy
+from app.services.background_gate import run_background_step
 from app.services.failover_front import evaluate_and_switch
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ async def run_failover_scheduler_loop() -> None:
             if not getattr(settings, "failover_scheduler_enabled", True):
                 logger.debug("failover_scheduler skipped — FAILOVER_SCHEDULER_ENABLED disabled")
                 continue
-            results = await asyncio.to_thread(run_failover_scheduler_tick)
+            results = await run_background_step(run_failover_scheduler_tick) or []
             for result in results:
                 if result.get("switched"):
                     logger.info("failover_scheduler tick: %s", result)

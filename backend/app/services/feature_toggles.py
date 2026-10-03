@@ -926,19 +926,22 @@ class FeatureToggleService:
         self.env_path = Path(env_path)
         self.env = EnvFileService(self.env_path)
         self._env_map_cache: dict[str, str] | None = None
-        self._env_map_mtime: float | None = None
+        self._env_map_stamp: tuple[float, int] | None = None
 
     def _invalidate_env_map(self) -> None:
         self._env_map_cache = None
-        self._env_map_mtime = None
+        self._env_map_stamp = None
 
     def _env_map(self) -> dict[str, str]:
         path = self.env_path
         try:
-            mtime = path.stat().st_mtime if path.exists() else None
+            # mtime resolution on some filesystems (tmpfs) is too coarse to tell apart
+            # two writes a few microseconds apart, so size is checked too.
+            st = path.stat() if path.exists() else None
+            stamp = (st.st_mtime, st.st_size) if st else None
         except OSError:
-            mtime = None
-        if self._env_map_cache is not None and self._env_map_mtime == mtime:
+            stamp = None
+        if self._env_map_cache is not None and self._env_map_stamp == stamp:
             return self._env_map_cache
 
         values: dict[str, str] = {}
@@ -955,7 +958,7 @@ class FeatureToggleService:
                 values[key.strip()] = value.strip()
 
         self._env_map_cache = values
-        self._env_map_mtime = mtime
+        self._env_map_stamp = stamp
         return values
 
     def _raw_env(self, key: str, default: str = "") -> str:
