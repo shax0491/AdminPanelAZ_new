@@ -168,12 +168,21 @@ export default function Dashboard() {
     })
   }, [data, protocol, search])
 
+  const filteredAmneziawg2 = useMemo(() => {
+    if (!data || (protocol !== 'all' && protocol !== 'amneziawg2')) return []
+    return data.amneziawg2_peers.filter((peer) => {
+      const label = peer.client_name || peer.public_key
+      return matchesSearchQuery(label, search)
+    })
+  }, [data, protocol, search])
+
   const protocolCounts = useMemo(() => {
     if (!data) return undefined
     return {
-      all: data.connected_openvpn + data.connected_wireguard,
+      all: data.connected_openvpn + data.connected_wireguard + data.connected_amneziawg2,
       openvpn: data.connected_openvpn,
       wireguard: data.connected_wireguard,
+      amneziawg2: data.connected_amneziawg2,
     }
   }, [data])
 
@@ -183,8 +192,10 @@ export default function Dashboard() {
   }
 
   const hasActiveFilters = search.trim().length > 0 || protocol !== 'all'
-  const visibleConnections = filteredOpenVpn.length + filteredWireguard.length
-  const totalConnections = data ? data.connected_openvpn + data.connected_wireguard : 0
+  const visibleConnections = filteredOpenVpn.length + filteredWireguard.length + filteredAmneziawg2.length
+  const totalConnections = data
+    ? data.connected_openvpn + data.connected_wireguard + data.connected_amneziawg2
+    : 0
 
   if (loading && !data) {
     return <DashboardSkeleton />
@@ -203,8 +214,9 @@ export default function Dashboard() {
     )
   }
 
-  const totalOnline = data.connected_openvpn + data.connected_wireguard
+  const totalOnline = data.connected_openvpn + data.connected_wireguard + data.connected_amneziawg2
   const totalWireguardPeers = data.total_wireguard_peers ?? data.wireguard_peers.length
+  const totalAmneziawg2Peers = data.total_amneziawg2_peers ?? data.amneziawg2_peers.length
 
   return (
     <div className="tg-mini-dashboard space-y-4">
@@ -236,6 +248,13 @@ export default function Dashboard() {
           icon={Radio}
           accent="green"
         />
+        <MetricCard
+          label="AWG 2.0 онлайн"
+          value={String(data.connected_amneziawg2)}
+          sub={`из ${totalAmneziawg2Peers} пиров`}
+          icon={Shield}
+          accent="amber"
+        />
       </div>
 
       <div className="tg-mini-cards">
@@ -243,7 +262,7 @@ export default function Dashboard() {
           label="Всего онлайн"
           value={totalOnline}
           icon={Shield}
-          sub={`OVPN ${data.connected_openvpn} · WG ${data.connected_wireguard}`}
+          sub={`OVPN ${data.connected_openvpn} · WG ${data.connected_wireguard} · AWG2 ${data.connected_amneziawg2}`}
         />
         <SecondaryMetric
           label="Конфиги"
@@ -336,6 +355,38 @@ export default function Dashboard() {
                       <p className="text-sm text-muted-foreground">Нет совпадений в WG/AWG 1.5</p>
                     ) : (
                       filteredWireguard.map((peer) => (
+                        <div key={peer.public_key} className="tg-mini-list-item tg-mini-list-item-stack">
+                          <div className="flex w-full items-center justify-between gap-2">
+                            <span className="truncate font-medium">
+                              {peer.client_name || `${peer.public_key.slice(0, 8)}…`}
+                            </span>
+                            <Badge variant="success">{NODE_STATUS_LABELS.online}</Badge>
+                          </div>
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            ↓ {formatBytes(peer.transfer_rx)} · ↑ {formatBytes(peer.transfer_tx)}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {(protocol === 'all' || protocol === 'amneziawg2') && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <CardTitle className="text-base">AWG 2.0</CardTitle>
+                      <Badge variant={filteredAmneziawg2.length > 0 ? 'success' : 'secondary'}>
+                        {filteredAmneziawg2.length}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {filteredAmneziawg2.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Нет совпадений в AWG 2.0</p>
+                    ) : (
+                      filteredAmneziawg2.map((peer) => (
                         <div key={peer.public_key} className="tg-mini-list-item tg-mini-list-item-stack">
                           <div className="flex w-full items-center justify-between gap-2">
                             <span className="truncate font-medium">

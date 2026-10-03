@@ -54,6 +54,7 @@ from app.services.warp_geo import (
     set_warp_provider,
     preview_cloudflare_warp,
 )
+from app.services.awg2_noc import peers_from_awg2_monitoring
 from app.services.awg2 import (
     Awg2ClientNotFoundError,
     Awg2NotInstalledError,
@@ -283,10 +284,15 @@ def server_live_throughput(
 @app.get("/monitoring/overview")
 def monitoring_overview(_: None = Depends(verify_api_key)):
     ovpn_clients, openvpn_data_source = service.parse_openvpn_status()
+    try:
+        amneziawg2_peers = peers_from_awg2_monitoring(service.get_amneziawg2_monitoring())
+    except Exception:
+        amneziawg2_peers = []
     return {
         "services": [s.model_dump() for s in service.get_service_status()],
         "openvpn_clients": [c.model_dump() for c in ovpn_clients],
         "wireguard_peers": [p.model_dump() for p in service.parse_wireguard_status()],
+        "amneziawg2_peers": [p.model_dump() for p in amneziawg2_peers],
         "server_ip": service.get_server_ip(),
         "timestamp": datetime.utcnow().isoformat(),
         "openvpn_data_source": openvpn_data_source,

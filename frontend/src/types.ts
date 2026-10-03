@@ -843,9 +843,18 @@ export interface TgMiniDashboard {
   connected_openvpn: number
   connected_wireguard: number
   total_wireguard_peers: number
+  connected_amneziawg2: number
+  total_amneziawg2_peers: number
   server_ip: string | null
   openvpn_clients: Array<{ common_name?: string; [key: string]: unknown }>
   wireguard_peers: Array<{
+    client_name: string | null
+    public_key: string
+    transfer_rx: number
+    transfer_tx: number
+    latest_handshake?: string | null
+  }>
+  amneziawg2_peers: Array<{
     client_name: string | null
     public_key: string
     transfer_rx: number
