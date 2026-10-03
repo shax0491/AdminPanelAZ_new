@@ -70,8 +70,13 @@ function RouterFileRow({
         !ready && 'opacity-75',
       )}
     >
+<<<<<<< main
       <div className="flex flex-col gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
+=======
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+>>>>>>> kirito/main
           <div
             className={cn(
               'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-semibold',

@@ -97,6 +97,98 @@ def test_awg2_health_installed_mock():
     assert result["missing_components"] == []
 
 
+<<<<<<< main
+=======
+def test_awg2_status_maps_not_installed_to_409():
+    node = SimpleNamespace(id=1, name="local", host="127.0.0.1")
+    adapter = MagicMock()
+    adapter.get_awg2_status.side_effect = Awg2NotInstalledError("not installed")
+    with (
+        patch.object(awg2_router, "get_active_node", return_value=node),
+        patch.object(awg2_router, "get_active_adapter", return_value=adapter),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            awg2_router.awg2_status(db=MagicMock(), _=SimpleNamespace())
+    assert exc.value.status_code == 409
+
+
+def test_awg2_install_stream_rejects_non_admin_token():
+    client = _stream_test_client()
+    viewer = SimpleNamespace(username="viewer", is_active=True, role=UserRole.user)
+
+    with (
+        patch.object(awg2_router, "get_active_user_from_access_token", return_value=viewer),
+        patch.object(awg2_router, "SessionLocal", return_value=_FakeDb(owner=viewer)),
+    ):
+        response = client.get("/api/awg2/install/stream", params={"token": "jwt", "mode": "install"})
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Admin only"
+
+
+def test_awg2_install_stream_validates_mode():
+    client = _stream_test_client()
+
+    response = client.get("/api/awg2/install/stream", params={"token": "jwt", "mode": "broken"})
+
+    assert response.status_code == 422
+
+
+def test_awg2_install_stream_returns_json_sse_events():
+    client = _stream_test_client()
+    admin = SimpleNamespace(username="admin", is_active=True, role=UserRole.admin)
+    adapter = MagicMock()
+    adapter.awg2_iter_install_stream.return_value = iter(
+        [
+            {"event": "start", "mode": "install", "argv": ["bash", "-lc", "install"], "mtu": 1280},
+            {"event": "log", "line": "step 1"},
+            {"event": "done", "return_code": 0, "success": True},
+        ]
+    )
+
+    with (
+        patch.object(awg2_router, "get_active_user_from_access_token", return_value=admin),
+        patch.object(
+            awg2_router,
+            "SessionLocal",
+            side_effect=[_FakeDb(owner=admin), _FakeDb(owner=admin)],
+        ),
+        patch.object(awg2_router, "get_active_adapter", return_value=adapter),
+    ):
+        with client.stream(
+            "GET",
+            "/api/awg2/install/stream",
+            params={
+                "token": "jwt",
+                "mode": "install",
+                "preset": "high",
+                "template": "web",
+                "mtu": "1280",
+            },
+        ) as response:
+            body = "".join(chunk.decode("utf-8") for chunk in response.iter_bytes())
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    events = [
+        json.loads(line[len("data: ") :])
+        for line in body.splitlines()
+        if line.startswith("data: ")
+    ]
+    assert events == [
+        {"event": "start", "mode": "install", "argv": ["bash", "-lc", "install"], "mtu": 1280},
+        {"event": "log", "line": "step 1"},
+        {"event": "done", "return_code": 0, "success": True},
+    ]
+    adapter.awg2_iter_install_stream.assert_called_once_with(
+        "install",
+        preset="high",
+        template="web",
+        mtu=1280,
+    )
+
+
+>>>>>>> kirito/main
 def test_create_amneziawg2_calls_replicate_and_awg2():
     db = _FakeDb(owner=SimpleNamespace(id=1, username="owner"))
     current_user = SimpleNamespace(id=1, username="admin", role=UserRole.admin)

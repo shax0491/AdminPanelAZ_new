@@ -1,12 +1,10 @@
-import { lazy, Suspense, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { routerBasename } from './lib/panelBase'
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
 import RouteProgress from './components/RouteProgress'
 import FeatureGuardRoute from './components/FeatureGuardRoute'
-import ErrorBoundary from './components/ErrorBoundary'
-import Spinner from './components/ui/Spinner'
+import LazyPage from './components/LazyPage'
 import { AuthProvider } from './context/AuthContext'
 import { FeatureModulesProvider } from './context/FeatureModulesContext'
 import { NodeProvider } from './context/NodeContext'
@@ -14,8 +12,10 @@ import { NotificationProvider } from './context/NotificationContext'
 import { ProgressProvider } from './context/ProgressContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { TimezoneProvider } from './context/TimezoneContext'
+import { lazyWithRetry } from './lib/lazyWithRetry'
 import LoginPage from './pages/LoginPage'
 
+<<<<<<< main
 const PortalPage = lazy(() => import('./pages/PortalPage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const MonitoringPage = lazy(() => import('./pages/MonitoringPage'))
@@ -50,6 +50,24 @@ function LazyPage({ children }: { children: ReactNode }) {
     </ErrorBoundary>
   )
 }
+=======
+const PortalPage = lazyWithRetry(() => import('./pages/PortalPage'))
+const DashboardPage = lazyWithRetry(() => import('./pages/DashboardPage'))
+const MonitoringPage = lazyWithRetry(() => import('./pages/MonitoringPage'))
+const NodesPage = lazyWithRetry(() => import('./pages/NodesPage'))
+const RoutingPage = lazyWithRetry(() => import('./pages/RoutingPage'))
+const AntizapretConfigPage = lazyWithRetry(() => import('./pages/AntizapretConfigPage'))
+const ProxyHubPage = lazyWithRetry(() => import('./pages/ProxyHubPage'))
+const WarperPage = lazyWithRetry(() => import('./pages/WarperPage'))
+const Awg2Page = lazyWithRetry(() => import('./pages/Awg2Page'))
+const TelegramPage = lazyWithRetry(() => import('./pages/TelegramPage'))
+const SubscriptionPage = lazyWithRetry(() => import('./pages/SubscriptionPage'))
+const SettingsPage = lazyWithRetry(() => import('./pages/SettingsPage'))
+const TrafficPage = lazyWithRetry(() => import('./pages/TrafficPage'))
+const EditFilesPage = lazyWithRetry(() => import('./pages/EditFilesPage'))
+const LogsPage = lazyWithRetry(() => import('./pages/LogsPage'))
+const ServerMonitorPage = lazyWithRetry(() => import('./pages/ServerMonitorPage'))
+>>>>>>> kirito/main
 
 export default function App() {
   return (

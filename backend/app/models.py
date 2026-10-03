@@ -45,19 +45,29 @@ DEFAULT_TG_NOTIFY_EVENTS: dict[str, bool] = {
     "client_ban": True,
     "traffic_limit": True,
     "cert_expiry_reminder": True,
+    "access_expiry_reminder": True,
     "traffic_limit_reminder": True,
     "temp_block_reminder": True,
     "user_cert_expiry_reminder": False,
+    "user_access_expiry_reminder": False,
     "user_traffic_limit_reminder": False,
     "user_temp_block_reminder": False,
     "settings_change": True,
     "high_cpu": True,
     "high_ram": True,
     "node_offline": True,
+    "node_sync_drift": True,
     "cidr_deploy_failed": True,
     "cidr_ingest_partial": True,
     "noc_report": True,
     "alert_rule": True,
+    "openvpn_buffer_guard_triggered": True,
+}
+
+# Event split out of an older one: until the user saves prefs again, it follows the old event,
+# so a muted "settings_change" keeps HA drift muted after the split.
+TG_NOTIFY_EVENT_INHERITS: dict[str, str] = {
+    "node_sync_drift": "settings_change",
 }
 
 
@@ -77,6 +87,7 @@ class User(Base):
     noc_weekly_time: Mapped[str] = mapped_column(String(5), default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
+    token_version: Mapped[int] = mapped_column(Integer, default=0)
     totp_secret_encrypted: Mapped[str | None] = mapped_column(String(512), nullable=True)
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     totp_backup_codes_encrypted: Mapped[str | None] = mapped_column(String(1024), nullable=True)
@@ -85,6 +96,7 @@ class User(Base):
     config_quota: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     can_create_configs: Mapped[bool] = mapped_column(Boolean, default=True)
     visible_vpn_profiles: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    access_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     vpn_configs: Mapped[list["VpnConfig"]] = relationship(back_populates="owner")
@@ -101,15 +113,22 @@ class User(Base):
         events = self.get_tg_notify_events()
         if not self.tg_notify_events or not events:
             return bool(DEFAULT_TG_NOTIFY_EVENTS.get(event_type, False))
-        if event_type in events:
-            return bool(events[event_type])
-        return bool(DEFAULT_TG_NOTIFY_EVENTS.get(event_type, False))
+        return _stored_tg_notify_event(events, event_type)
 
     def merged_tg_notify_events(self) -> dict[str, bool]:
         stored = self.get_tg_notify_events()
         if not self.tg_notify_events or not stored:
             return dict(DEFAULT_TG_NOTIFY_EVENTS)
-        return {key: bool(stored.get(key, DEFAULT_TG_NOTIFY_EVENTS.get(key, False))) for key in DEFAULT_TG_NOTIFY_EVENTS}
+        return {key: _stored_tg_notify_event(stored, key) for key in DEFAULT_TG_NOTIFY_EVENTS}
+
+
+def _stored_tg_notify_event(stored: dict[str, bool], event_type: str) -> bool:
+    if event_type in stored:
+        return bool(stored[event_type])
+    parent = TG_NOTIFY_EVENT_INHERITS.get(event_type)
+    if parent and parent in stored:
+        return bool(stored[parent])
+    return bool(DEFAULT_TG_NOTIFY_EVENTS.get(event_type, False))
 
 
 class RefreshToken(Base):
@@ -121,6 +140,9 @@ class RefreshToken(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    family_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoke_reason: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="refresh_tokens")
 
@@ -283,6 +305,10 @@ class Node(Base):
     # When True, saving remotes also writes hosts[0] to WIREGUARD_HOST (GubernievS proxy.sh).
     wireguard_use_first_remote: Mapped[bool] = mapped_column(Boolean, default=False)
     openvpn_multihome: Mapped[bool] = mapped_column(Boolean, default=False)
+    # HA replica got a new OpenVPN server identity on disk; running servers still use the old one.
+    openvpn_restart_pending: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Key age for automatic rotation; updated_at moves on every health check.
+    api_key_rotated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -297,10 +323,14 @@ class AppSetting(Base):
 
 class TrafficSessionState(Base):
     __tablename__ = "traffic_session_state"
+    __table_args__ = (
+        Index("uq_traffic_session_state_node_session", "node_id", "session_key", unique=True),
+        Index("ix_traffic_session_state_node_active", "node_id", sqlite_where=text("is_active = 1")),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), index=True)
-    session_key: Mapped[str] = mapped_column(String(512), unique=True, index=True)
+    session_key: Mapped[str] = mapped_column(String(512), index=True)
     profile: Mapped[str] = mapped_column(String(64), default="unknown")
     common_name: Mapped[str] = mapped_column(String(128), index=True)
     real_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -423,21 +453,32 @@ class UnlockCode(Base):
 class UnlockCodeRedemption(Base):
     __tablename__ = "unlock_code_redemptions"
     __table_args__ = (
-        UniqueConstraint(
+        Index(
+            "uq_unlock_code_redemptions_code_user",
+            "code_id",
+            "user_id",
+            unique=True,
+            sqlite_where=text("user_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_unlock_code_redemptions_code_client_node_orphan",
             "code_id",
             "client_name",
             "node_id",
-            name="uq_unlock_code_redemptions_code_client_node",
+            unique=True,
+            sqlite_where=text("user_id IS NULL"),
         ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     code_id: Mapped[int] = mapped_column(ForeignKey("unlock_codes.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
     client_name: Mapped[str] = mapped_column(String(64), index=True)
     node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), index=True)
     redeemed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     code: Mapped["UnlockCode"] = relationship(back_populates="redemptions")
+    user: Mapped[User | None] = relationship()
     node: Mapped["Node"] = relationship()
 
 
@@ -478,6 +519,28 @@ class ClientPortalToken(Base):
     token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), index=True)
     client_name: Mapped[str] = mapped_column(String(32), index=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class UserPortalToken(Base):
+    """Permanent shareable portal link for all clients owned by a user."""
+
+    __tablename__ = "user_portal_tokens"
+    __table_args__ = (
+        UniqueConstraint("token", name="uq_user_portal_token"),
+        Index(
+            "uq_user_portal_tokens_active_user",
+            "user_id",
+            unique=True,
+            sqlite_where=text("revoked_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -575,11 +638,21 @@ class UserTrafficSample(Base):
     __tablename__ = "user_traffic_sample"
     __table_args__ = (
         Index("ix_user_traffic_sample_node_created", "node_id", "created_at"),
+        Index("ix_user_traffic_sample_name_created", "common_name", "created_at"),
+        Index(
+            "ix_user_traffic_sample_node_client_created",
+            "node_id",
+            "common_name",
+            "protocol_type",
+            "created_at",
+            "delta_received",
+            "delta_sent",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), index=True)
-    common_name: Mapped[str] = mapped_column(String(128), index=True)
+    common_name: Mapped[str] = mapped_column(String(128))
     network_type: Mapped[str] = mapped_column(String(16), default="vpn")
     protocol_type: Mapped[str] = mapped_column(String(16), default="openvpn")
     delta_received: Mapped[int] = mapped_column(Integer, default=0)
@@ -699,6 +772,8 @@ class BackgroundTask(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # process_identity token of the worker running the task.
+    owner: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class WebAuthnCredential(Base):
@@ -752,6 +827,7 @@ class AlertRule(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+<<<<<<< main
 class FailoverPoolMode(str, enum.Enum):
     auto = "auto"
     manual = "manual"
@@ -895,6 +971,48 @@ class FailoverStatusReport(Base):
     healthy: Mapped[bool] = mapped_column(Boolean, default=True)
     detail: Mapped[str | None] = mapped_column(String(255), nullable=True)
     reported_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+=======
+class OpenVpnBufferGuardMode(str, enum.Enum):
+    notify = "notify"
+    kill = "kill"
+    kill_restart = "kill_restart"
+    kill_restart_temp_ban = "kill_restart_temp_ban"
+
+
+class OpenVpnBufferGuardSettings(Base):
+    __tablename__ = "openvpn_buffer_guard_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), unique=True, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    mode: Mapped[str] = mapped_column(String(32), default=OpenVpnBufferGuardMode.notify.value)
+    threshold_count: Mapped[int] = mapped_column(Integer, default=40)
+    window_seconds: Mapped[int] = mapped_column(Integer, default=60)
+    escalate_after_seconds: Mapped[int] = mapped_column(Integer, default=30)
+    cooldown_minutes: Mapped[int] = mapped_column(Integer, default=15)
+    temp_ban_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    watch_units_json: Mapped[str] = mapped_column(Text, default='["antizapret-udp","vpn-udp"]')
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class OpenVpnBufferGuardEvent(Base):
+    __tablename__ = "openvpn_buffer_guard_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    unit: Mapped[str] = mapped_column(String(64))
+    common_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    real_address: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error_count: Mapped[int] = mapped_column(Integer, default=0)
+    window_seconds: Mapped[int] = mapped_column(Integer, default=60)
+    mode: Mapped[str] = mapped_column(String(32))
+    actions_json: Mapped[str] = mapped_column(Text, default="[]")
+    result: Mapped[str] = mapped_column(String(32), default="failed")
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    manual: Mapped[bool] = mapped_column(Boolean, default=False)
+    ban_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+>>>>>>> kirito/main
 
 
 class WebhookDelivery(Base):
@@ -912,3 +1030,45 @@ class WebhookDelivery(Base):
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ServerRebootRecord(Base):
+    """Scheduled OS reboot, shared by uvicorn workers; the timer lives in the scheduling worker."""
+
+    __tablename__ = "server_reboot_requests"
+    __table_args__ = (
+        Index(
+            "uq_server_reboot_requests_active_node",
+            "node_id",
+            unique=True,
+            sqlite_where=text("status IN ('pending', 'executing')"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    node_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    node_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    scheduled_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    execute_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    # process_identity token of the worker holding the timer.
+    owner: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class TelegramProcessedUpdate(Base):
+    __tablename__ = "telegram_processed_updates"
+
+    update_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class SharedState(Base):
+    """Short-lived state every uvicorn worker must see (bot dialogs, OIDC login state)."""
+
+    __tablename__ = "shared_state"
+
+    namespace: Mapped[str] = mapped_column(String(32), primary_key=True)
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)

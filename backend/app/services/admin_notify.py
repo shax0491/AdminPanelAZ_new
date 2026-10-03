@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+import json
 import logging
 import threading
 import time
@@ -41,29 +43,76 @@ TG_NOTIFY_EVENT_LABELS: list[tuple[str, str]] = [
     ("client_ban", "Блокировка / разблокировка клиента"),
     ("traffic_limit", "Лимит трафика (блок / авторазблокировка)"),
     ("cert_expiry_reminder", "Напоминание: срок сертификата"),
+    ("access_expiry_reminder", "Напоминание: срок доступа"),
     ("traffic_limit_reminder", "Напоминание: лимит трафика"),
     ("temp_block_reminder", "Напоминание: временная блокировка"),
     ("user_cert_expiry_reminder", "Пользователь: срок сертификата"),
+    ("user_access_expiry_reminder", "Пользователь: срок доступа"),
     ("user_traffic_limit_reminder", "Пользователь: лимит трафика"),
     ("user_temp_block_reminder", "Пользователь: временная блокировка"),
     ("settings_change", "Изменение настроек"),
     ("high_cpu", "Высокая нагрузка CPU"),
     ("high_ram", "Высокая нагрузка RAM"),
     ("node_offline", "Узел offline / восстановление"),
+    ("node_sync_drift", "HA: расхождение основного узла и реплики"),
     ("cidr_deploy_failed", "Ошибка развёртывания CIDR"),
     ("cidr_ingest_partial", "Частичное обновление CIDR БД"),
     ("noc_report", "NOC: ежедневная/еженедельная сводка"),
     ("alert_rule", "Alert rule: срабатывание порога"),
+    ("openvpn_buffer_guard_triggered", "OpenVPN Buffer Guard"),
 ]
+
+TG_NOTIFY_EVENT_GROUPS: list[tuple[str, str, str, tuple[str, ...]]] = [
+    ("login", "Входы", "🔐", ("login_success", "login_failed", "tg_unlinked")),
+    (
+        "clients",
+        "Клиенты и пользователи",
+        "👥",
+        ("config_create", "config_delete", "user_create", "user_delete", "client_ban", "traffic_limit"),
+    ),
+    (
+        "reminders",
+        "Напоминания",
+        "⏰",
+        ("cert_expiry_reminder", "access_expiry_reminder", "traffic_limit_reminder", "temp_block_reminder"),
+    ),
+    (
+        "owner_reminders",
+        "Мои напоминания",
+        "🔔",
+        (
+            "user_cert_expiry_reminder",
+            "user_access_expiry_reminder",
+            "user_traffic_limit_reminder",
+            "user_temp_block_reminder",
+        ),
+    ),
+    ("settings", "Настройки", "⚙️", ("settings_change",)),
+    ("load", "Нагрузка", "📊", ("high_cpu", "high_ram")),
+    ("nodes_ha", "Узлы и HA", "🖥️", ("node_offline", "node_sync_drift")),
+    ("cidr", "CIDR", "🌐", ("cidr_deploy_failed", "cidr_ingest_partial")),
+    (
+        "reports",
+        "Отчёты и алерты",
+        "📋",
+        ("noc_report", "alert_rule", "openvpn_buffer_guard_triggered"),
+    ),
+]
+
+TG_NOTIFY_EVENT_GROUP_BY_KEY: dict[str, str] = {
+    key: group_id for group_id, _title, _icon, keys in TG_NOTIFY_EVENT_GROUPS for key in keys
+}
 
 # Owner self-service reminders (Mini App / personal prefs). Not admin broadcast events.
 PERSONAL_OWNER_NOTIFY_KEYS = frozenset({
     "cert_expiry_reminder",
+    "access_expiry_reminder",
     "traffic_limit_reminder",
     "temp_block_reminder",
 })
 PERSONAL_OWNER_NOTIFY_KEY_ORDER = (
     "cert_expiry_reminder",
+    "access_expiry_reminder",
     "traffic_limit_reminder",
     "temp_block_reminder",
 )
@@ -116,6 +165,7 @@ SETTINGS_TG_TITLES = {
     "settings_backup_restore": "Бэкапы",
     "settings_backup_upload": "Бэкапы",
     "settings_backup_delete": "Бэкапы",
+    "settings_backup_auto_failed": "Ошибка авто-бэкапа",
     "settings_restart_service": "Перезапуск сервиса",
     "settings_user_password_update": "Пароль пользователя",
     "settings_user_role_update": "Роль пользователя",
@@ -159,6 +209,7 @@ _PREF_KEY_MAP = {
     "traffic_limit_block": "traffic_limit",
     "traffic_limit_unblock": "traffic_limit",
     "node_online": "node_offline",
+    "openvpn_buffer_guard": "openvpn_buffer_guard_triggered",
 }
 
 
@@ -180,7 +231,7 @@ def _mini_protocol_label(raw_value: str | None) -> str:
 
 def _fmt_code(value: str | None) -> str:
     text = str(value or "").strip()
-    return f"<code>{text or '—'}</code>"
+    return f"<code>{html.escape(text) if text else '—'}</code>"
 
 
 def _fmt_protocol(target_type: str | None) -> str:
@@ -243,7 +294,12 @@ def _line_code(icon: str, label: str, value: str | None) -> str:
 
 
 def _line_text(icon: str, label: str, text: str) -> str:
-    return f"{icon} {label} : {text}"
+    return _line_html(icon, label, html.escape(text))
+
+
+def _line_html(icon: str, label: str, markup: str) -> str:
+    """``markup`` must be trusted server-generated Telegram HTML."""
+    return f"{icon} {label} : {markup}"
 
 
 def _client_detail_lines(target_type: str | None, target_name: str | None) -> list[str]:
@@ -293,7 +349,7 @@ def _fmt_device(user_agent: str | None, *, login_via: str | None = None) -> str 
     if not label:
         return None
     icon = "📱" if is_mobile_user_agent(user_agent) and not login_via else "💻"
-    return f"{icon} Устройство {label}"
+    return f"{icon} Устройство {html.escape(label)}"
 
 
 def _login_context_lines(
@@ -437,6 +493,28 @@ def _build_client_ban_message(
 
     _append_node_detail(detail_lines, node_id=node_id, node_name=node_name)
     return _format_notify_card(title, when, actor_line=actor_admin, detail_lines=detail_lines)
+
+
+def _build_node_sync_drift_message(details: str | None, when: str) -> str:
+    try:
+        item = json.loads(details) if details else {}
+    except ValueError:
+        item = {}
+    if not isinstance(item, dict):
+        item = {}
+    detail_lines: list[str] = []
+    name = str(item.get("name") or item.get("group_id") or "").strip()
+    if name:
+        detail_lines.append(_line_text("🧩", "Группа", name))
+    domain = str(item.get("shared_domain") or "").strip()
+    if domain:
+        detail_lines.append(_line_code("🌐", "Домен", domain))
+    summary = str(item.get("summary") or "").strip()
+    detail_lines.append(_line_text("📋", "Расхождения", summary or "основной узел и реплика различаются"))
+    hint = str(item.get("hint") or "").strip()
+    if hint:
+        detail_lines.append(_line_text("💡", "Что сделать", hint))
+    return _format_notify_card("🟠 <b>HA: расхождение</b>", when, detail_lines=detail_lines)
 
 
 class AdminNotifyService:
@@ -1199,6 +1277,9 @@ class AdminNotifyService:
                 detail_lines=detail_lines,
             )
 
+        if event_type == "node_sync_drift":
+            return _build_node_sync_drift_message(details, when)
+
         if event_type == "node_online":
             detail_lines = [_line_text("📋", "Детали", details or "Узел снова online")]
             _append_node_detail(detail_lines, node_id=node_id, node_name=node_name)
@@ -1216,6 +1297,17 @@ class AdminNotifyService:
             _append_node_detail(detail_lines, node_id=node_id, node_name=node_name)
             return _format_notify_card(
                 "🚨 <b>Alert rule</b>",
+                when,
+                detail_lines=detail_lines,
+            )
+
+        if event_type == "openvpn_buffer_guard":
+            detail_lines = _client_detail_lines(target_type, target_name)
+            if details:
+                detail_lines.append(_line_text("📋", "Детали", details))
+            _append_node_detail(detail_lines, node_id=node_id, node_name=node_name)
+            return _format_notify_card(
+                "🧱 <b>OpenVPN Buffer Guard</b>",
                 when,
                 detail_lines=detail_lines,
             )
@@ -1240,19 +1332,20 @@ class AdminNotifyService:
 
         if event_type in (
             "user_cert_expiry_reminder",
+            "user_access_expiry_reminder",
             "user_traffic_limit_reminder",
             "user_temp_block_reminder",
         ):
             titles = {
                 "user_cert_expiry_reminder": "⚠️ <b>Сертификат пользователя</b>",
+                "user_access_expiry_reminder": "⏳ <b>Доступ пользователя</b>",
                 "user_traffic_limit_reminder": "📊 <b>Лимит трафика пользователя</b>",
                 "user_temp_block_reminder": "⛔ <b>Временная блокировка</b>",
             }
-            detail_lines = [
-                _line_code("👤", "Пользователь", subject_name or actor_username),
-                *_client_detail_lines(target_type, target_name),
-                _line_text("📋", "Детали", details or "-"),
-            ]
+            detail_lines = [_line_code("👤", "Пользователь", subject_name or actor_username)]
+            if event_type != "user_access_expiry_reminder":
+                detail_lines.extend(_client_detail_lines(target_type, target_name))
+            detail_lines.append(_line_html("📋", "Детали", details or "-"))
             _append_node_detail(detail_lines, node_id=node_id, node_name=node_name)
             return _format_notify_card(
                 titles[event_type],
@@ -1303,6 +1396,13 @@ def _preview_owner_reminder_text(event_key: str) -> str | None:
     """Sample text for self-service owner reminders (not routed through _build_text)."""
     when = _fmt_when(format_notify_when(None))
     samples = {
+        "access_expiry_reminder": _format_notify_card(
+            "⚠️ <b>Доступ скоро истечёт</b>",
+            when,
+            detail_lines=[
+                _line_html("📋", "Детали", "Доступ до <code>2026-07-10</code>, осталось <b>5</b> дн."),
+            ],
+        ),
         "cert_expiry_reminder": _format_notify_card(
             "⚠️ <b>Сертификат скоро истечёт</b>",
             when,
@@ -1401,6 +1501,12 @@ def _preview_event_build_kwargs(event_key: str, *, actor_username: str) -> dict 
             "subject_name": "vpnuser",
             **node_ctx,
         },
+        "user_access_expiry_reminder": {
+            "event_type": "user_access_expiry_reminder",
+            "actor_username": "vpnuser",
+            "details": "Доступ до <code>2026-07-10</code>, осталось <b>5</b> дн.",
+            "subject_name": "vpnuser",
+        },
         "user_traffic_limit_reminder": {
             "event_type": "user_traffic_limit_reminder",
             "actor_username": "vpnuser",
@@ -1440,6 +1546,18 @@ def _preview_event_build_kwargs(event_key: str, *, actor_username: str) -> dict 
             "details": "Connection refused",
             **node_ctx,
         },
+        "node_sync_drift": {
+            "event_type": "node_sync_drift",
+            "details": json.dumps(
+                {
+                    "group_id": 1,
+                    "name": "Основа",
+                    "shared_domain": "vpn.example.com",
+                    "summary": "Расхождения между основным узлом и репликой",
+                },
+                ensure_ascii=False,
+            ),
+        },
         "cidr_deploy_failed": {
             "event_type": "cidr_deploy_failed",
             "actor_username": actor_username,
@@ -1454,6 +1572,13 @@ def _preview_event_build_kwargs(event_key: str, *, actor_username: str) -> dict 
             "event_type": "alert_rule",
             "target_name": "CPU > 90% on RU-1",
             "details": "текущее: 94.2%, порог: 90%",
+            **node_ctx,
+        },
+        "openvpn_buffer_guard_triggered": {
+            "event_type": "openvpn_buffer_guard",
+            "target_name": "demo-ovpn",
+            "target_type": "openvpn",
+            "details": "750 ENOBUFS in vpn-udp",
             **node_ctx,
         },
     }

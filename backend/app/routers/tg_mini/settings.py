@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -18,6 +19,7 @@ from app.routers.settings_telegram import (
 )
 from app.schemas import (
     AdminNotifyEventItem,
+    AdminNotifyGroupInfo,
     AdminNotifySettingsResponse,
     AdminNotifySettingsUpdate,
     EffectiveVisibleVpnProfilesResponse,
@@ -29,6 +31,7 @@ from app.schemas import (
 from app.services.admin_notify import (
     PERSONAL_OWNER_NOTIFY_KEY_ORDER,
     PERSONAL_OWNER_NOTIFY_KEYS,
+    TG_NOTIFY_EVENT_GROUPS,
     TG_NOTIFY_EVENT_LABELS,
 )
 from app.services.node_manager import get_active_adapter
@@ -43,6 +46,11 @@ def _mini_notify_settings_response(db: Session, user: User) -> AdminNotifySettin
         return response
     labels = dict(TG_NOTIFY_EVENT_LABELS)
     merged = user.merged_tg_notify_events()
+    # Non-admin Mini App group id is distinct from catalog `owner_reminders`
+    # (admin user_* keys). Title/icon reuse that catalog entry so strings stay
+    # single-sourced; direct index — the catalog always carries owner_reminders
+    # (see test_nine_groups_with_titles_and_icons).
+    group_title, group_icon = {g[0]: (g[1], g[2]) for g in TG_NOTIFY_EVENT_GROUPS}["owner_reminders"]
     return AdminNotifySettingsResponse(
         telegram_id=response.telegram_id,
         recipient_user_ids=[],
@@ -53,8 +61,17 @@ def _mini_notify_settings_response(db: Session, user: User) -> AdminNotifySettin
                 key=key,
                 label=labels.get(key, key),
                 enabled=merged.get(key, False),
+                group="my_reminders",
             )
             for key in PERSONAL_OWNER_NOTIFY_KEY_ORDER
+        ],
+        groups=[
+            AdminNotifyGroupInfo(
+                group="my_reminders",
+                title=group_title,
+                icon=group_icon,
+                keys=list(PERSONAL_OWNER_NOTIFY_KEY_ORDER),
+            )
         ],
         node_offline_grace_seconds=response.node_offline_grace_seconds,
     )
@@ -162,7 +179,7 @@ def mini_test_admin_notify(
     events_text = "\n".join(f"  ✓ {item}" for item in enabled) if enabled else "  (нет включённых событий)"
     text = (
         "🔔 <b>Тест уведомлений AdminPanelAZ</b>\n\n"
-        f"Аккаунт: <code>{current_user.username}</code>\n\n"
+        f"Аккаунт: <code>{html.escape(current_user.username)}</code>\n\n"
         f"Включённые события:\n{events_text}"
     )
     if current_user.role != UserRole.admin:

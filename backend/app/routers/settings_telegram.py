@@ -1,3 +1,4 @@
+import html
 import json
 import secrets
 from datetime import datetime, timezone
@@ -12,6 +13,7 @@ from app.models import DEFAULT_TG_NOTIFY_EVENTS, User
 from app.schemas import (
     AdminNotifyEventItem,
     AdminNotifyEventTestRequest,
+    AdminNotifyGroupInfo,
     AdminNotifySettingsResponse,
     AdminNotifySettingsUpdate,
     MessageResponse,
@@ -20,6 +22,8 @@ from app.schemas import (
     TelegramSettingsUpdate,
 )
 from app.services.admin_notify import (
+    TG_NOTIFY_EVENT_GROUPS,
+    TG_NOTIFY_EVENT_GROUP_BY_KEY,
     TG_NOTIFY_EVENT_LABELS,
     admin_notify_service,
     send_notify_event_preview,
@@ -182,8 +186,17 @@ def _admin_notify_settings_response(db: Session, user: User) -> AdminNotifySetti
         notify_enabled=_get_setting(db, "telegram_notify_enabled", "false") == "true",
         bot_token_set=bool(_get_setting(db, "telegram_bot_token")),
         events=[
-            AdminNotifyEventItem(key=key, label=label, enabled=merged.get(key, False))
+            AdminNotifyEventItem(
+                key=key,
+                label=label,
+                enabled=merged.get(key, False),
+                group=TG_NOTIFY_EVENT_GROUP_BY_KEY.get(key, ""),
+            )
             for key, label in TG_NOTIFY_EVENT_LABELS
+        ],
+        groups=[
+            AdminNotifyGroupInfo(group=group_id, title=title, icon=icon, keys=list(keys))
+            for group_id, title, icon, keys in TG_NOTIFY_EVENT_GROUPS
         ],
         node_offline_grace_seconds=get_node_offline_grace_seconds(db),
     )
@@ -267,7 +280,7 @@ def test_admin_notify(db: Session = Depends(get_db), admin: User = Depends(requi
     events_text = "\n".join(f"  ✓ {item}" for item in enabled) if enabled else "  (нет включённых событий)"
     text = (
         "🔔 <b>Тест уведомлений AdminPanelAZ</b>\n\n"
-        f"Аккаунт: <code>{admin.username}</code>\n\n"
+        f"Аккаунт: <code>{html.escape(admin.username)}</code>\n\n"
         f"Включённые события:\n{events_text}"
     )
     sent, total = _send_test_message_to_recipients(db, admin, text)

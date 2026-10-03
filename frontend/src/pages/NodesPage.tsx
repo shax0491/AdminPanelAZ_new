@@ -1,6 +1,11 @@
 import { FormEvent, useEffect, useState } from 'react'
 import {
   Activity,
+<<<<<<< main
+=======
+  BellOff,
+  Check,
+>>>>>>> kirito/main
   ExternalLink,
   Loader2,
   MoreHorizontal,
@@ -15,7 +20,6 @@ import {
   ApiError,
   checkNodeHealth,
   createNode,
-  deleteNode,
   listNodeTransports,
   patchNodeTransport,
   preflightNodeTransport,
@@ -86,7 +90,7 @@ import type {
   NodeTransportOption,
   NodeTransportPatchBody,
 } from '@/types'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { DOCS } from '@/lib/docsUrls'
 
 export { isProxyNode }
@@ -125,10 +129,12 @@ export default function NodesPage() {
     refreshSyncGroups,
     applySyncGroups,
     activate,
+    deleteNode,
   } = useNode()
-  const { features } = useFeatureModules()
+  const { features, isEnabled } = useFeatureModules()
   // Default-off toggle: treat missing key as disabled (isEnabled() falls back to true).
   const proxyNodesEnabled = features.proxy_nodes === true
+  const telegramEnabled = isEnabled('telegram')
   const { success, warning, error: notifyError } = useNotifications()
   const [loading, setLoading] = useState(true)
   const [showDialog, setShowDialog] = useState(false)
@@ -1021,7 +1027,17 @@ export default function NodesPage() {
 
       {showMtlsStatus && mtlsStatus && <MtlsCaStatusAlert status={mtlsStatus} />}
 
-      <NodeOfflineNotifyCard />
+      {telegramEnabled ? (
+        <NodeOfflineNotifyCard />
+      ) : (
+        <p className="flex items-center gap-2 text-xs text-muted-foreground">
+          <BellOff size={14} aria-hidden className="shrink-0" />
+          Модуль Telegram отключён — алерты offline не отправляются.{' '}
+          <Link to="/settings/modules" className="underline underline-offset-2">
+            Включить
+          </Link>
+        </p>
+      )}
 
       <NodeSyncGroupSection
         nodes={nodes}
@@ -1664,7 +1680,7 @@ export default function NodesPage() {
                   variant: 'warning',
                   title: 'Старый ключ перестанет работать',
                   children:
-                    'Будет сгенерирован новый API-ключ. Обновите его в конфигурации node agent на сервере, иначе связь с панелью прервётся.',
+                    'Панель передаст агенту новый API-ключ: агент сразу перейдёт на него и сохранит в backend/node_agent.env (права 600), на сервере ничего править не нужно. Узел должен быть на связи. Сначала обновите агент до 1.11.0: агент 1.8.0 может потерять новый ключ при перезапуске.',
                 }
               : confirmAction === 'enable-mtls'
                 ? confirmTarget && isProxyNode(confirmTarget)

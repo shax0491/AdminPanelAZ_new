@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import inspect
 import json
 import logging
@@ -21,6 +22,8 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models import BackgroundTask
+from app.services.expected_node import forget_confirmed_node
+from app.services.process_identity import current_process_owner, is_owner_alive
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +33,13 @@ MAX_OUTPUT_CHARS = 50_000
 _COMMIT_RETRY_ATTEMPTS = 5
 _COMMIT_RETRY_DELAY_SEC = 0.1
 _EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="bg-task")
+
+
+def _submit_in_current_context(fn: Callable[..., Any], *args: Any) -> None:
+    # The request context carries X-Expected-Node-Id: a task must not act on a node switched after enqueue.
+    context = contextvars.copy_context()
+    context.run(forget_confirmed_node)
+    _EXECUTOR.submit(context.run, fn, *args)
 
 _PIPELINE_TASK_TYPES = {
     "cidr_db_refresh",
@@ -59,6 +69,8 @@ _TASK_START_PROGRESS: dict[str, tuple[str, str, int]] = {
     "cidr_deploy": ("Развёртывание CIDR на узел…", "Подготовка развёртывания…", 3),
     "antifilter_refresh": ("Обновление Antifilter…", "Подготовка Antifilter…", 3),
     "vpn_network_publish": ("Публикация панели…", "Запуск nginx-setup.sh…", 5),
+    "portal_readiness_check": ("Проверка готовности портала…", "Подготовка проверки…", 5),
+    "portal_readiness_prepare": ("Подготовка портала…", "Подготовка…", 5),
     "config_bulk_op": ("Массовая операция с клиентами…", "Подготовка…", 3),
     "config_csv_import": ("Импорт CSV клиентов…", "Подготовка импорта…", 3),
     "node_sync_push_full": ("Синхронизация HA…", "Подготовка push-full…", 5),
@@ -80,6 +92,8 @@ _TASK_DONE_PROGRESS: dict[str, str] = {
     "cidr_deploy": "Развёртывание завершено",
     "antifilter_refresh": "Antifilter обновлён",
     "vpn_network_publish": "Публикация панели завершена",
+    "portal_readiness_check": "Проверка готовности завершена",
+    "portal_readiness_prepare": "Подготовка портала завершена",
     "config_bulk_op": "Массовая операция завершена",
     "config_csv_import": "Импорт CSV завершён",
     "node_sync_push_full": "Синхронизация HA завершена",
@@ -115,6 +129,14 @@ class BackgroundTaskService:
             try:
                 parsed = json.loads(output)
             except (TypeError, ValueError, json.JSONDecodeError):
+                return None
+            return parsed if isinstance(parsed, dict) else None
+        if task_type in {"portal_readiness_check", "portal_readiness_prepare"} and output:
+            try:
+                from app.services.portal_readiness import parse_portal_readiness_trailer
+
+                parsed = parse_portal_readiness_trailer(output)
+            except Exception:
                 return None
             return parsed if isinstance(parsed, dict) else None
         if task_type not in _PIPELINE_TASK_TYPES or not output:
@@ -195,14 +217,14 @@ class BackgroundTaskService:
             db.close()
 
     def recover_stale_running_tasks(self) -> int:
-        """Mark orphaned running/queued tasks as failed after process restart."""
+        """Mark running/queued tasks of dead workers as failed; other workers may still be running theirs."""
         db = SessionLocal()
         try:
-            stale = (
-                db.query(BackgroundTask)
-                .filter(BackgroundTask.status.in_(["queued", "running"]))
-                .all()
-            )
+            stale = [
+                task
+                for task in db.query(BackgroundTask).filter(BackgroundTask.status.in_(["queued", "running"])).all()
+                if not is_owner_alive(task.owner)
+            ]
             if not stale:
                 return 0
             now = datetime.now(timezone.utc)
@@ -251,6 +273,7 @@ class BackgroundTaskService:
                 message=(message or "Задача поставлена в очередь")[:255],
                 progress_percent=0,
                 progress_stage="Ожидание запуска задачи…",
+                owner=current_process_owner(),
             )
             db.add(task)
             self._commit_with_retry(db)
@@ -291,6 +314,16 @@ class BackgroundTaskService:
             return task_callable(progress_updater=progress_updater) or {}
 
         return task_callable() or {}
+
+    @staticmethod
+    def exception_text(exc: BaseException) -> str:
+        if isinstance(exc, HTTPException):
+            detail = exc.detail
+            if isinstance(detail, str):
+                return detail
+            if isinstance(detail, dict) and isinstance(detail.get("message"), str):
+                return detail["message"]
+        return str(exc)
 
     def run_background_task(self, task_id: str, task_callable: BackgroundTaskCallable) -> None:
         db = SessionLocal()
@@ -351,7 +384,7 @@ class BackgroundTaskService:
                 status="failed",
                 finished_at=datetime.now(timezone.utc),
                 message="Задача завершилась с ошибкой",
-                error=self.trim_background_task_text(str(exc)),
+                error=self.trim_background_task_text(self.exception_text(exc)),
                 progress_percent=100,
                 progress_stage="Ошибка выполнения",
             )
@@ -369,7 +402,7 @@ class BackgroundTaskService:
             queued_message or "Задача поставлена в очередь",
             created_by_username=created_by_username,
         )
-        _EXECUTOR.submit(self.run_background_task, task_id, task_callable)
+        _submit_in_current_context(self.run_background_task, task_id, task_callable)
         task = self.get_task(task_id)
         if task is None:
             raise RuntimeError("Failed to create background task")
@@ -445,7 +478,7 @@ class BackgroundTaskService:
             if progress_updater:
                 progress_updater(90, "AntiZapret: восстановление OpenVPN multihome…")
             try:
-                mh = adapter.ensure_openvpn_multihome(True)
+                mh = adapter.ensure_openvpn_multihome(True, restart_if_unchanged=False)
                 if isinstance(mh, dict):
                     multihome_output = json.dumps(mh, ensure_ascii=False)
                 else:
@@ -838,6 +871,64 @@ class BackgroundTaskService:
             "publish_mode": mode,
         }
 
+    def task_portal_readiness(
+        self,
+        payload: dict[str, object],
+        progress_updater: Callable[[int, str, str | None], None] | None = None,
+        *,
+        mode: str,
+    ) -> dict[str, Any]:
+        """Run nginx portal readiness check/prepare and parse KEY=value trailer."""
+        from app.services.portal_readiness import parse_portal_readiness_trailer
+
+        captured_mode = str(mode or "").strip().lower()
+        if captured_mode not in {"check", "prepare"}:
+            raise RuntimeError(f"Неизвестный режим проверки портала: {mode}")
+
+        portal_domain = str(payload.get("portal_domain") or "").strip()
+        if not portal_domain:
+            raise RuntimeError("portal_domain обязателен")
+
+        script = PROJECT_ROOT / "scripts" / "nginx-portal-readiness.sh"
+        if not script.is_file():
+            raise RuntimeError(f"Скрипт не найден: {script}")
+
+        flag = "--check" if captured_mode == "check" else "--prepare"
+        cmd_env: dict[str, str] = {
+            "NON_INTERACTIVE": "true",
+            "PORTAL_DOMAIN": portal_domain,
+            "DOMAIN": str(payload.get("domain") or "").strip(),
+            "PUBLISH_MODE": str(payload.get("publish_mode") or "").strip(),
+        }
+
+        if progress_updater:
+            progress_updater(
+                30,
+                "Проверка готовности портала…"
+                if captured_mode == "check"
+                else "Подготовка портала…",
+            )
+
+        stdout, stderr = self.run_checked_command(
+            ["bash", str(script), flag],
+            cwd=PROJECT_ROOT,
+            timeout=120,
+            env=cmd_env,
+        )
+
+        log_output = "\n".join(part for part in [stdout, stderr] if part).strip()
+        parsed = parse_portal_readiness_trailer(log_output)
+
+        ready = bool(parsed.get("ready"))
+        message = str(parsed.get("message") or "").strip() or ("Готово" if ready else "Требуется внимание")
+
+        return {
+            "message": message,
+            "log": log_output,
+            "output": log_output,
+            **parsed,
+        }
+
     def start_cidr_runner(self, task_id: str, runner: Callable) -> None:
         progress_lock = threading.Lock()
         progress_state = {"last_at": 0.0, "last_pct": -1, "last_stage": ""}
@@ -916,7 +1007,7 @@ class BackgroundTaskService:
                     progress_percent=100,
                     progress_stage="Операция завершилась с ошибкой",
                     message="Операция завершилась с ошибкой",
-                    error=str(exc),
+                    error=self.exception_text(exc),
                     finished_at=datetime.now(timezone.utc),
                 )
 
@@ -927,7 +1018,7 @@ class BackgroundTaskService:
             progress_stage="Запуск фоновой задачи…",
             started_at=datetime.now(timezone.utc),
         )
-        _EXECUTOR.submit(_worker)
+        _submit_in_current_context(_worker)
 
     def build_accepted_payload(self, task: BackgroundTask, message: str) -> dict[str, Any]:
         payload = self.serialize_background_task(task)
