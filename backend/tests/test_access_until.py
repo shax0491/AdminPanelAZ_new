@@ -54,6 +54,7 @@ def _make_node(db):
         api_key_encrypted="",
         status=NodeStatus.online,
         is_local=True,
+        node_kind="vpn",
         node_metadata="{}",
     )
     db.add(node)
