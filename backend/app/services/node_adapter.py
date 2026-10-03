@@ -1202,6 +1202,16 @@ class LocalNodeAdapter(NodeAdapter):
         return self._warper.iter_update_stream_events()
 
 
+def _is_legacy_awg2_not_installed(exc: HTTPException) -> bool:
+    """True for the 409 the legacy /awg2/expire-check and /awg2/expiry routes raise
+    when the az-awg2 overlay isn't present - expected on native-only nodes."""
+    if exc.status_code != status.HTTP_409_CONFLICT:
+        return False
+    detail = exc.detail
+    message = detail.get("message") if isinstance(detail, dict) else detail
+    return isinstance(message, str) and "AZ-AWG2 не установлен" in message
+
+
 class RemoteNodeAdapter(NodeAdapter):
     def __init__(
         self,
@@ -1384,11 +1394,24 @@ class RemoteNodeAdapter(NodeAdapter):
         return sorted(names)
 
     def awg2_expire_check(self) -> str:
-        data = self._request("POST", "/awg2/expire-check", timeout=120.0)
+        try:
+            data = self._request("POST", "/awg2/expire-check", timeout=120.0)
+        except HTTPException as exc:
+            if _is_legacy_awg2_not_installed(exc):
+                # Native AmneziaWG 2.0 (client.sh) has no TTL concept - same no-op
+                # LocalNodeAdapter returns. The legacy az-awg2 overlay this endpoint
+                # targets simply isn't present on native-only nodes.
+                return "Нативный AmneziaWG 2.0 не использует TTL — проверка истечения не требуется"
+            raise
         return data.get("detail") or data.get("message", "ok")
 
     def awg2_expiry_map(self) -> dict[str, datetime]:
-        data = self._request("GET", "/awg2/expiry", timeout=60.0)
+        try:
+            data = self._request("GET", "/awg2/expiry", timeout=60.0)
+        except HTTPException as exc:
+            if _is_legacy_awg2_not_installed(exc):
+                return {}
+            raise
         result: dict[str, datetime] = {}
         for name, raw in (data.get("expiry") or {}).items():
             try:
