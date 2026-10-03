@@ -13,8 +13,8 @@ EnvironmentFile=-/opt/AdminPanelAZ/backend/node_agent.env
 Environment=NODE_AGENT_STATE_DIR=/var/lib/adminpanelaz-node
 Environment=NODE_AGENT_HOST=0.0.0.0
 Environment=ANTIZAPRET_PATH=/root/antizapret
-# NODE_AGENT_PORT и NODE_AGENT_API_KEY живут только в node_agent.env (EnvironmentFile
-# выше) — не дублировать их здесь как Environment=, иначе systemd применяет их ПОСЛЕ
+# Порт и ключ агента живут только в node_agent.env (EnvironmentFile выше) — не
+# дублировать их здесь как Environment=, иначе systemd применяет их ПОСЛЕ
 # EnvironmentFile и любая правка .env-файла молча игнорируется.
 ExecStart=/opt/AdminPanelAZ/scripts/systemd-exec-node.sh
 Restart=on-failure
