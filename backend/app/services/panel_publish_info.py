@@ -545,16 +545,11 @@ def nginx_listens_on_443() -> bool:
     return nginx_listens_on_https_port(443)
 
 
-<<<<<<< main
-def _nginx_config_is_valid() -> bool:
+def nginx_config_test_ok() -> bool:
     """``nginx -t`` — a vhost file existing on disk says nothing about whether
     the running nginx can actually serve anything (this vhost or an unrelated
     one may be failing `nginx -t`, e.g. a long domain tripping
     server_names_hash_bucket_size)."""
-=======
-def nginx_config_test_ok() -> bool:
-    """True when ``nginx -t`` succeeds (config on disk is loadable)."""
->>>>>>> kirito/main
     if not is_nginx_installed():
         return False
     try:
@@ -562,21 +557,12 @@ def nginx_config_test_ok() -> bool:
             ["nginx", "-t"],
             capture_output=True,
             text=True,
-<<<<<<< main
-            timeout=10,
-            check=False,
-        )
-        return result.returncode == 0
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-=======
             timeout=15,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
     return result.returncode == 0
->>>>>>> kirito/main
 
 
 def nginx_has_vhost_for_domain(domain: str) -> bool:
@@ -1027,7 +1013,7 @@ def build_portal_publish_status(
         # broken (this vhost or an unrelated one), "Готов" must not lie about
         # it: a client link to a portal nginx can't actually serve is worse
         # than an honest "not ready".
-        if not _nginx_config_is_valid():
+        if not nginx_config_test_ok():
             nginx_config_broken = True
             vhost_ok = False
             warnings.append(

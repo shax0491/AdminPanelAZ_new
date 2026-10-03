@@ -37,12 +37,8 @@ from app.services.profile_files import profile_files_batch_key
 from app.services.runtime_peer_batch import CLIENTS_PER_REQUEST
 from app.services.server_monitor import ServerMonitorService
 from app.services.wg_runtime import block_client_runtime, unblock_client_runtime
-<<<<<<< main
-from app.services.native_awg2_runtime import (
-=======
 from app.services.wg_runtime import block_clients_runtime as wg_block_clients_runtime
-from app.services.awg2_runtime import (
->>>>>>> kirito/main
+from app.services.native_awg2_runtime import (
     block_client_runtime as awg2_block_client_runtime,
     block_clients_runtime as awg2_block_clients_runtime,
     unblock_client_runtime as awg2_unblock_client_runtime,

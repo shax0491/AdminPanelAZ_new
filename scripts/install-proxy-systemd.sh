@@ -45,10 +45,6 @@ sed \
   -e "s|/var/lib/adminpanelaz-proxy|$STATE_DIR|g" \
   -e "s|^User=root|User=$INSTALL_USER|" \
   -e "s|^Group=root|Group=$INSTALL_GROUP|" \
-<<<<<<< main
-=======
-  -e "s|Environment=PROXY_AGENT_PORT=9101|Environment=PROXY_AGENT_PORT=${PROXY_AGENT_PORT:-9101}|" \
->>>>>>> kirito/main
   -e "s|EnvironmentFile=-/opt/AdminPanelAZ/backend/proxy_agent.env|EnvironmentFile=-$ROOT_DIR/backend/proxy_agent.env|" \
   "$UNIT_SRC" >"$UNIT_DST"
 

@@ -14,12 +14,7 @@ import type { Awg2HealthResponse, Awg2MonitoringAllResponse, Awg2MonitoringRespo
 type ViewMode = 'current' | 'all'
 
 export default function Awg2Page() {
-<<<<<<< main
   const { activeNode } = useNode()
-=======
-  const { activeNode, loading: nodeLoading } = useNode()
-  const [tab, setTab] = useState<Awg2Tab>('obfuscation')
->>>>>>> kirito/main
   const [health, setHealth] = useState<Awg2HealthResponse | null>(null)
   const [monitoring, setMonitoring] = useState<Awg2MonitoringResponse | null>(null)
   const [monitoringAll, setMonitoringAll] = useState<Awg2MonitoringAllResponse | null>(null)

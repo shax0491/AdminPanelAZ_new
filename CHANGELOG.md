@@ -56,28 +56,6 @@
 
 ## [Unreleased]
 
-<<<<<<< main
-> **Кратко:** AmneziaWG 2.0 переведён на нативный `client.sh`/`awg` (компилируется самим `setup.sh`) вместо стороннего оверлея az-awg2 — генерация клиентов, блокировка, мониторинг и HA-репликация.
-
-### 🔄 Changed
-
-- **Клиенты AmneziaWG 2.0** — add/delete/list идут через нативный `client.sh` (реальные `awg genkey/pubkey/genpsk/syncconf`) вместо стороннего оверлея az-awg2 (`/etc/amnezia/amneziawg`, `curl|bash`-установка). Сгенерированный `*-am2.conf` перезаписывается: `Jc/Jmin/Jmax/S1-S4/H1-H4` синхронизируются с живым серверным `[Interface]`, `MTU` жёстко выставляется в **1280** (нативный клиентский шаблон не содержал строку MTU вовсе).
-- **Блокировка/бан и мониторинг AWG2** — temp-block/permanent-block/unblock и NOC/трафик-мониторинг читают нативные `/etc/amneziawg/{antizapret2,vpn2}.conf` и живой `awg show <iface> dump` вместо путей оверлея; блокировка по-прежнему только runtime `awg set … peer … remove` (без перезаписи интерфейса).
-- **HA-репликация AWG2** — синхронизация состояния на replica копирует нативные серверные конфиги + ключ + архив клиентских профилей и применяет `awg syncconf`, вместо экспорта/импорта архива состояния оверлея.
-- Временные (TTL) клиенты AWG2 — концепция только оверлея, нет нативного аналога; теперь явная ошибка **400** вместо молчаливого игнорирования TTL.
-
-### 🐛 Fixed
-
-- **Критический баг**: сервис панели вызывал `client.sh` со старыми номерами опций (4/5/6/7), тогда как актуальный unified `client.sh` использует 1–6. Из-за этого «удалить клиента WireGuard» на деле запускало `restore()` (полное восстановление из бэкапа + `reboot`), а «список клиентов» — `backup()`. Номера исправлены, парсинг вывода `client.sh 3` теперь секционный.
-- **`install.sh` при `curl|wget | sudo bash` без флагов молча падал**: `require_tty_or_explicit_intent` видел, что stdin — это пайп, и просто отказывал (ошибка уходила в stderr и легко терялась), хотя пайп для доставки самого скрипта не значит, что реального терминала для мастера нет. Теперь при пайпе без флагов скрипт переоткрывает stdin из `/dev/tty` (`exec < /dev/tty`, тот же приём, что `read_proton_config` в AntiZapret-VPN) — интерактивный мастер и меню работают и через обычный `curl ... | sudo bash`. Жёсткий отказ остался только если `/dev/tty` действительно недоступен (CI/automation без псевдо-tty).
-- **`curl: (23) Failure writing output to destination` после успешной установки через `curl | sudo bash`**: сам `install.sh` (~80 КБ) больше стандартного буфера pipe (64 КБ) — `exec < /dev/tty` из фикса выше закрывал читающий конец пайпа немедленно, пока curl/wget мог ещё дозаписывать хвост скрипта, и тот получал EPIPE. На сам исход установки это не влияло (bash уже дочитал всё нужное для разбора собственного скрипта), но выглядело как ошибка. Перед переключением на `/dev/tty` теперь тихо вычерпывается остаток пайпа (`cat >/dev/null`), чтобы curl/wget сам закрылся штатно.
-- **Пулы автопереключения (`dnat_front`): удаление/расформирование пула не возвращало клиентские конфиги на свой адрес**: `rewrite_member_client_endpoints()` при назначении фронта навсегда переписывает `Endpoint` в файлах клиентов на узле-участнике на адрес фронта — но `teardown_front()` (удаление пула, отвязка фронта) эту запись никогда не откатывал. В результате обычная вкладка «Клиенты/Конфигурации» (она просто читает файл с диска, про пулы вообще не знает) бесконечно отдавала мёртвый Endpoint фронта даже после удаления пула и «Синхронизировать» это не лечило — файл на узле оставался неправильным. Добавлен `restore_member_client_endpoint()` — та же операция в обратную сторону (адрес узла + его реальный `ListenPort`), вызывается из `teardown_front()` для тех же участников (primary + любой смёрженный), что и при назначении фронта.
-
-### 🧪 Tests
-
-- `test_antizapret_native_awg2.py`, `test_native_awg2_runtime.py`, `test_antizapret_native_awg2_ha_sync.py` — новые; обновлены `test_awg2_api.py`, `test_node_adapter_parity.py`, `test_awg2_client_stats.py`, `test_vpn_state_sync.py`.
-- Не затронуто (осталось на оверлее, известный пробел): экспорт/импорт narrow-бэкапа и потоковая установка/пресеты обфускации в `routers/awg2.py` — у нативного AWG2 нет аналога live-пресетов без бounce интерфейса.
-=======
 ### ✨ Added
 
 ### 🔄 Changed
@@ -534,7 +512,6 @@
 - `scripts/test-nginx-portal-hardening.sh` — hash-сниппет, rollback site/hash, skip larger bucket, guard перед stop, wait/`ss` fail-closed для :80, temp ACME, restore `default`.
 - `scripts/test-nginx-portal-readiness.sh` — check/prepare trailer, nested keep, stale vhost, env mismatch.
 - Backend: `test_portal_publish` / `test_portal_host_gate` / `test_portal_task_conflicts_api` (в т.ч. unsupported publish mode → 400).
->>>>>>> kirito/main
 
 ---
 
@@ -3032,45 +3009,6 @@ Major release: roadmap этапы 1–8 (и большая часть 9) — pro
 
 </details>
 
-<<<<<<< main
-[Unreleased]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.25.0...HEAD
-[2.25.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.24.0...v2.25.0
-[2.24.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.23.1...v2.24.0
-[2.23.1]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.23.0...v2.23.1
-[2.23.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.22.0...v2.23.0
-[2.22.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.21.0...v2.22.0
-[2.21.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.20.0...v2.21.0
-[2.20.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.19.0...v2.20.0
-[2.19.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.18.0...v2.19.0
-[2.18.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.17.0...v2.18.0
-[2.17.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.16.0...v2.17.0
-[2.16.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.15.0...v2.16.0
-[2.15.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.14.0...v2.15.0
-[2.14.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.13.0...v2.14.0
-[2.13.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.12.0...v2.13.0
-[2.12.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.11.0...v2.12.0
-[2.11.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.10.0...v2.11.0
-[2.10.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.9.0...v2.10.0
-[2.9.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.8.0...v2.9.0
-[2.8.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.7.0...v2.8.0
-[2.7.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.6.0...v2.7.0
-[2.6.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.5.0...v2.6.0
-[2.5.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.4.0...v2.5.0
-[2.4.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.3.0...v2.4.0
-[2.3.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.2.0...v2.3.0
-[2.2.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.1.0...v2.2.0
-[2.1.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v2.0.0...v2.1.0
-[2.0.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v1.9.0...v2.0.0
-[1.9.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v1.8.0...v1.9.0
-[1.8.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v1.7.0...v1.8.0
-[1.7.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v1.6.0...v1.7.0
-[1.6.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v1.5.0...v1.6.0
-[1.5.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v1.4.3...v1.5.0
-[1.4.3]: https://github.com/shax0491/AdminPanelAZ_new/compare/v1.4.2...v1.4.3
-[0.3.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/shax0491/AdminPanelAZ_new/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/shax0491/AdminPanelAZ_new/releases/tag/v0.1.0
-=======
 [Unreleased]: https://github.com/Kirito0098/AdminPanelAZ/compare/v2.26.1...HEAD
 [2.26.1]: https://github.com/Kirito0098/AdminPanelAZ/compare/v2.26.0...v2.26.1
 [2.26.0]: https://github.com/Kirito0098/AdminPanelAZ/compare/v2.25.1...v2.26.0
@@ -3111,4 +3049,3 @@ Major release: roadmap этапы 1–8 (и большая часть 9) — pro
 [0.3.0]: https://github.com/Kirito0098/AdminPanelAZ/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Kirito0098/AdminPanelAZ/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Kirito0098/AdminPanelAZ/releases/tag/v0.1.0
->>>>>>> kirito/main

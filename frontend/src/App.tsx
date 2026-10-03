@@ -15,42 +15,6 @@ import { TimezoneProvider } from './context/TimezoneContext'
 import { lazyWithRetry } from './lib/lazyWithRetry'
 import LoginPage from './pages/LoginPage'
 
-<<<<<<< main
-const PortalPage = lazy(() => import('./pages/PortalPage'))
-const DashboardPage = lazy(() => import('./pages/DashboardPage'))
-const MonitoringPage = lazy(() => import('./pages/MonitoringPage'))
-const NodesPage = lazy(() => import('./pages/NodesPage'))
-const RoutingPage = lazy(() => import('./pages/RoutingPage'))
-const AntizapretConfigPage = lazy(() => import('./pages/AntizapretConfigPage'))
-const ProxyHubPage = lazy(() => import('./pages/ProxyHubPage'))
-const WarperPage = lazy(() => import('./pages/WarperPage'))
-const WarpGeoPage = lazy(() => import('./pages/WarpGeoPage'))
-const Awg2Page = lazy(() => import('./pages/Awg2Page'))
-const FailoverPoolsPage = lazy(() => import('./pages/FailoverPoolsPage'))
-const TelegramPage = lazy(() => import('./pages/TelegramPage'))
-const SubscriptionPage = lazy(() => import('./pages/SubscriptionPage'))
-const SettingsPage = lazy(() => import('./pages/SettingsPage'))
-const TrafficPage = lazy(() => import('./pages/TrafficPage'))
-const EditFilesPage = lazy(() => import('./pages/EditFilesPage'))
-const LogsPage = lazy(() => import('./pages/LogsPage'))
-const ServerMonitorPage = lazy(() => import('./pages/ServerMonitorPage'))
-
-function PageFallback() {
-  return (
-    <div className="flex min-h-[40vh] items-center justify-center">
-      <Spinner label="Загрузка…" />
-    </div>
-  )
-}
-
-function LazyPage({ children }: { children: ReactNode }) {
-  return (
-    <ErrorBoundary>
-      <Suspense fallback={<PageFallback />}>{children}</Suspense>
-    </ErrorBoundary>
-  )
-}
-=======
 const PortalPage = lazyWithRetry(() => import('./pages/PortalPage'))
 const DashboardPage = lazyWithRetry(() => import('./pages/DashboardPage'))
 const MonitoringPage = lazyWithRetry(() => import('./pages/MonitoringPage'))
@@ -59,7 +23,9 @@ const RoutingPage = lazyWithRetry(() => import('./pages/RoutingPage'))
 const AntizapretConfigPage = lazyWithRetry(() => import('./pages/AntizapretConfigPage'))
 const ProxyHubPage = lazyWithRetry(() => import('./pages/ProxyHubPage'))
 const WarperPage = lazyWithRetry(() => import('./pages/WarperPage'))
+const WarpGeoPage = lazyWithRetry(() => import('./pages/WarpGeoPage'))
 const Awg2Page = lazyWithRetry(() => import('./pages/Awg2Page'))
+const FailoverPoolsPage = lazyWithRetry(() => import('./pages/FailoverPoolsPage'))
 const TelegramPage = lazyWithRetry(() => import('./pages/TelegramPage'))
 const SubscriptionPage = lazyWithRetry(() => import('./pages/SubscriptionPage'))
 const SettingsPage = lazyWithRetry(() => import('./pages/SettingsPage'))
@@ -67,7 +33,6 @@ const TrafficPage = lazyWithRetry(() => import('./pages/TrafficPage'))
 const EditFilesPage = lazyWithRetry(() => import('./pages/EditFilesPage'))
 const LogsPage = lazyWithRetry(() => import('./pages/LogsPage'))
 const ServerMonitorPage = lazyWithRetry(() => import('./pages/ServerMonitorPage'))
->>>>>>> kirito/main
 
 export default function App() {
   return (

@@ -54,11 +54,8 @@ from app.services.worker_lifecycle import (
     should_start_awg2_expire,
     should_start_access_expiry,
     should_start_cloudflare_ips_scheduler,
-<<<<<<< main
     should_start_failover_scheduler,
-=======
     should_start_openvpn_buffer_guard,
->>>>>>> kirito/main
 )
 from app.services.worker_leader import WorkerLeaderLock
 
@@ -92,11 +89,8 @@ def get_worker_startup_plan() -> dict[str, bool]:
         "awg2_expire": should_start_awg2_expire(),
         "access_expiry": should_start_access_expiry(),
         "cloudflare_ips_scheduler": should_start_cloudflare_ips_scheduler(),
-<<<<<<< main
         "failover_scheduler": should_start_failover_scheduler(),
-=======
         "openvpn_buffer_guard": should_start_openvpn_buffer_guard(),
->>>>>>> kirito/main
     }
 
 

@@ -125,11 +125,7 @@ const FIELD_SECTIONS: {
     description:
       'Встроенный WARP AntiZapret-VPN (не AZ-WARP). Старый формат y/n в setup поддерживает только None / All. Списки доменов WARP — в «Редакторе файлов».',
     icon: Cloud,
-<<<<<<< main
-    keys: ['ANTIZAPRET_WARP', 'VPN_WARP', 'WARP_PROTECTION'],
-=======
     keys: ['ANTIZAPRET_WARP', 'VPN_WARP', 'WARP_PROTECTION', 'WARP_MTU'],
->>>>>>> kirito/main
   },
   {
     title: 'AdBlock',

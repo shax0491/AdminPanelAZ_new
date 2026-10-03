@@ -1649,10 +1649,9 @@ def _run_db_migrations() -> None:
             ("cert_expires_at", "DATETIME"),
             ("expires_at", "DATETIME"),
         ],
-<<<<<<< main
         "failover_pools": [
             ("backend_port", "INTEGER"),
-=======
+        ],
         "background_task": [
             ("owner", "VARCHAR(64)"),
         ],
@@ -1663,7 +1662,6 @@ def _run_db_migrations() -> None:
             ("family_id", "VARCHAR(32)"),
             ("revoked_at", "DATETIME"),
             ("revoke_reason", "VARCHAR(16)"),
->>>>>>> kirito/main
         ],
         "users": [
             ("totp_secret_encrypted", "VARCHAR(512)"),

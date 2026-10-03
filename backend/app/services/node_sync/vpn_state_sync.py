@@ -420,15 +420,24 @@ def sync_amneziawg2_state_from_primary(
     """Copy native AmneziaWG 2.0 server configs + client profiles from primary to replica."""
     health = replica_adapter.get_awg2_health()
     if not health.get("installed"):
-<<<<<<< main
         raise RuntimeError(
             "Нативный AmneziaWG 2.0 не найден на replica (бинарь awg отсутствует). "
             "Пересоберите его через setup.sh (amneziawg-go + amneziawg-tools)."
         )
 
-    _mirror_amneziawg2_server_configs(primary_adapter, replica_adapter)
+    archive = primary_adapter.export_amneziawg2_client_profiles_archive()
+    if not archive:
+        raise RuntimeError("Пустой архив профилей AmneziaWG 2.0 с primary")
 
-    runtime = replica_adapter.apply_amneziawg2_runtime()
+    reblock = db is not None and replica_node is not None
+    try:
+        _mirror_amneziawg2_server_configs(primary_adapter, replica_adapter)
+        replica_adapter.import_amneziawg2_client_profiles_archive(archive)
+        runtime = replica_adapter.apply_amneziawg2_runtime()
+    except Exception:
+        if reblock:
+            _reapply_blocks_after_failure(_reapply_blocked_awg2_policies, db, replica_node, replica_adapter)
+        raise
     if not runtime.get("success"):
         errors = runtime.get("errors") or []
         detail = "; ".join(
@@ -439,35 +448,7 @@ def sync_amneziawg2_state_from_primary(
             detail,
         )
 
-    archive = primary_adapter.export_amneziawg2_client_profiles_archive()
-    if not archive:
-        raise RuntimeError("Пустой архив профилей AmneziaWG 2.0 с primary")
-    replica_adapter.import_amneziawg2_client_profiles_archive(archive)
-
-    if db is not None and replica_node is not None:
-=======
-        cmd = health.get("install_command") or AWG2_INSTALL_CMD
-        raise Awg2NotInstalledError(f"AZ-AWG2 не установлен на replica. Установите: {cmd}")
-
-    archive = primary_adapter.export_awg2_state_archive()
-    if not archive:
-        raise RuntimeError("Пустой архив состояния AZ-AWG2 с primary")
-
-    reblock = db is not None and replica_node is not None
-    try:
-        replica_adapter.import_awg2_state_archive(archive)
-        runtime = replica_adapter.apply_awg2_runtime()
-    except Exception:
-        if reblock:
-            _reapply_blocks_after_failure(_reapply_blocked_awg2_policies, db, replica_node, replica_adapter)
-        raise
-    if not runtime.get("success"):
-        logger.warning(
-            "HA AWG2 runtime apply partial: %s",
-            runtime.get("errors") or [],
-        )
     if reblock:
->>>>>>> kirito/main
         _reapply_blocked_awg2_policies(db, replica_node, replica_adapter)
 
 

@@ -76,7 +76,6 @@ def test_build_portal_publish_status_nginx_needs_vhost():
     assert status["dns_hint"]
 
 
-<<<<<<< main
 def test_build_portal_publish_status_nginx_broken_config_not_ready(monkeypatch):
     # A vhost file on disk existing is not enough — if `nginx -t` currently
     # fails (this vhost or an unrelated one), "ready" must say so, not lie.
@@ -85,7 +84,7 @@ def test_build_portal_publish_status_nginx_broken_config_not_ready(monkeypatch):
     monkeypatch.setattr(ppi, "nginx_has_vhost_for_domain", lambda domain: True)
     monkeypatch.setattr(ppi, "nginx_ssl_cert_path_for_domain", lambda domain: "/fake/cert.pem")
     monkeypatch.setattr(ppi, "cert_covers_hostname", lambda cert_path, domain: True)
-    monkeypatch.setattr(ppi, "_nginx_config_is_valid", lambda: False)
+    monkeypatch.setattr(ppi, "nginx_config_test_ok", lambda: False)
 
     status = build_portal_publish_status(
         portal_domain="portal.example.com",
@@ -104,7 +103,7 @@ def test_build_portal_publish_status_nginx_valid_config_ready(monkeypatch):
     monkeypatch.setattr(ppi, "nginx_has_vhost_for_domain", lambda domain: True)
     monkeypatch.setattr(ppi, "nginx_ssl_cert_path_for_domain", lambda domain: "/fake/cert.pem")
     monkeypatch.setattr(ppi, "cert_covers_hostname", lambda cert_path, domain: True)
-    monkeypatch.setattr(ppi, "_nginx_config_is_valid", lambda: True)
+    monkeypatch.setattr(ppi, "nginx_config_test_ok", lambda: True)
 
     status = build_portal_publish_status(
         portal_domain="portal.example.com",
@@ -114,7 +113,8 @@ def test_build_portal_publish_status_nginx_valid_config_ready(monkeypatch):
     assert status["portal_vhost_ok"] is True
     assert status["portal_ready"] is True
     assert status["nginx_config_broken"] is False
-=======
+
+
 def test_build_portal_publish_status_nginx_not_ready_when_nginx_t_fails(monkeypatch):
     monkeypatch.setattr(
         "app.services.panel_publish_info.nginx_has_vhost_for_domain",
@@ -170,4 +170,3 @@ def test_build_portal_publish_status_nginx_ready_when_nginx_t_ok(monkeypatch):
     assert status["portal_ready"] is True
     assert status["portal_vhost_ok"] is True
     assert status["portal_cert_ok"] is True
->>>>>>> kirito/main

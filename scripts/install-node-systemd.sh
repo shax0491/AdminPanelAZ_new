@@ -46,10 +46,6 @@ sed \
   -e "s|/var/lib/adminpanelaz-node|$STATE_DIR|g" \
   -e "s|^User=root|User=$INSTALL_USER|" \
   -e "s|^Group=root|Group=$INSTALL_GROUP|" \
-<<<<<<< main
-=======
-  -e "s|Environment=NODE_AGENT_PORT=9100|Environment=NODE_AGENT_PORT=${NODE_AGENT_PORT:-9100}|" \
->>>>>>> kirito/main
   -e "s|EnvironmentFile=-/opt/AdminPanelAZ/backend/node_agent.env|EnvironmentFile=-$ROOT_DIR/backend/node_agent.env|" \
   "$UNIT_SRC" >"$UNIT_DST"
 

@@ -7,10 +7,6 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-<<<<<<< main
-from app.models import AmneziaWg2AccessPolicy, Node, OpenVpnAccessPolicy, WgAccessPolicy
-from app.services.native_awg2_runtime import (
-=======
 from app.models import (
     AmneziaWg2AccessPolicy,
     Node,
@@ -18,8 +14,7 @@ from app.models import (
     OpenVpnBufferGuardEvent,
     WgAccessPolicy,
 )
-from app.services.awg2_runtime import (
->>>>>>> kirito/main
+from app.services.native_awg2_runtime import (
     block_client_runtime as awg2_block_client_runtime,
     block_clients_runtime as awg2_block_clients_runtime,
     unblock_client_runtime as awg2_unblock_client_runtime,

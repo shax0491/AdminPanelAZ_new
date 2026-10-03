@@ -2,19 +2,13 @@
 
 Веб-панель для администрирования VPN-сервера [AntiZapret](https://github.com/shax0491/AntiZapret-VPN_new): клиенты, маршрутизация, мониторинг, бэкапы, Telegram.
 
-<<<<<<< main
 [![GitHub](https://img.shields.io/badge/GitHub-shax0491%2FAdminPanelAZ__new-181717?style=for-the-badge&logo=github)](https://github.com/shax0491/AdminPanelAZ_new)
-[![Version](https://img.shields.io/badge/Панель-2.25.0-blue?style=for-the-badge)](CHANGELOG.md)
-[![Node agent](https://img.shields.io/badge/Node_agent-1.8.0-555?style=for-the-badge)](CHANGELOG.md)
-=======
-[![GitHub](https://img.shields.io/badge/GitHub-Kirito0098%2FAdminPanelAZ-181717?style=for-the-badge&logo=github)](https://github.com/Kirito0098/AdminPanelAZ)
 [![Version](https://img.shields.io/badge/Панель-2.26.3-blue?style=for-the-badge)](CHANGELOG.md)
 [![Node agent](https://img.shields.io/badge/Node_agent-1.11.1-555?style=for-the-badge)](CHANGELOG.md)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](backend/)
 [![React](https://img.shields.io/badge/Frontend-React-61DAFB?style=for-the-badge&logo=react&logoColor=black)](frontend/)
->>>>>>> kirito/main
 
-[🚀 Установка](#-быстрый-старт) · [✨ Возможности](#-возможности) · [📖 Все инструкции](docs/README.md) · [💬 Пожелания и баги](https://claymore0098.fider.io/)
+[🚀 Установка](#-быстрый-старт) · [✨ Возможности](#-возможности) · [📖 Все инструкции](docs/README.md)
 
 <p align="center">
   <img src="docs/assets/telegram-promo/01-hero-banner.png" alt="AdminPanel AntiZapret" width="900">
@@ -26,10 +20,6 @@
 
 ## 🚀 Быстрый старт
 
-<<<<<<< main
-**Нужно:** Ubuntu 24.04+ или Debian 13+, root/sudo, интернет.
-Если недавно делали `apt upgrade` (обновилось ядро) — сначала **перезагрузите сервер**, потом ставьте панель.
-=======
 **Требования:** Ubuntu 24.04+ или Debian 13+, root / sudo, доступ в интернет.
 После полного `apt upgrade` (новое ядро) сначала **перезагрузите сервер**, затем запускайте `install.sh` — установщик сам предупредит, если reboot ещё не сделан.
 AntiZapret ставится **отдельно** на VPN-сервер — см. [AntiZapret-VPN](https://github.com/GubernievS/AntiZapret-VPN).
@@ -66,7 +56,6 @@ AntiZapret ставится **отдельно** на VPN-сервер — см.
 #### Установка
 
 Один скрипт — `install.sh`:
->>>>>>> kirito/main
 
 ```bash
 sudo apt update && sudo apt install -y git wget curl
@@ -98,14 +87,6 @@ curl -fsSL https://raw.githubusercontent.com/shax0491/AdminPanelAZ_new/refs/head
 
 ### ✅ После установки — что сделать первым делом
 
-<<<<<<< main
-1. Открыть адрес из вывода установщика и войти. Логин по умолчанию, если не задавали в мастере: `admin` / `admin` — **сразу смените**.
-2. Включить **2FA** — [Настройки → Профиль](docs/nastrojki/profil.md).
-3. Перевести панель на **HTTPS** — [Настройки → Адрес сайта и HTTPS](docs/nastrojki/set-i-publikaciya.md) (свой домен или бесплатный DDNS, см. ниже).
-4. Если VPN на другом сервере — добавить узел: [docs/uzly.md](docs/uzly.md).
-5. На вкладке **Конфигурации** нажать **Синхронизировать**.
-6. Указать Telegram bot token, если нужен бот/уведомления — [docs/Telegram.md](docs/Telegram.md).
-=======
 - [🚀 Быстрый старт](#-быстрый-старт)
   - [Варианты установки](#варианты-установки)
 - [🖼️ Обзор панели](#-обзор-панели)
@@ -121,7 +102,6 @@ curl -fsSL https://raw.githubusercontent.com/shax0491/AdminPanelAZ_new/refs/head
 - [💻 Полезные команды](#-полезные-команды-на-сервере)
 - [📝 История изменений](#-история-изменений)
 - [💖 Поддержка проекта](#-поддержка-проекта)
->>>>>>> kirito/main
 
 Авто-бэкап включается после установки сам (раз в 7 дней) — [настройка](docs/nastrojki/rezervnye-kopii.md).
 
@@ -141,21 +121,14 @@ curl -fsSL https://raw.githubusercontent.com/shax0491/AdminPanelAZ_new/refs/head
 
 **Безопасность** — роли администратор/пользователь, 2FA, белый список IP, защита от перебора паролей ([безопасность](docs/nastrojki/bezopasnost.md)), бэкапы вручную и по расписанию с отправкой в Telegram.
 
-<<<<<<< main
-**Telegram** — вход в панель (Login Widget или OpenID Connect), Mini App с конфигами, бот с командами, уведомления нескольким получателям ([инструкция](docs/Telegram.md)).
-=======
 - OpenVPN, WireGuard, AmneziaWG — создание, скачивание, QR-коды ([инструкция](docs/konfiguracii.md))
 - Блокировка, срок действия, лимиты трафика
 - **Подписка** — отдельный раздел меню (`/subscription`): unlock-коды и доступ до даты, настройка клиентского портала ([инструкция](docs/podpiska.md))
 - **Срок доступа на пользователе** — поле «Доступ до» в **Настройки → Пользователи** продлевает или ограничивает сразу все его VPN-профили ([подписка](docs/podpiska.md#срок-доступа-пользователя))
 - **Клиентский портал** — постоянные ссылки `https://portal…/p/c_…` для клиента и `…/p/u_…` для пользователя со всеми его профилями (статус, срок, трафик, установка профиля, unlock-ключ); автонастройка поддомена под текущий HTTPS
->>>>>>> kirito/main
 
 Полный список инструкций по каждому разделу: **[docs/README.md](docs/README.md)**.
 
-<<<<<<< main
----
-=======
 <p align="center">
   <img src="docs/assets/telegram-promo/12-unlock-keys.png" alt="Unlock-ключи — продление доступа клиентов" width="900">
 </p>
@@ -280,7 +253,6 @@ AntiZapret и VPN-конфиги при удалении панели **не т�
 - **Настройки и бэкапы** — [docs/nastrojki/README.md](docs/nastrojki/README.md)
 - **Адрес сайта, HTTPS, StatusOpenVPN** — [docs/nastrojki/set-i-publikaciya.md](docs/nastrojki/set-i-publikaciya.md)
 - **Telegram** — [docs/Telegram.md](docs/Telegram.md)
->>>>>>> kirito/main
 
 ## 🌐 Бесплатный адрес для панели (DDNS)
 
@@ -305,12 +277,6 @@ AntiZapret и VPN-конфиги при удалении панели **не т�
 
 Для приватных IP узлов (LAN) — `ALLOW_INTERNAL_NODES=true` в `.env`; mTLS/SSH настраиваются per-node в **Узлах** — [docs/uzly.md](docs/uzly.md) · [SSH-транспорт](docs/node-ssh-transport.md).
 
-<<<<<<< main
-- Health: `GET /api/health`, `GET /api/health/deep`
-- Метрики: `GET /metrics` (Prometheus)
-
-## 🗑️ Удаление и переустановка
-=======
 **Способ 1 — панель внутри сайта Status (UI, рекомендуется):** `sudo ./install.sh` (панель по HTTP) → **Настройки → Адрес сайта и HTTPS** → Nginx + Let's Encrypt → подпуть `panel` → **Интегрировать с StatusOpenVPN**. Итог: `https://домен/status/` и `https://домен/panel/`. Подпуть здесь обязателен.
 
 **Способ 2 — Status внутри сайта панели (вручную):** панель на корне домена, Status ставится без своего nginx, а в nginx-сайт панели добавляется блок `location /status/` с `proxy_pass` на порт Status. Итог: `https://домен/status/` и `https://домен/`. Блок нужно добавлять заново после **Адрес сайта и HTTPS → Применить** и `nginx-repair.sh`.
@@ -318,16 +284,12 @@ AntiZapret и VPN-конфиги при удалении панели **не т�
 > [!WARNING]
 > Не удаляйте Status через его `uninstall` после интеграции — может сломать nginx и доступ к панели.
 > Если панель пропала — по SSH: `cd /opt/AdminPanelAZ && sudo ./scripts/nginx-repair.sh`
->>>>>>> kirito/main
 
 ```bash
 sudo ./install.sh              # меню: переустановка или удаление
 sudo ./install.sh --uninstall  # удалить только сервисы панели
 ```
 
-<<<<<<< main
-AntiZapret и VPN-конфиги при удалении панели **не трогаются**.
-=======
 ## ⚙️ Production: VDS, Redis и профили
 
 После установки: профиль **Full**, `UVICORN_WORKERS=1`. Профиль и модули меняются в **Настройки → Разделы панели** ([инструкция](docs/nastrojki/moduli.md)), затем `sudo systemctl restart adminpanelaz`.
@@ -354,21 +316,15 @@ AntiZapret и VPN-конфиги при удалении панели **не т�
 - **Мой профиль и 2FA** — [docs/nastrojki/profil.md](docs/nastrojki/profil.md)
 - **Защита входа** — [docs/nastrojki/bezopasnost.md](docs/nastrojki/bezopasnost.md)
 - **Технические детали** — [SECURITY.md](SECURITY.md)
->>>>>>> kirito/main
 
 ## 💻 Полезные команды на сервере
 
 ```bash
 cd /opt/AdminPanelAZ
-<<<<<<< main
-sudo ./scripts/adminpanel-menu.sh          # меню: перезапуск, бэкап, обновление
-sudo systemctl restart adminpanelaz        # перезапуск панели
-=======
 sudo ./scripts/adminpanel-menu.sh   # меню: перезапуск, бэкап, обновление
 sudo ./scripts/adminpanel-menu.sh --update   # обновить из upstream текущей ветки: код, pip, сборка интерфейса
 sudo ./scripts/adminpanel-menu.sh --restart  # перезапуск панели после --update
 sudo systemctl restart adminpanelaz # перезапуск панели
->>>>>>> kirito/main
 sudo systemctl restart adminpanelaz-proxy  # proxy_agent на RU (порт 9101)
 sudo ./scripts/nginx-setup.sh              # сменить HTTPS после установки
 sudo ./scripts/nginx-repair.sh             # восстановить nginx
@@ -381,9 +337,6 @@ sudo ./scripts/nginx-repair.sh             # восстановить nginx
 - **История изменений** — [CHANGELOG.md](CHANGELOG.md), текущая версия панель **2.25.0** / node agent **1.8.0**
 - **Предыдущая версия на Flask** — [AdminAntizapret](https://github.com/Kirito0098/AdminAntizapret) (архив)
 
-<<<<<<< main
-## 💬 Обратная связь и поддержка
-=======
 **Текущая версия: панель 2.26.3 · node agent 1.11.1** (2026-09-28)
 
 > **В 2.26.3:** HA-расхождение уведомлений отдельным событием, 27 событий в 9 группах с групповыми тумблерами в панели, боте и Mini App — [CHANGELOG 2.26.3](CHANGELOG.md#2263---2026-09-28)
@@ -395,29 +348,16 @@ sudo ./scripts/nginx-repair.sh             # восстановить nginx
 > **В 2.26.0:** AZ-WARP 1.5 / 1.5.1; режимы WARP 1–4, `WARP_MTU` и файлы WARP/RPZ/Lua в редакторе; DNS-ответ на AAAA; OpenVPN Buffer Guard; срок подписки на пользователе и портал пользователя; копии перед восстановлением; усиление безопасности и HA; ускорение панели — [CHANGELOG 2.26.0](CHANGELOG.md#2260---2026-09-27) · [как обновиться с 2.25.1](docs/nastrojki/obnovleniya.md#обновление-с-2251-до-2260)
 
 > **В 2.25.1:** portal readiness, Nginx-only gate, path allowlist на хосте портала — [CHANGELOG 2.25.1](CHANGELOG.md#2251---2026-09-14)
->>>>>>> kirito/main
 
-Пожелания и баги — доска **[AdminPanelAZ на Fider](https://claymore0098.fider.io/)** (сначала поищите — вдруг тема уже есть).
 
-<<<<<<< main
-Донат: [cloudtips.ru](https://pay.cloudtips.ru/p/3c6704ca) · Telegram-группа: [ссылка](https://t.me/+XJwXHTmMvUk3NTli) · Личные сообщения: [@Claymore0098](https://t.me/Claymore0098)
-=======
 После установки панель сразу открывается по `http://IP:порт/`; домен и HTTPS — в **Настройки → Адрес сайта и HTTPS**. Python **3.12** (Ubuntu) / **3.13** (Debian) выбирается автоматически.
 
 Полный список: **[CHANGELOG.md](CHANGELOG.md)**
-
-## 💬 Обратная связь
-
-Пожелания, баги и идеи — на доске **[AdminPanelAZ на Fider](https://claymore0098.fider.io/)**.
-
-Перед новой записью **поищите похожие** — если тема уже есть, проголосуйте за неё, а не создавайте дубликат. GitHub не нужен.
 
 ## 💖 Поддержка проекта
 
 - Донат: [cloudtips.ru](https://pay.cloudtips.ru/p/3c6704ca)
 - Приватная группа Telegram: [Приватная группа в Telegram](https://t.me/+XJwXHTmMvUk3NTli)
-- Личные сообщения: [Личные сообщения](https://t.me/Claymore0098)
->>>>>>> kirito/main
 
 ---
 

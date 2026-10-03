@@ -10,10 +10,7 @@ from app.models import (
     QrDownloadToken,
     RefreshToken,
     UnlockCode,
-<<<<<<< main
-=======
     UnlockCodeRedemption,
->>>>>>> kirito/main
     User,
     UserActionLog,
     UserConfigAccess,

@@ -827,7 +827,6 @@ class AlertRule(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-<<<<<<< main
 class FailoverPoolMode(str, enum.Enum):
     auto = "auto"
     manual = "manual"
@@ -971,7 +970,8 @@ class FailoverStatusReport(Base):
     healthy: Mapped[bool] = mapped_column(Boolean, default=True)
     detail: Mapped[str | None] = mapped_column(String(255), nullable=True)
     reported_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-=======
+
+
 class OpenVpnBufferGuardMode(str, enum.Enum):
     notify = "notify"
     kill = "kill"
@@ -1012,7 +1012,6 @@ class OpenVpnBufferGuardEvent(Base):
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     manual: Mapped[bool] = mapped_column(Boolean, default=False)
     ban_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
->>>>>>> kirito/main
 
 
 class WebhookDelivery(Base):

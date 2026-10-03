@@ -220,14 +220,7 @@ class BackupManager:
                         continue
                     tmp = self.backup_root / f".tmp_{filename}"
                     try:
-<<<<<<< main
-                        # newline="" — write content byte-exact, no platform
-                        # newline translation (Windows would otherwise turn
-                        # \n into \r\n, corrupting AntiZapret config files).
-                        tmp.write_text(content, encoding="utf-8", newline="")
-=======
                         _write_private_bytes(tmp, content.encode("utf-8"))
->>>>>>> kirito/main
                         tar.add(tmp, arcname=f"antizapret/config/{filename}")
                     finally:
                         if tmp.exists():

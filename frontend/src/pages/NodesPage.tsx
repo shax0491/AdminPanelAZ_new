@@ -1,11 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react'
 import {
   Activity,
-<<<<<<< main
-=======
   BellOff,
   Check,
->>>>>>> kirito/main
   ExternalLink,
   Loader2,
   MoreHorizontal,

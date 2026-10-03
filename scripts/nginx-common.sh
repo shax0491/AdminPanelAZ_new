@@ -1916,20 +1916,6 @@ nginx_install_site() {
   fi
   nginx_ensure_server_names_hash
   nginx_conf_paths "$domain"
-<<<<<<< main
-
-  # Бэкапим предыдущий конфиг (если был), чтобы откатиться на него при
-  # провале `nginx -t` — иначе битый сайт остаётся в sites-enabled и следующий
-  # restart/reload (в том числе после reboot) валит nginx целиком, а не
-  # только этот вхост.
-  local prev_conf_backup=""
-  if [[ -f "$NGINX_CONF_FILE" ]]; then
-    prev_conf_backup="$(mktemp)"
-    cp -a "$NGINX_CONF_FILE" "$prev_conf_backup"
-  fi
-  local had_enabled_link=false
-  [[ -L "$NGINX_ENABLED_LINK" ]] && had_enabled_link=true
-=======
   available_dir="$(nginx_sites_available_dir)"
   enabled_dir="$(nginx_sites_enabled_dir)"
   mkdir -p "$available_dir" "$enabled_dir"
@@ -1941,27 +1927,10 @@ nginx_install_site() {
   if [[ ! -e "$NGINX_ENABLED_LINK" && ! -L "$NGINX_ENABLED_LINK" ]]; then
     created_enabled=true
   fi
->>>>>>> kirito/main
 
   printf '%s\n' "$conf_content" >"$NGINX_CONF_FILE"
   ln -sf "$NGINX_CONF_FILE" "$NGINX_ENABLED_LINK"
   # Стандартный default мешает: на корне домена показывается «Welcome to nginx».
-<<<<<<< main
-  rm -f /etc/nginx/sites-enabled/default
-
-  if ! nginx -t; then
-    if [[ -n "$prev_conf_backup" ]]; then
-      mv "$prev_conf_backup" "$NGINX_CONF_FILE"
-      nginx_warn "nginx -t не прошёл — вернули предыдущий конфиг $NGINX_CONF_FILE"
-    else
-      rm -f "$NGINX_CONF_FILE"
-      [[ "$had_enabled_link" == false ]] && rm -f "$NGINX_ENABLED_LINK"
-      nginx_warn "nginx -t не прошёл — убрали только что созданный $NGINX_CONF_FILE (сайта раньше не было)"
-    fi
-    nginx_die "nginx -t не прошёл (конфиг: $NGINX_CONF_FILE) — изменения откачены, nginx не тронут"
-  fi
-  [[ -n "$prev_conf_backup" ]] && rm -f "$prev_conf_backup"
-=======
   rm -f "${enabled_dir}/default"
 
   if ! nginx -t; then
@@ -1972,7 +1941,6 @@ nginx_install_site() {
   nginx_cleanup_server_names_hash_bak
   nginx_install_txn_commit
   nginx_install_default_deny
->>>>>>> kirito/main
 
   systemctl enable nginx >/dev/null 2>&1 || true
   # Config already passed nginx -t — leave it enabled even if reload/restart fails
