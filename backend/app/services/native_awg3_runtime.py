@@ -60,6 +60,10 @@ def get_awg3_health() -> dict[str, Any]:
     }
 
 
+# WireGuard treats a peer as stale after ~3 minutes without a handshake; same threshold as the panel.
+AWG3_ONLINE_SECONDS = 180
+
+
 def _registry_by_public_key() -> dict[str, tuple[str, dict]]:
     """clients.json (written by the agent) keyed by public key: {pubkey: (name, record)}."""
     try:
@@ -111,6 +115,7 @@ def get_awg3_monitoring() -> dict[str, Any]:
                 "endpoint": None if parts[2] in ("", "(none)") else parts[2],
                 "allowed_ips": parts[3],
                 "handshake_age_s": max(now - handshake, 0) if handshake > 0 else None,
+                "online": handshake > 0 and now - handshake <= AWG3_ONLINE_SECONDS,
                 "rx": rx,
                 "tx": tx,
                 "mode": record.get("mode", "split"),

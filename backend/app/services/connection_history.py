@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models import ConnectionCountSample, Node, NodeStatus
 from app.services.awg2_noc import fetch_awg2_peers_for_adapter
-from app.services.feature_toggles import is_awg2_enabled
+from app.services.awg3_noc import fetch_awg3_peers_for_adapter
+from app.services.feature_toggles import is_awg2_enabled, is_awg3_enabled
 from app.services.node_manager import is_vpn_node, get_active_node, get_adapter_for_node
 from app.services.wireguard_status import wireguard_peer_is_online
 
@@ -38,6 +39,7 @@ def persist_connection_sample(
     openvpn_count: int,
     wireguard_count: int,
     amneziawg2_count: int = 0,
+    amneziawg3_count: int = 0,
     commit: bool = True,
 ) -> ConnectionCountSample:
     sample = ConnectionCountSample(
@@ -45,6 +47,7 @@ def persist_connection_sample(
         openvpn_count=max(0, int(openvpn_count)),
         wireguard_count=max(0, int(wireguard_count)),
         amneziawg2_count=max(0, int(amneziawg2_count)),
+        amneziawg3_count=max(0, int(amneziawg3_count)),
     )
     db.add(sample)
     if commit:
@@ -57,6 +60,7 @@ def collect_connection_samples(db: Session) -> int:
     """Collect per-node connection counts via adapters. Returns samples written."""
     nodes = db.query(Node).order_by(Node.id.asc()).all()
     awg2_enabled = is_awg2_enabled(db)
+    awg3_enabled = is_awg3_enabled(db)
     written = 0
     for node in nodes:
         if not is_vpn_node(node):
@@ -69,6 +73,7 @@ def collect_connection_samples(db: Session) -> int:
                 openvpn_count=0,
                 wireguard_count=0,
                 amneziawg2_count=0,
+                amneziawg3_count=0,
                 commit=False,
             )
             written += 1
@@ -82,12 +87,17 @@ def collect_connection_samples(db: Session) -> int:
             if awg2_enabled:
                 awg2_peers = fetch_awg2_peers_for_adapter(adapter)
                 awg2_online = sum(1 for peer in awg2_peers if wireguard_peer_is_online(peer))
+            awg3_online = 0
+            if awg3_enabled:
+                awg3_peers = fetch_awg3_peers_for_adapter(adapter)
+                awg3_online = sum(1 for peer in awg3_peers if wireguard_peer_is_online(peer))
             persist_connection_sample(
                 db,
                 node.id,
                 openvpn_count=len(ovpn_clients),
                 wireguard_count=wg_online,
                 amneziawg2_count=awg2_online,
+                amneziawg3_count=awg3_online,
                 commit=False,
             )
             written += 1
@@ -98,6 +108,7 @@ def collect_connection_samples(db: Session) -> int:
                 openvpn_count=0,
                 wireguard_count=0,
                 amneziawg2_count=0,
+                amneziawg3_count=0,
                 commit=False,
             )
             written += 1
@@ -137,18 +148,23 @@ def _aggregate_bucket(samples: list[ConnectionCountSample], *, sum_nodes: bool) 
         ovpn = sum(s.openvpn_count for s in by_node.values())
         wg = sum(s.wireguard_count for s in by_node.values())
         awg2 = sum(getattr(s, "amneziawg2_count", 0) or 0 for s in by_node.values())
+        awg3 = sum(getattr(s, "amneziawg3_count", 0) or 0 for s in by_node.values())
     else:
         ovpn = int(sum(s.openvpn_count for s in samples) / len(samples))
         wg = int(sum(s.wireguard_count for s in samples) / len(samples))
         awg2 = int(
             sum(getattr(s, "amneziawg2_count", 0) or 0 for s in samples) / len(samples)
         )
+        awg3 = int(
+            sum(getattr(s, "amneziawg3_count", 0) or 0 for s in samples) / len(samples)
+        )
     return {
         "timestamp": latest.created_at,
         "openvpn": ovpn,
         "wireguard": wg,
         "amneziawg2": awg2,
-        "total": ovpn + wg + awg2,
+        "amneziawg3": awg3,
+        "total": ovpn + wg + awg2 + awg3,
     }
 
 

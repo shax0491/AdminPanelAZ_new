@@ -28,7 +28,7 @@ def test_collect_samples_awg2_when_enabled(monkeypatch):
     monkeypatch.setattr(ch, "get_adapter_for_node", lambda _n: adapter)
     persisted = {}
 
-    def fake_persist(db, node_id, *, openvpn_count, wireguard_count, amneziawg2_count=0, commit=True):
+    def fake_persist(db, node_id, *, openvpn_count, wireguard_count, amneziawg2_count=0, amneziawg3_count=0, commit=True):
         persisted.update(
             openvpn_count=openvpn_count,
             wireguard_count=wireguard_count,
