@@ -66,12 +66,18 @@ def live_active_names_for_node(
         )
         try:
             from app.services.awg2_noc import fetch_awg2_peers_for_adapter
-            from app.services.feature_toggles import is_awg2_enabled
+            from app.services.awg3_noc import fetch_awg3_peers_for_adapter
+            from app.services.feature_toggles import is_awg2_enabled, is_awg3_enabled
 
             if is_awg2_enabled(db):
                 awg2 = fetch_awg2_peers_for_adapter(adapter)
                 active_names.update(
                     p.client_name for p in awg2 if p.client_name and wireguard_peer_is_online(p)
+                )
+            if is_awg3_enabled(db):
+                awg3 = fetch_awg3_peers_for_adapter(adapter)
+                active_names.update(
+                    p.client_name for p in awg3 if p.client_name and wireguard_peer_is_online(p)
                 )
         except Exception:
             pass

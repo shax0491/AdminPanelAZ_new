@@ -1112,6 +1112,14 @@ def is_node_ssh_transport_enabled(db=None) -> bool:
     return get_feature_service().is_enabled("node_ssh_transport")
 
 
+def is_awg3_enabled(db=None) -> bool:
+    """Return whether the awg3 feature toggle is enabled (env-backed, like awg2)."""
+    from app.services.feature_guards import get_feature_service
+
+    _ = db
+    return get_feature_service().is_enabled("awg3")
+
+
 def is_awg2_enabled(db=None) -> bool:
     """Return whether the awg2 feature toggle is enabled.
 

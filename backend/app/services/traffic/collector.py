@@ -55,9 +55,11 @@ def protocol_type_from_profile(profile: str | None) -> str:
     Legacy combined OpenVPN profiles without a transport suffix stay as ``openvpn``.
     """
     name = (profile or "").strip().lower()
-    # Must check -awg2 before -awg: the stock -awg suffix maps to wireguard.
+    # Must check -awg2/-awg3 before -awg: the stock -awg suffix maps to wireguard.
     if name.endswith("-awg2"):
         return "amneziawg2"
+    if name.endswith("-awg3"):
+        return "amneziawg3"
     if name.endswith("-wg") or name.endswith("-awg"):
         return "wireguard"
     if name.endswith("-udp"):
@@ -98,6 +100,7 @@ def build_status_rows(
     openvpn_clients: list[OpenVpnClient],
     wireguard_peers: list[WireGuardPeer],
     amneziawg2_peers: list | None = None,
+    amneziawg3_peers: list | None = None,
 ) -> list[dict]:
     """Convert monitoring data into status rows for traffic persistence."""
     rows: list[dict] = []
@@ -162,15 +165,39 @@ def build_status_rows(
             }],
         })
 
+    for peer in amneziawg3_peers or []:
+        if not peer.client_name or not wireguard_peer_is_online(peer):
+            continue
+        profile = (
+            "antizapret-awg3"
+            if "antizapret" in (peer.interface or "").lower()
+            else "vpn-awg3"
+        )
+        rows.append({
+            "profile": profile,
+            "traffic_clients": [{
+                "common_name": peer.client_name,
+                "real_address": peer.endpoint or "",
+                "virtual_address": peer.allowed_ips or "",
+                "bytes_received": peer.transfer_rx,
+                "bytes_sent": peer.transfer_tx,
+                "connected_since_ts": 0,
+                "session_kind": "amneziawg3",
+                "peer_public_key": peer.public_key,
+                "last_seen_iso": peer.latest_handshake,
+            }],
+        })
+
     return rows
 
 
 def build_session_key(profile: str, client: dict) -> str:
     session_kind = (client.get("session_kind") or "").strip().lower()
     if (
-        session_kind in {"wireguard", "amneziawg2"}
+        session_kind in {"wireguard", "amneziawg2", "amneziawg3"}
         or str(profile).endswith("-wg")
         or str(profile).endswith("-awg2")
+        or str(profile).endswith("-awg3")
     ):
         return (
             f"{profile}|wg|{client.get('common_name', '-')}|"
@@ -237,7 +264,7 @@ class TrafficCollectorService:
                 common_name = (client.get("common_name") or "-").strip()
                 is_antizapret = str(profile).startswith("antizapret")
                 protocol_type = protocol_type_from_profile(profile)
-                is_handshake_protocol = protocol_type in {"wireguard", "amneziawg2"}
+                is_handshake_protocol = protocol_type in {"wireguard", "amneziawg2", "amneziawg3"}
 
                 # Real last-connection time reported by the protocol (WireGuard
                 # handshake); OpenVPN clients in the status are connected right
@@ -624,6 +651,9 @@ class TrafficCollectorService:
         elif scope == "amneziawg2":
             q_samples = q_samples.filter(UserTrafficSample.protocol_type == "amneziawg2")
             q_stats = q_stats.filter(UserTrafficStatProtocol.protocol_type == "amneziawg2")
+        elif scope == "amneziawg3":
+            q_samples = q_samples.filter(UserTrafficSample.protocol_type == "amneziawg3")
+            q_stats = q_stats.filter(UserTrafficStatProtocol.protocol_type == "amneziawg3")
 
         deleted = q_samples.delete(synchronize_session=False)
         q_sessions.delete(synchronize_session=False)
@@ -635,7 +665,8 @@ class TrafficCollectorService:
 def collect_traffic_snapshot_for_node(db: Session, node_id: int) -> dict:
     """Fetch live status from node adapter and persist traffic snapshot (best-effort)."""
     from app.services.awg2_noc import fetch_awg2_peers_for_adapter
-    from app.services.feature_toggles import is_awg2_enabled
+    from app.services.awg3_noc import fetch_awg3_peers_for_adapter
+    from app.services.feature_toggles import is_awg2_enabled, is_awg3_enabled
     from app.services.node_manager import is_vpn_node, get_adapter_for_node
 
     node = db.get(Node, node_id)
@@ -644,10 +675,12 @@ def collect_traffic_snapshot_for_node(db: Session, node_id: int) -> dict:
 
     adapter = get_adapter_for_node(node)
     awg2_peers = fetch_awg2_peers_for_adapter(adapter) if is_awg2_enabled(db) else []
+    awg3_peers = fetch_awg3_peers_for_adapter(adapter) if is_awg3_enabled(db) else []
     status_rows = build_status_rows(
         adapter.parse_openvpn_status(),
         adapter.parse_wireguard_status(),
         awg2_peers,
+        awg3_peers,
     )
     collector = TrafficCollectorService(db, node_id)
     result = collector.persist_snapshot(status_rows)

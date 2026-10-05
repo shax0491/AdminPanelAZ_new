@@ -62,6 +62,7 @@ function getProtocolLabel(protocol: string) {
   if (p === 'wireguard') return 'WireGuard'
   if (p === 'openvpn') return 'OpenVPN'
   if (p === 'amneziawg2') return 'AWG 2.0'
+  if (p === 'amneziawg3') return 'AWG 3.0'
   return protocol
 }
 
@@ -314,12 +315,14 @@ export default function TrafficClientDetails({
         openvpn: chartData?.openvpn_bytes?.[i] ?? 0,
         wireguard: chartData?.wireguard_bytes?.[i] ?? 0,
         amneziawg2: chartData?.amneziawg2_bytes?.[i] ?? 0,
+        amneziawg3: chartData?.amneziawg3_bytes?.[i] ?? 0,
         total: (chartData?.vpn_bytes?.[i] ?? 0) + (chartData?.antizapret_bytes?.[i] ?? 0),
       }
     })
   }, [chartData])
 
-  const showProtocolSeries = showAwg2
+  const showAwg3 = isEnabled('awg3')
+  const showProtocolSeries = showAwg2 || showAwg3
 
   const SERIES_LABELS: Record<string, string> = {
     vpn: 'VPN',
@@ -327,6 +330,7 @@ export default function TrafficClientDetails({
     openvpn: 'OpenVPN',
     wireguard: 'WireGuard',
     amneziawg2: 'AWG 2.0',
+    amneziawg3: 'AWG 3.0',
   }
 
   const limitPercent =
@@ -646,6 +650,10 @@ export default function TrafficClientDetails({
                           <stop offset="5%" stopColor={MONITORING_PROTOCOL_COLORS.amneziawg2} stopOpacity={0.35} />
                           <stop offset="95%" stopColor={MONITORING_PROTOCOL_COLORS.amneziawg2} stopOpacity={0.02} />
                         </linearGradient>
+                        <linearGradient id={`focusTrafficAwg3_${chartIdSuffix}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={MONITORING_PROTOCOL_COLORS.amneziawg3} stopOpacity={0.35} />
+                          <stop offset="95%" stopColor={MONITORING_PROTOCOL_COLORS.amneziawg3} stopOpacity={0.02} />
+                        </linearGradient>
                       </>
                     ) : (
                       <>
@@ -714,6 +722,15 @@ export default function TrafficClientDetails({
                         fill={`url(#focusTrafficAwg2_${chartIdSuffix})`}
                         strokeWidth={2}
                         name="amneziawg2"
+                        dot={false}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="amneziawg3"
+                        stroke={MONITORING_PROTOCOL_COLORS.amneziawg3}
+                        fill={`url(#focusTrafficAwg3_${chartIdSuffix})`}
+                        strokeWidth={2}
+                        name="amneziawg3"
                         dot={false}
                       />
                     </>

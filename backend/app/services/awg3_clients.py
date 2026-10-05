@@ -28,7 +28,7 @@ from app.services.native_awg3_runtime import AWG3_CONF_DIR, AWG3_OBFUSCATION_KEY
 
 IFACE = "awg1"
 PORT = 51821
-MTU = 1280
+MTU_DEFAULT = 1280  # used when the node has no mtu file (installs before the auto-MTU step)
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 
 MODES: dict[str, dict] = {
@@ -80,6 +80,15 @@ def _server_values(server_conf_text: str) -> dict[str, str]:
     return values
 
 
+def read_mtu(conf_dir: Path = AWG3_CONF_DIR) -> int:
+    """MTU written by setup.sh (path MTU minus overhead), clamped to 1280..1420."""
+    try:
+        value = int((conf_dir / "mtu").read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return MTU_DEFAULT
+    return min(max(value, MTU_DEFAULT), 1420)
+
+
 def _mode_of(record: dict) -> str:
     return record.get("mode", DEFAULT_MODE)
 
@@ -122,12 +131,13 @@ def build_config(
     endpoint_host: str,
     obfuscation: list[str],
     split_allowed_ips: list[str],
+    mtu: int = MTU_DEFAULT,
 ) -> str:
     lines = [
         "[Interface]",
         f"PrivateKey = {client_private}",
         f"Address = {client_ip}/32",
-        f"MTU = {MTU}",
+        f"MTU = {mtu}",
         f"DNS = {MODES[mode]['server_ip']}",
         *obfuscation,
         "",
@@ -192,6 +202,7 @@ def create_client(
         endpoint_host=endpoint_host,
         obfuscation=obfuscation_lines(server_text),
         split_allowed_ips=split_allowed_ips,
+        mtu=read_mtu(store.conf_dir),
     )
     return {"name": name, "mode": mode, "ip": ip, "public_key": public, "config": config}
 
@@ -221,6 +232,7 @@ def get_client_config(
         endpoint_host=endpoint_host,
         obfuscation=obfuscation_lines(server_text),
         split_allowed_ips=split_allowed_ips,
+        mtu=read_mtu(store.conf_dir),
     )
 
 
@@ -279,7 +291,7 @@ def split_allowed_from_file(path: str | None = None) -> list[str]:
     return items
 
 # Files that make up the AWG 3.0 layer; the backup archive carries nothing else.
-STATE_FILES = ("awg1.conf", "clients.json", "server.key", "server.pub", "split-allowed.txt")
+STATE_FILES = ("awg1.conf", "clients.json", "server.key", "server.pub", "split-allowed.txt", "mtu")
 STATE_BACKUP_KIND = "awg3-state"
 UNIT = f"awg3@{IFACE}"
 

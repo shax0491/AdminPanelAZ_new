@@ -22,7 +22,7 @@ from app.services.traffic.collector import (
 
 def normalize_traffic_protocol_scope(protocol_scope: str | None) -> str:
     scope = (protocol_scope or "all").strip().lower()
-    if scope not in ("all", "openvpn", "wireguard", "amneziawg2"):
+    if scope not in ("all", "openvpn", "wireguard", "amneziawg2", "amneziawg3"):
         return "all"
     return scope
 
@@ -42,6 +42,8 @@ def _profile_matches_protocol_scope(profile: str | None, protocol_scope: str) ->
         return proto == "wireguard"
     if scope == "amneziawg2":
         return proto == "amneziawg2"
+    if scope == "amneziawg3":
+        return proto == "amneziawg3"
     return True
 
 
@@ -226,6 +228,30 @@ class TrafficMaintenanceService:
                     ~TrafficSessionState.profile.like("%-wg"),
                     ~TrafficSessionState.profile.like("%-awg"),
                     ~TrafficSessionState.profile.like("%-awg2"),
+                    ~TrafficSessionState.profile.like("%-awg3"),
+                )
+                .delete(synchronize_session=False)
+            )
+            return {
+                "scope": scope,
+                "deleted_samples": int(deleted_samples or 0),
+                "deleted_sessions": int(deleted_sessions or 0),
+            }
+
+        if scope == "amneziawg3":
+            deleted_samples = (
+                self.db.query(UserTrafficSample)
+                .filter(
+                    UserTrafficSample.node_id == self.node_id,
+                    UserTrafficSample.protocol_type == "amneziawg3",
+                )
+                .delete(synchronize_session=False)
+            )
+            deleted_sessions = (
+                self.db.query(TrafficSessionState)
+                .filter(
+                    TrafficSessionState.node_id == self.node_id,
+                    TrafficSessionState.profile.like("%-awg3"),
                 )
                 .delete(synchronize_session=False)
             )
@@ -266,6 +292,7 @@ class TrafficMaintenanceService:
                 | (
                     (UserTrafficSample.protocol_type != "wireguard")
                     & (UserTrafficSample.protocol_type != "amneziawg2")
+                    & (UserTrafficSample.protocol_type != "amneziawg3")
                     & func.lower(UserTrafficSample.common_name).in_(sorted(wireguard_only_clients))
                 )
             )

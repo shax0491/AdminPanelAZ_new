@@ -4,6 +4,7 @@ export const MONITORING_PROTOCOL_COLORS = {
   openvpn: 'hsl(187, 72%, 45%)',
   wireguard: 'hsl(142, 71%, 45%)',
   amneziawg2: 'hsl(38, 92%, 50%)',
+  amneziawg3: 'hsl(265, 70%, 62%)',
   total: 'hsl(217, 33%, 55%)',
 } as const
 

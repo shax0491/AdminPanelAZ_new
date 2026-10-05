@@ -210,3 +210,15 @@ def test_state_archive_requires_awg1_conf(tmp_path):
     archive = svc.export_state_archive(src)
     with pytest.raises(svc.Awg3ClientError):
         svc.import_state_archive(archive, tmp_path / "dst")
+
+
+def test_mtu_read_from_node_file_and_clamped(tmp_path):
+    assert svc.read_mtu(tmp_path) == svc.MTU_DEFAULT
+    (tmp_path / "mtu").write_text("1392\n", encoding="utf-8")
+    assert svc.read_mtu(tmp_path) == 1392
+    (tmp_path / "mtu").write_text("1500", encoding="utf-8")
+    assert svc.read_mtu(tmp_path) == 1420
+    (tmp_path / "mtu").write_text("900", encoding="utf-8")
+    assert svc.read_mtu(tmp_path) == 1280
+    (tmp_path / "mtu").write_text("junk", encoding="utf-8")
+    assert svc.read_mtu(tmp_path) == svc.MTU_DEFAULT

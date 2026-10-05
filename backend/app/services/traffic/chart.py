@@ -38,7 +38,7 @@ def fetch_traffic_chart(
         range_key = "1d"
     if range_key not in ("1h", "1d", "7d", "30d", "all"):
         range_key = "7d"
-    if protocol_filter not in ("all", "openvpn", "wireguard", "amneziawg2"):
+    if protocol_filter not in ("all", "openvpn", "wireguard", "amneziawg2", "amneziawg3"):
         protocol_filter = "all"
 
     now = datetime.utcnow()
@@ -83,7 +83,7 @@ def fetch_traffic_chart(
 
     samples = query.order_by(UserTrafficSample.created_at.asc()).all()
     grouped: dict = defaultdict(
-        lambda: {"vpn": 0, "antizapret": 0, "openvpn": 0, "wireguard": 0, "amneziawg2": 0}
+        lambda: {"vpn": 0, "antizapret": 0, "openvpn": 0, "wireguard": 0, "amneziawg2": 0, "amneziawg3": 0}
     )
 
     for item in samples:
@@ -111,7 +111,7 @@ def fetch_traffic_chart(
         protocol = (item.protocol_type or "openvpn").strip().lower()
         if protocol.startswith("openvpn"):
             protocol = "openvpn"
-        elif protocol not in ("wireguard", "amneziawg2"):
+        elif protocol not in ("wireguard", "amneziawg2", "amneziawg3"):
             protocol = "openvpn"
 
         if protocol_filter != "all" and protocol != protocol_filter:
@@ -130,6 +130,7 @@ def fetch_traffic_chart(
     openvpn_bytes = [int(grouped[k].get("openvpn", 0)) for k in ordered_keys]
     wireguard_bytes = [int(grouped[k].get("wireguard", 0)) for k in ordered_keys]
     amneziawg2_bytes = [int(grouped[k].get("amneziawg2", 0)) for k in ordered_keys]
+    amneziawg3_bytes = [int(grouped[k].get("amneziawg3", 0)) for k in ordered_keys]
 
     total_vpn = sum(vpn_bytes)
     total_antizapret = sum(antizapret_bytes)
@@ -147,6 +148,7 @@ def fetch_traffic_chart(
         "openvpn_bytes": openvpn_bytes,
         "wireguard_bytes": wireguard_bytes,
         "amneziawg2_bytes": amneziawg2_bytes,
+        "amneziawg3_bytes": amneziawg3_bytes,
         "total_vpn": total_vpn,
         "total_antizapret": total_antizapret,
         "total": total_vpn + total_antizapret,

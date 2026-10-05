@@ -48,7 +48,7 @@ export async function getTrafficClientSessions(client: string, limit = 30) {
   return apiFetch<TrafficClientSessions>(`/traffic/client-sessions?${params}`)
 }
 
-export async function resetTraffic(scope: 'all' | 'openvpn' | 'wireguard' | 'amneziawg2' = 'all') {
+export async function resetTraffic(scope: 'all' | 'openvpn' | 'wireguard' | 'amneziawg2' | 'amneziawg3' = 'all') {
   return apiFetch('/traffic/reset', { method: 'POST', body: JSON.stringify({ scope }) })
 }
 
