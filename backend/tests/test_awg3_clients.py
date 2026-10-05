@@ -270,3 +270,32 @@ def test_legacy_record_without_port_uses_server_port(store):
     store.save_clients(data)
     assert f"Endpoint = h:{svc.PORT}" in svc.get_client_config("old", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)
     assert svc.list_clients(store)[0]["port"] == svc.PORT
+
+
+def test_suspend_removes_peer_and_unsuspend_restores_same_keys(store):
+    fake = FakeAwg()
+    res = svc.create_client("blk", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)
+    before = store.load_clients()["blk"]
+    assert svc.suspend_client("blk", store=store, run=fake) is True
+    assert "PublicKey = " + before["public_key"] not in store.server_conf.read_text(encoding="utf-8")
+    assert any(args == ["awg", "set", svc.IFACE, "peer", before["public_key"], "remove"] for args, _ in fake.calls)
+    assert store.load_clients()["blk"]["suspended"] is True
+    assert svc.suspend_client("blk", store=store, run=fake) is False
+    assert svc.list_clients(store)[0]["suspended"] is True
+
+    assert svc.unsuspend_client("blk", store=store, run=fake) is True
+    conf = store.server_conf.read_text(encoding="utf-8")
+    assert f"PublicKey = {before['public_key']}" in conf
+    assert f"PresharedKey = {before['psk']}" in conf
+    restored = store.load_clients()["blk"]
+    assert restored["public_key"] == before["public_key"] and restored["ip"] == before["ip"]
+    assert restored["suspended"] is False
+    assert svc.unsuspend_client("blk", store=store, run=fake) is False
+    assert res["ip"] == before["ip"]
+
+
+def test_suspend_unknown_client_fails_clearly(store):
+    with pytest.raises(svc.Awg3ClientError):
+        svc.suspend_client("ghost", store=store, run=FakeAwg())
+    with pytest.raises(svc.Awg3ClientError):
+        svc.unsuspend_client("ghost", store=store, run=FakeAwg())

@@ -753,6 +753,96 @@ def awg2_unblock(payload: BlockRequest, request: Request, db: Session = Depends(
     return result
 
 
+@router.patch("/amneziawg3/{client_name}/access-until")
+@tg_mini_token_allowed
+def awg3_set_access_until(
+    client_name: str,
+    payload: AccessUntilRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    conflict = _maybe_access_until_conflict(
+        db,
+        client_name=client_name,
+        access_until=payload.access_until,
+        confirm_override=payload.confirm_override,
+    )
+    if conflict is not None:
+        return conflict
+    result = _set_access_until(
+        db,
+        protocol="amneziawg3",
+        client_name=client_name,
+        access_until=payload.access_until,
+        actor=user.username,
+    )
+    log_action(
+        db,
+        action="awg3_set_access_until",
+        user_id=user.id,
+        username=user.username,
+        details=f"{client_name} {payload.access_until.isoformat() if payload.access_until else 'null'}",
+        remote_addr=request.client.host,
+    )
+    return result
+
+
+def _awg3_block_context(db: Session):
+    from app.services import awg3_access
+
+    node = get_active_node(db)
+    require_ha_primary_for_client_ops(db, node=node)
+    return awg3_access, node
+
+
+@router.post("/amneziawg3/temp-block")
+def awg3_temp_block(payload: BlockRequest, request: Request, db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    if payload.days is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Укажите срок блокировки в днях")
+    awg3_access, node = _awg3_block_context(db)
+    result = awg3_access.set_temp_block(db, node, payload.client_name, payload.days, actor=user.username)
+    log_action(
+        db,
+        action="awg3_temp_block",
+        user_id=user.id,
+        username=user.username,
+        details=f"{payload.client_name} {payload.days}d",
+        remote_addr=request.client.host,
+    )
+    return result
+
+
+@router.post("/amneziawg3/permanent-block")
+def awg3_perm_block(payload: BlockRequest, request: Request, db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    awg3_access, node = _awg3_block_context(db)
+    result = awg3_access.set_permanent_block(db, node, payload.client_name, actor=user.username)
+    log_action(
+        db,
+        action="awg3_perm_block",
+        user_id=user.id,
+        username=user.username,
+        details=payload.client_name,
+        remote_addr=request.client.host,
+    )
+    return result
+
+
+@router.post("/amneziawg3/unblock")
+def awg3_unblock(payload: BlockRequest, request: Request, db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    awg3_access, node = _awg3_block_context(db)
+    result = awg3_access.unblock(db, node, payload.client_name, actor=user.username)
+    log_action(
+        db,
+        action="awg3_unblock",
+        user_id=user.id,
+        username=user.username,
+        details=payload.client_name,
+        remote_addr=request.client.host,
+    )
+    return result
+
+
 @router.post("/amneziawg2/set-traffic-limit")
 @tg_mini_token_allowed
 def awg2_set_traffic_limit(

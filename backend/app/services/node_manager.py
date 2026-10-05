@@ -12,6 +12,7 @@ from app.auth import get_password_hash, verify_password
 from app.config import get_settings
 from app.models import (
     AmneziaWg2AccessPolicy,
+    AmneziaWg3AccessPolicy,
     AlertRule,
     AppSetting,
     ClientPortalToken,
@@ -390,6 +391,7 @@ def purge_node_related(db: Session, node_id: int) -> None:
         WgAccessPolicy,
         OpenVpnAccessPolicy,
         AmneziaWg2AccessPolicy,
+        AmneziaWg3AccessPolicy,
         NodeResourceSample,
         UserTrafficSample,
         ConnectionCountSample,

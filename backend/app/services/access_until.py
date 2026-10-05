@@ -10,11 +10,12 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import AmneziaWg2AccessPolicy, Node, OpenVpnAccessPolicy, WgAccessPolicy
+from app.models import AmneziaWg2AccessPolicy, AmneziaWg3AccessPolicy, Node, OpenVpnAccessPolicy, WgAccessPolicy
+from app.services import awg3_access
 from app.services.access_policy import AccessPolicyService
 from app.services.node_manager import get_adapter_for_node, node_metadata_dict
 
-Protocol = Literal["openvpn", "wireguard", "amneziawg2"]
+Protocol = Literal["openvpn", "wireguard", "amneziawg2", "amneziawg3"]
 
 
 def _deadline_column(protocol: Protocol):
@@ -51,6 +52,8 @@ def _policy_model(protocol: Protocol):
         return WgAccessPolicy
     if protocol == "amneziawg2":
         return AmneziaWg2AccessPolicy
+    if protocol == "amneziawg3":
+        return AmneziaWg3AccessPolicy
     raise ValueError(f"Unsupported protocol: {protocol}")
 
 
@@ -103,6 +106,7 @@ def effective_access_until_for_client(db: Session, node_id: int, client_name: st
         get_access_until(db, "openvpn", node_id, client_name),
         get_access_until(db, "wireguard", node_id, client_name),
         get_access_until(db, "amneziawg2", node_id, client_name),
+        get_access_until(db, "amneziawg3", node_id, client_name),
     ]
     values = [value for value in values if value is not None]
     if not values:
@@ -155,6 +159,15 @@ def set_access_until(
         raise ValueError("Узел не найден")
 
     model = _policy_model(protocol)
+    if protocol == "amneziawg3":
+        return _set_awg3_access_until(
+            db,
+            node,
+            normalized,
+            access_until,
+            commit=commit,
+            require_deadline_lte=require_deadline_lte,
+        )
 
     if require_deadline_lte is not None:
         deadline_col = _deadline_column(protocol)
@@ -200,12 +213,51 @@ def set_access_until(
     return _policy_state(service, protocol, normalized)
 
 
+def _set_awg3_access_until(
+    db: Session,
+    node: Node,
+    client_name: str,
+    access_until: datetime | None,
+    *,
+    commit: bool,
+    require_deadline_lte: datetime | None,
+) -> dict | None:
+    """AWG 3.0 deadline: same claim/reconcile contract as the other protocols, runtime via the node."""
+    model = AmneziaWg3AccessPolicy
+    if require_deadline_lte is not None:
+        cutoff = _to_db_datetime(require_deadline_lte)
+        claimed = (
+            db.query(model)
+            .filter(
+                model.node_id == node.id,
+                model.client_name == client_name,
+                model.access_until.isnot(None),
+                model.access_until <= cutoff,
+                or_(model.block_reason.is_(None), model.block_reason != "access_expired"),
+            )
+            .update({model.updated_by: "access_expiry_worker"}, synchronize_session="fetch")
+        )
+        if claimed != 1:
+            return None
+        db.commit() if commit else db.flush()
+    else:
+        row = awg3_access.get_row(db, node.id, client_name, create=True)
+        row.access_until = _to_db_datetime(access_until)
+        row.updated_by = "api"
+        db.commit() if commit else db.flush()
+    if commit:
+        awg3_access.reconcile(db, node, client_name, force_runtime=True)
+    row = awg3_access.get_row(db, node.id, client_name)
+    return awg3_access.state_of(row) if row is not None else None
+
+
 def apply_due_access_blocks(db: Session) -> dict[str, int]:
     now = datetime.now(timezone.utc)
     counts = {
         "openvpn": 0,
         "wireguard": 0,
         "amneziawg2": 0,
+        "amneziawg3": 0,
         "blocked": 0,
         "skipped": 0,
         "errors": 0,
@@ -224,6 +276,10 @@ def apply_due_access_blocks(db: Session) -> dict[str, int]:
         access_until = _row_access_until("amneziawg2", row)
         if access_until is not None and access_until <= now and row.block_reason != "access_expired":
             due_targets.append(("amneziawg2", row.node_id, row.client_name))
+    for row in db.query(AmneziaWg3AccessPolicy).filter(AmneziaWg3AccessPolicy.access_until.isnot(None)).all():
+        access_until = _row_access_until("amneziawg3", row)
+        if access_until is not None and access_until <= now and row.block_reason != "access_expired":
+            due_targets.append(("amneziawg3", row.node_id, row.client_name))
 
     # End the read snapshot so claim UPDATEs observe concurrent redeem/PATCH commits.
     db.commit()

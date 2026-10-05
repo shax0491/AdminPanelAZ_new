@@ -606,6 +606,16 @@ class LocalNodeAdapter(NodeAdapter):
 
         awg3_clients.delete_client(client_name)
 
+    def awg3_suspend_client(self, client_name: str) -> bool:
+        from app.services import awg3_clients
+
+        return awg3_clients.suspend_client(client_name)
+
+    def awg3_unsuspend_client(self, client_name: str) -> bool:
+        from app.services import awg3_clients
+
+        return awg3_clients.unsuspend_client(client_name)
+
     def export_awg3_backup(self) -> bytes:
         from app.services import awg3_clients
 
@@ -1441,6 +1451,12 @@ class RemoteNodeAdapter(NodeAdapter):
 
     def awg3_delete_client(self, client_name: str) -> None:
         self._request("DELETE", f"/awg3/clients/{client_name}")
+
+    def awg3_suspend_client(self, client_name: str) -> bool:
+        return bool(self._request("POST", f"/awg3/clients/{client_name}/suspend").get("changed"))
+
+    def awg3_unsuspend_client(self, client_name: str) -> bool:
+        return bool(self._request("POST", f"/awg3/clients/{client_name}/unsuspend").get("changed"))
 
     def export_awg3_backup(self) -> bytes:
         return self._request_bytes("POST", "/awg3/backup", timeout=120.0)

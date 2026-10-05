@@ -273,7 +273,14 @@ def get_client_config(
 def list_clients(store: Awg3Store | None = None) -> list[dict]:
     store = store or Awg3Store()
     return [
-        {"name": n, "mode": _mode_of(c), "ip": c["ip"], "port": int(c.get("port", PORT)), "public_key": c["public_key"]}
+        {
+            "name": n,
+            "mode": _mode_of(c),
+            "ip": c["ip"],
+            "port": int(c.get("port", PORT)),
+            "public_key": c["public_key"],
+            "suspended": bool(c.get("suspended", False)),
+        }
         for n, c in sorted(store.load_clients().items())
     ]
 
@@ -295,6 +302,54 @@ def delete_client(name: str, *, store: Awg3Store | None = None, run: Runner | No
     _profile_path(store, _mode_of(clients[name]), name).unlink(missing_ok=True)
     del clients[name]
     store.save_clients(clients)
+
+
+def _drop_peer_block(store: "Awg3Store", public: str) -> None:
+    text = store.server_conf.read_text(encoding="utf-8")
+    blocks = text.split("\n[Peer]\n")
+    kept = [blocks[0]] + [b for b in blocks[1:] if f"PublicKey = {public}" not in b]
+    store.server_conf.write_text("\n[Peer]\n".join(kept), encoding="utf-8")
+
+
+def suspend_client(name: str, *, store: Awg3Store | None = None, run: Runner | None = None) -> bool:
+    """Remove the peer from awg1 (live and conf); the registry keeps the keys for unsuspend.
+
+    Returns True when the peer was active and is now removed, False if it was already suspended.
+    """
+    store = store or Awg3Store()
+    run = run or _default_runner
+    clients = store.load_clients()
+    if name not in clients:
+        raise Awg3ClientError(f"client '{name}' not found")
+    record = clients[name]
+    if record.get("suspended"):
+        return False
+    run(["awg", "set", IFACE, "peer", record["public_key"], "remove"], None)
+    _drop_peer_block(store, record["public_key"])
+    record["suspended"] = True
+    store.save_clients(clients)
+    return True
+
+
+def unsuspend_client(name: str, *, store: Awg3Store | None = None, run: Runner | None = None) -> bool:
+    """Restore a suspended peer from the node registry (same key, PSK and address)."""
+    store = store or Awg3Store()
+    run = run or _default_runner
+    clients = store.load_clients()
+    if name not in clients:
+        raise Awg3ClientError(f"client '{name}' not found")
+    record = clients[name]
+    if not record.get("suspended"):
+        return False
+    run(
+        ["awg", "set", IFACE, "peer", record["public_key"], "preshared-key", "/dev/stdin", "allowed-ips", f"{record['ip']}/32"],
+        record["psk"],
+    )
+    with store.server_conf.open("a", encoding="utf-8") as fh:
+        fh.write(_peer_block(name, record["public_key"], record["psk"], record["ip"]))
+    record["suspended"] = False
+    store.save_clients(clients)
+    return True
 
 
 # Written by setup.sh: the address clients connect to (WIREGUARD_HOST, else the public IP).

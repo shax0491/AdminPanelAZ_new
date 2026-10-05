@@ -505,6 +505,18 @@ def awg3_delete_client_endpoint(client_name: str, _: None = Depends(verify_api_k
     return {"message": f"Клиент '{client_name}' удалён"}
 
 
+@app.post("/awg3/clients/{client_name}/suspend")
+def awg3_suspend_client_endpoint(client_name: str, _: None = Depends(verify_api_key)):
+    changed = _awg3_call(_awg3.suspend_client, client_name)
+    return {"name": client_name, "suspended": True, "changed": changed}
+
+
+@app.post("/awg3/clients/{client_name}/unsuspend")
+def awg3_unsuspend_client_endpoint(client_name: str, _: None = Depends(verify_api_key)):
+    changed = _awg3_call(_awg3.unsuspend_client, client_name)
+    return {"name": client_name, "suspended": False, "changed": changed}
+
+
 @app.post("/awg3/backup")
 def awg3_backup_endpoint(_: None = Depends(verify_api_key)):
     return Response(
