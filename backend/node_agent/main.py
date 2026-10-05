@@ -444,6 +444,65 @@ def delete_openvpn(client_name: str, _: None = Depends(verify_api_key)):
     return {"message": f"Клиент '{client_name}' удалён", "detail": output}
 
 
+# --- AmneziaWG 3.0 (node-local awg1, split mode) -------------------------------
+from app.services import awg3_clients as _awg3
+from app.services.native_awg3_runtime import get_awg3_health as _awg3_health, get_awg3_monitoring as _awg3_monitoring
+
+
+class Awg3ClientRequest(BaseModel):
+    client_name: str
+
+
+def _awg3_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except _awg3.Awg3ClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get("/awg3/health")
+def awg3_health_endpoint(_: None = Depends(verify_api_key)):
+    return _awg3_health()
+
+
+@app.get("/awg3/monitoring")
+def awg3_monitoring_endpoint(_: None = Depends(verify_api_key)):
+    return _awg3_monitoring()
+
+
+@app.get("/awg3/clients")
+def awg3_list_clients_endpoint(_: None = Depends(verify_api_key)):
+    return {"clients": _awg3.list_clients()}
+
+
+@app.post("/awg3/clients", status_code=201)
+def awg3_create_client_endpoint(payload: Awg3ClientRequest, _: None = Depends(verify_api_key)):
+    res = _awg3_call(
+        _awg3.create_client,
+        payload.client_name,
+        endpoint_host=_awg3_call(_awg3.endpoint_from_env),
+        split_allowed_ips=_awg3_call(_awg3.split_allowed_from_file),
+    )
+    return {"message": "AmneziaWG 3.0 клиент создан", "name": res["name"], "ip": res["ip"], "public_key": res["public_key"]}
+
+
+@app.get("/awg3/clients/{client_name}/config")
+def awg3_client_config_endpoint(client_name: str, _: None = Depends(verify_api_key)):
+    text = _awg3_call(
+        _awg3.get_client_config,
+        client_name,
+        endpoint_host=_awg3_call(_awg3.endpoint_from_env),
+        split_allowed_ips=_awg3_call(_awg3.split_allowed_from_file),
+    )
+    return {"name": client_name, "config": text}
+
+
+@app.delete("/awg3/clients/{client_name}")
+def awg3_delete_client_endpoint(client_name: str, _: None = Depends(verify_api_key)):
+    _awg3_call(_awg3.delete_client, client_name)
+    return {"message": f"Клиент '{client_name}' удалён"}
+
+
 @app.get("/clients/wireguard")
 def list_wireguard(_: None = Depends(verify_api_key)):
     return {"clients": service.list_wireguard_clients()}
