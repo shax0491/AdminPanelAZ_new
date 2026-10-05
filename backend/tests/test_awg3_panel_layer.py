@@ -32,9 +32,9 @@ class FakeAdapter:
     def awg3_list_clients(self):
         return [{"name": n, "ip": "10.9.0.2", "public_key": "PUB"} for n in self.created if n not in self.deleted]
 
-    def awg3_create_client(self, name):
+    def awg3_create_client(self, name, mode="split"):
         self.created.append(name)
-        return {"name": name, "ip": "10.9.0.2", "public_key": "PUB"}
+        return {"name": name, "mode": mode, "ip": "10.9.0.2", "public_key": "PUB"}
 
     def awg3_client_config(self, name):
         if name not in self.created or name in self.deleted:

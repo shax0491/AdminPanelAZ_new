@@ -120,3 +120,36 @@ def test_client_allowed_ips_include_server_subnet(store):
     fake = FakeAwg()
     res = svc.create_client("subnet", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)
     assert "AllowedIPs = 10.9.0.0/24, 1.1.1.1/32, 198.18.0.0/15" in res["config"]
+
+
+def test_full_mode_uses_own_subnet_dns_and_default_route(store):
+    fake = FakeAwg()
+    res = svc.create_client("laptop", mode="full", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)
+    assert res["mode"] == "full" and res["ip"] == "10.9.1.2"
+    cfg = svc.get_client_config("laptop", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)
+    assert "Address = 10.9.1.2/32" in cfg
+    assert "DNS = 10.9.1.1" in cfg
+    assert "AllowedIPs = 0.0.0.0/0" in cfg
+    assert "10.9.0.0/24" not in cfg
+
+
+def test_modes_have_independent_ip_pools(store):
+    fake = FakeAwg()
+    a = svc.create_client("s1", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)
+    f = svc.create_client("f1", mode="full", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)
+    assert (a["ip"], f["ip"]) == ("10.9.0.2", "10.9.1.2")
+
+
+def test_unknown_mode_rejected(store):
+    with pytest.raises(svc.Awg3ClientError):
+        svc.create_client("x", mode="bogus", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=FakeAwg())
+
+
+def test_legacy_record_without_mode_is_split(store):
+    fake = FakeAwg()
+    svc.create_client("old", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)
+    data = store.load_clients()
+    data["old"].pop("mode")
+    store.save_clients(data)
+    assert [c["mode"] for c in svc.list_clients(store)] == ["split"]
+    assert "AllowedIPs = 10.9.0.0/24" in svc.get_client_config("old", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)
