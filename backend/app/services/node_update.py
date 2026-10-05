@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -34,6 +36,45 @@ def _git_run(args: list[str], cwd: Path, *, timeout: float = GIT_TIMEOUT) -> sub
         timeout=timeout,
         check=False,
     )
+
+
+PREPULL_BACKUP_ROOT = Path("/root")
+
+
+def _move_aside_blocking_copies(repo_path: Path, ref: str, *, backup_root: Path | None = None) -> dict[str, Any]:
+    """Set aside local copies that would block the fast-forward merge onto ``ref``.
+
+    Blocking are: untracked files the upstream now tracks (hand-copied node files), and
+    tracked edits. Every original is copied into a backup dir first; then untracked
+    copies are moved out and tracked edits are reverted to the index. Clean trees are a no-op.
+    """
+    status = _git_run(["status", "--porcelain"], repo_path)
+    entries = [line for line in (status.stdout or "").splitlines() if line.strip()]
+    if not entries:
+        return {"moved": [], "backup": None}
+    backup = (backup_root or PREPULL_BACKUP_ROOT) / f"adminpanel-prepull-backup-{int(time.time())}"
+    moved: list[str] = []
+    for line in entries:
+        code, path = line[:2], line[3:].strip()
+        if not path or path.endswith("/") or path.startswith('"'):
+            continue
+        src = repo_path / path
+        if code == "??":
+            if _git_run(["cat-file", "-e", f"{ref}:{path}"], repo_path).returncode != 0:
+                continue
+            if not src.is_file():
+                continue
+            dest = backup / path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(src), str(dest))
+        else:
+            if src.is_file():
+                dest = backup / path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest)
+            _git_run(["checkout", "--", path], repo_path)
+        moved.append(path)
+    return {"moved": moved, "backup": str(backup) if moved else None}
 
 
 def resolve_update_ref(repo_path: Path) -> tuple[str | None, str | None]:
@@ -187,10 +228,11 @@ def git_pull(repo_path: Path) -> dict[str, Any]:
         if ref is None:
             return {"success": False, "output": "", "error": ref_error}
 
+        prepull = _move_aside_blocking_copies(repo_path, ref)
         result = _git_run(["merge", "--ff-only", ref], repo_path)
         output = ((result.stdout or "") + (result.stderr or "")).strip()
         if result.returncode == 0:
-            return {"success": True, "output": output, "error": None, "method": "fast-forward"}
+            return {"success": True, "output": output, "error": None, "method": "fast-forward", "prepull": prepull}
 
         # After force-push on origin the node copy may diverge while the tree is still clean.
         if _working_tree_clean(repo_path):

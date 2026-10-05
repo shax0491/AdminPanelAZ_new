@@ -184,3 +184,35 @@ def test_panel_update_status_compares_with_the_branch_upstream(repos):
     status = _git_update_status(panel)
     assert status["updates_available"] is True
     assert status["commits_behind"] == 1
+
+
+def test_hand_copied_untracked_file_and_local_edit_do_not_block_pull(repos, tmp_path, monkeypatch):
+    from app.services import node_update
+
+    monkeypatch.setattr(node_update, "PREPULL_BACKUP_ROOT", tmp_path / "backups")
+    upstream, panel = repos
+    _commit(upstream, "awg.py")
+    _git(upstream, "push", "-q", "origin", "release/9.9.9")
+    (panel / "awg.py").write_text("awg.py", encoding="utf-8")
+    (panel / "base").write_text("edited", encoding="utf-8")
+
+    result = git_pull(panel)
+
+    assert result["success"] is True, result
+    assert (panel / "awg.py").read_text(encoding="utf-8") == "awg.py"
+    assert (panel / "base").read_text(encoding="utf-8") == "base"
+    assert set(result["prepull"]["moved"]) == {"awg.py", "base"}
+    backup = Path(result["prepull"]["backup"])
+    assert (backup / "base").read_text(encoding="utf-8") == "edited"
+    assert (backup / "awg.py").read_text(encoding="utf-8") == "awg.py"
+
+
+def test_clean_tree_pull_moves_nothing(repos):
+    upstream, panel = repos
+    _commit(upstream, "more")
+    _git(upstream, "push", "-q", "origin", "release/9.9.9")
+
+    result = git_pull(panel)
+
+    assert result["success"] is True
+    assert result["prepull"] == {"moved": [], "backup": None}

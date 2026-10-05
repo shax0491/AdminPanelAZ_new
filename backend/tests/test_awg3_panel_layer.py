@@ -75,7 +75,7 @@ def test_router_maps_service_errors(client_app):
 def test_local_adapter_full_client_lifecycle(tmp_path: Path, monkeypatch):
     (tmp_path / "awg1.conf").write_text(SERVER_CONF, encoding="utf-8")
     real_store = svc.Awg3Store
-    monkeypatch.setattr(svc, "Awg3Store", lambda *a, **k: real_store(conf_dir=tmp_path))
+    monkeypatch.setattr(svc, "Awg3Store", lambda *a, **k: real_store(conf_dir=tmp_path, client_dir=tmp_path / "client"))
     fake = FakeAwg()
     monkeypatch.setattr(svc, "_default_runner", fake)
     monkeypatch.setenv("AWG3_ENDPOINT_HOST", "nl1.example")
