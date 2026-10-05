@@ -118,9 +118,10 @@ export default function DashboardPage() {
   const [quota, setQuota] = useState<SelfServiceQuota | null>(null)
   const isAdmin = user?.role === 'admin'
   const awg2CreateEnabled = awg2Visible && awg2Installed
+  const awg3CreateEnabled = isEnabled('awg3')
   // Hide create when can_create is false (flag off or quota exhausted) — including unlimited quota.
   const createBlocked = !isAdmin && quota != null && !quota.can_create
-  const canCreateClient = (openvpnEnabled || wireguardEnabled || awg2CreateEnabled) && !createBlocked
+  const canCreateClient = (openvpnEnabled || wireguardEnabled || awg2CreateEnabled || awg3CreateEnabled) && !createBlocked
   const quotaReached = createBlocked && quota != null && !quota.unlimited
   const createDisabledByAdmin = createBlocked && quota != null && quota.unlimited
 
@@ -546,6 +547,7 @@ export default function DashboardPage() {
         openvpnEnabled={openvpnEnabled}
         wireguardEnabled={wireguardEnabled}
         awg2CreateEnabled={awg2CreateEnabled}
+        awg3CreateEnabled={awg3CreateEnabled}
         isAdmin={isAdmin}
         currentUserId={user?.id}
         panelUsers={panelUsers}

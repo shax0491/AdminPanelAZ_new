@@ -25,17 +25,19 @@ import { panelToday } from '@/lib/trafficPeriod'
 import { cn } from '@/lib/utils'
 import type { User, VpnType } from '@/types'
 
-const PROTOCOL_ORDER: VpnType[] = ['openvpn', 'wireguard', 'amneziawg2']
+const PROTOCOL_ORDER: VpnType[] = ['openvpn', 'wireguard', 'amneziawg2', 'amneziawg3']
 
 function vpnLabel(type: VpnType): string {
   if (type === 'openvpn') return 'OpenVPN'
   if (type === 'wireguard') return 'WireGuard / AmneziaWG'
+  if (type === 'amneziawg3') return 'AmneziaWG 3.0'
   return 'AmneziaWG 2.0'
 }
 
 function vpnHint(type: VpnType): string {
   if (type === 'openvpn') return 'Сертификат + .ovpn'
   if (type === 'wireguard') return 'WG / AWG профиль'
+  if (type === 'amneziawg3') return 'AWG 3.0 peer'
   return 'AWG 2.0 peer'
 }
 
@@ -71,6 +73,7 @@ export interface CreateClientDialogProps {
   openvpnEnabled: boolean
   wireguardEnabled: boolean
   awg2CreateEnabled: boolean
+  awg3CreateEnabled?: boolean
   isAdmin: boolean
   currentUserId?: number
   panelUsers: User[]
@@ -88,6 +91,7 @@ export default function CreateClientDialog({
   openvpnEnabled,
   wireguardEnabled,
   awg2CreateEnabled,
+  awg3CreateEnabled = false,
   isAdmin,
   currentUserId,
   panelUsers,
@@ -103,9 +107,10 @@ export default function CreateClientDialog({
       PROTOCOL_ORDER.filter((type) => {
         if (type === 'openvpn') return openvpnEnabled
         if (type === 'wireguard') return wireguardEnabled
+        if (type === 'amneziawg3') return awg3CreateEnabled
         return awg2CreateEnabled
       }),
-    [openvpnEnabled, wireguardEnabled, awg2CreateEnabled],
+    [openvpnEnabled, wireguardEnabled, awg2CreateEnabled, awg3CreateEnabled],
   )
 
   const [clientName, setClientName] = useState('')
@@ -119,6 +124,7 @@ export default function CreateClientDialog({
   const [limitUnit, setLimitUnit] = useState('GB')
   const [limitPeriodDays, setLimitPeriodDays] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [awg3Mode, setAwg3Mode] = useState<'split' | 'full'>('split')
 
   useEffect(() => {
     if (!open) return
@@ -247,6 +253,7 @@ export default function CreateClientDialog({
             const result = await createConfig({
               client_name: trimmedName,
               vpn_type: vpnType,
+              awg3_mode: vpnType === 'amneziawg3' ? awg3Mode : undefined,
               cert_expire_days: vpnType === 'openvpn' ? certDays : undefined,
               description: description || undefined,
               owner_id: isAdmin && ownerId ? ownerId : undefined,
@@ -392,6 +399,20 @@ export default function CreateClientDialog({
                   )
                 })}
               </div>
+              {selectedProtocols.includes('amneziawg3') && (
+                <div className="flex flex-col gap-1 text-sm">
+                  <Label className="lg:text-base">Режим AmneziaWG 3.0</Label>
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3"
+                    value={awg3Mode}
+                    disabled={submitting}
+                    onChange={(e) => setAwg3Mode(e.target.value as 'split' | 'full')}
+                  >
+                    <option value="split">Антизапрет (только заблокированное)</option>
+                    <option value="full">Полный VPN (весь трафик)</option>
+                  </select>
+                </div>
+              )}
               {availableProtocols.length === 0 && (
                 <p className="text-xs text-destructive lg:text-sm">Нет доступных протоколов на этом узле.</p>
               )}

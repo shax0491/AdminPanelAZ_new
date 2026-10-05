@@ -83,7 +83,7 @@ interface ConfigCardsSectionProps {
   onNotifyError: (msg: string) => void
 }
 
-const TAB_ORDER: ProtocolTab[] = ['openvpn', 'amneziawg2', 'amneziawg', 'wireguard']
+const TAB_ORDER: ProtocolTab[] = ['openvpn', 'amneziawg2', 'amneziawg3', 'amneziawg', 'wireguard']
 
 type ConfirmAction = 'delete' | 'block' | 'unblock' | null
 type BulkAction = 'block_temp' | 'block_perm' | 'unblock' | 'delete' | 'renew_cert' | 'change_owner' | null
@@ -98,6 +98,7 @@ function useVisibleTabs(visibilityPolicy: VisibleVpnProfilesPolicy | null, userR
     }
     if (tab === 'openvpn') return isEnabled('openvpn')
     if (tab === 'amneziawg2') return isEnabled('awg2')
+    if (tab === 'amneziawg3') return isEnabled('awg3')
     if (tab === 'amneziawg') return isEnabled('amneziawg')
     return isEnabled('wireguard')
   })
@@ -542,6 +543,14 @@ export default function ConfigCardsSection({
                     AmneziaWG 2.0
                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
                       {tabCounts.amneziawg2}
+                    </Badge>
+                  </TabsTrigger>
+                )}
+                {visibleTabs.includes('amneziawg3') && (
+                  <TabsTrigger value="amneziawg3" className="gap-1.5 data-[state=active]:shadow-sm">
+                    AmneziaWG 3.0
+                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                      {tabCounts.amneziawg3}
                     </Badge>
                   </TabsTrigger>
                 )}

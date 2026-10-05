@@ -3,7 +3,7 @@ import { formatDate } from '@/lib/datetime'
 import { getProfileDownloadFilename } from '@/lib/profileDownloadName'
 import { isWireGuardOnline } from '@/lib/wireguardStatus'
 
-export type ProtocolTab = 'openvpn' | 'wireguard' | 'amneziawg' | 'amneziawg2'
+export type ProtocolTab = 'openvpn' | 'wireguard' | 'amneziawg' | 'amneziawg2' | 'amneziawg3'
 export type ClientFilter = 'all' | 'active' | 'expiring' | 'expired'
 export type ClientPresenceFilter = 'all' | 'online' | 'offline' | 'blocked'
 
@@ -28,6 +28,7 @@ function profileProtocolForTab(tab: ProtocolTab): ProfileFile['protocol'] {
   if (tab === 'openvpn') return 'openvpn'
   if (tab === 'amneziawg') return 'amneziawg'
   if (tab === 'amneziawg2') return 'amneziawg2'
+  if (tab === 'amneziawg3') return 'amneziawg3'
   return 'wireguard'
 }
 
@@ -72,6 +73,7 @@ export function protocolLabel(tab: ProtocolTab): string {
   if (tab === 'openvpn') return 'OpenVPN'
   if (tab === 'amneziawg') return 'AmneziaWG'
   if (tab === 'amneziawg2') return 'AmneziaWG 2.0'
+  if (tab === 'amneziawg3') return 'AmneziaWG 3.0'
   return 'WireGuard'
 }
 
@@ -84,6 +86,8 @@ function hasProtocolProfiles(
 }
 
 export function configMatchesTab(config: VpnConfig, tab: ProtocolTab): boolean {
+  if (tab === 'amneziawg3') return config.vpn_type === 'amneziawg3'
+  if (config.vpn_type === 'amneziawg3') return false
   if (tab === 'amneziawg2') {
     return config.vpn_type === 'amneziawg2' || hasProtocolProfiles(config, 'amneziawg2')
   }
@@ -408,7 +412,7 @@ export function getDownloadFilename(config: VpnConfig, file: ProfileFile): strin
 
 export function getProtocolBadgeVariant(tab: ProtocolTab): 'default' | 'secondary' | 'outline' {
   if (tab === 'openvpn') return 'default'
-  if (tab === 'amneziawg' || tab === 'amneziawg2') return 'secondary'
+  if (tab === 'amneziawg' || tab === 'amneziawg2' || tab === 'amneziawg3') return 'secondary'
   return 'outline'
 }
 

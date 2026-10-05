@@ -40,7 +40,7 @@ function shortProtocolLabel(protocol: UnlockCodeProtocol) {
 }
 
 function toUnlockProtocol(vpnType: VpnType | string): UnlockCodeProtocol | null {
-  if (vpnType === 'openvpn' || vpnType === 'wireguard' || vpnType === 'amneziawg2') return vpnType
+  if (vpnType === 'openvpn' || vpnType === 'wireguard' || vpnType === 'amneziawg2' || vpnType === 'amneziawg3') return vpnType
   return null
 }
 

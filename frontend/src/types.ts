@@ -1,5 +1,5 @@
 export type UserRole = 'admin' | 'user'
-export type VpnType = 'openvpn' | 'wireguard' | 'amneziawg2'
+export type VpnType = 'openvpn' | 'wireguard' | 'amneziawg2' | 'amneziawg3'
 export type NodeStatus = 'online' | 'offline' | 'unknown'
 export type NodeKind = 'vpn' | 'proxy'
 export type NodeTransportId = 'http' | 'mtls' | 'ssh'

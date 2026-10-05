@@ -67,6 +67,7 @@ export async function createConfig(data: {
   ttl?: string
   description?: string
   owner_id?: number
+  awg3_mode?: 'split' | 'full'
 }) {
   return apiFetch<VpnConfig>('/configs', {
     method: 'POST',
