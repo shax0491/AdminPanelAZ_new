@@ -32,6 +32,7 @@ class VpnType(str, enum.Enum):
     openvpn = "openvpn"
     wireguard = "wireguard"
     amneziawg2 = "amneziawg2"
+    amneziawg3 = "amneziawg3"
 
 
 DEFAULT_TG_NOTIFY_EVENTS: dict[str, bool] = {

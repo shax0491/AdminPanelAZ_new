@@ -95,4 +95,6 @@ RESULT_FILES = {
     "tplink_ovpn": "tp-link-openvpn-routes.txt",
     "keenetic_awg2": "keenetic-amneziawg2-routes.txt",
     "mikrotik_awg2": "mikrotik-amneziawg2-routes.txt",
+    "keenetic_awg3": "keenetic-amneziawg3-routes.txt",
+    "mikrotik_awg3": "mikrotik-amneziawg3-routes.txt",
 }

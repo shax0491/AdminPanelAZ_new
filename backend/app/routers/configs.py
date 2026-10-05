@@ -575,6 +575,20 @@ def create_config(
             adapter.awg2_add_client(payload.client_name, ttl=payload.ttl)
         else:
             adapter.awg2_add_client(payload.client_name)
+    elif payload.vpn_type == VpnType.amneziawg3:
+        try:
+            health = adapter.awg3_health()
+        except Exception:  # noqa: BLE001
+            health = {}
+        if not health.get("tools_present") or not health.get("userspace_present"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"message": "AmneziaWG 3.0 не установлен на узле (awg / amneziawg-go). Установите через setup.sh."},
+            )
+        try:
+            adapter.awg3_create_client(payload.client_name, payload.awg3_mode or "split")
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Неизвестный тип VPN")
 
@@ -751,6 +765,8 @@ def delete_config(
         adapter.delete_openvpn_client(config.client_name)
     elif config.vpn_type == VpnType.amneziawg2:
         adapter.awg2_delete_client(config.client_name)
+    elif config.vpn_type == VpnType.amneziawg3:
+        adapter.awg3_delete_client(config.client_name)
     else:
         adapter.delete_wireguard_client(config.client_name)
 
@@ -791,6 +807,9 @@ def download_profile(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
 
     adapter = get_active_adapter(db)
+    if config.vpn_type == VpnType.amneziawg3:
+        text = adapter.awg3_client_config(config.client_name)
+        return attachment_response(text, f"awg3-{config.client_name}.conf")
     _require_profile_path_allowed(db, current_user, config, path, adapter=adapter)
     hosts = load_node_remote_hosts(db, config.node_id)
     content = read_profile_file_for_delivery(adapter, path, hosts)

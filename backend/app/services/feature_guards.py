@@ -231,6 +231,10 @@ def require_vpn_type(vpn_type: str, *, service: FeatureToggleService) -> None:
         if not service.is_enabled("awg2"):
             raise HTTPException(status_code=403, detail=module_disabled_message("awg2"))
         return
+    if vt == "amneziawg3":
+        if not service.is_enabled("awg3"):
+            raise HTTPException(status_code=403, detail=module_disabled_message("awg3"))
+        return
     if service.is_enabled("wireguard") or service.is_enabled("amneziawg"):
         return
     raise HTTPException(status_code=403, detail=module_disabled_message("wireguard"))

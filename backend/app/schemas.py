@@ -384,6 +384,7 @@ class VpnConfigCreate(BaseModel):
     ttl: str | None = None
     description: str | None = None
     owner_id: int | None = None
+    awg3_mode: str | None = Field(default=None, pattern=r"^(split|full)$")
 
 
 class VpnConfigUpdate(BaseModel):
