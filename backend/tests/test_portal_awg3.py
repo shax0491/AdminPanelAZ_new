@@ -46,3 +46,15 @@ def test_awg3_portal_entries_come_from_registry_mode():
 def test_awg3_protocol_feature_key_and_title():
     assert portal._protocol_feature_key("amneziawg3") == "awg3"
     assert portal._portal_protocol_for_file({"protocol": "amneziawg3"}, SimpleNamespace(vpn_type=VpnType.wireguard)) == "amneziawg3"
+
+
+def test_policy_write_api_accepts_awg3_and_rejects_unknown():
+    import pytest
+    from fastapi import HTTPException
+
+    from app.services.vpn_profile_visibility import normalize_policy
+
+    ok = normalize_policy({"routes": ["az"], "protocols": ["amneziawg3"], "openvpn_groups": []}, strict=True)
+    assert ok["protocols"] == ["amneziawg3"]
+    with pytest.raises(HTTPException):
+        normalize_policy({"routes": ["az"], "protocols": ["amneziawg9"], "openvpn_groups": []}, strict=True)
