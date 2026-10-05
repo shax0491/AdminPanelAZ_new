@@ -567,6 +567,44 @@ class LocalNodeAdapter(NodeAdapter):
     def list_wireguard_clients(self) -> list[str]:
         return self._service.list_wireguard_clients()
 
+    def awg3_health(self) -> dict:
+        from app.services.native_awg3_runtime import get_awg3_health
+
+        return get_awg3_health()
+
+    def awg3_monitoring(self) -> dict:
+        from app.services.native_awg3_runtime import get_awg3_monitoring
+
+        return get_awg3_monitoring()
+
+    def awg3_list_clients(self) -> list[dict]:
+        from app.services import awg3_clients
+
+        return awg3_clients.list_clients()
+
+    def awg3_create_client(self, client_name: str) -> dict:
+        from app.services import awg3_clients
+
+        return awg3_clients.create_client(
+            client_name,
+            endpoint_host=awg3_clients.endpoint_from_env(),
+            split_allowed_ips=awg3_clients.split_allowed_from_file(),
+        )
+
+    def awg3_client_config(self, client_name: str) -> str:
+        from app.services import awg3_clients
+
+        return awg3_clients.get_client_config(
+            client_name,
+            endpoint_host=awg3_clients.endpoint_from_env(),
+            split_allowed_ips=awg3_clients.split_allowed_from_file(),
+        )
+
+    def awg3_delete_client(self, client_name: str) -> None:
+        from app.services import awg3_clients
+
+        awg3_clients.delete_client(client_name)
+
     def awg2_add_client(self, client_name: str, ttl: str | None = None) -> str:
         # Native AmneziaWG 2.0 (client.sh / setup.sh) has no ephemeral/TTL client concept —
         # that was an az-awg2 overlay-only feature. Fail loudly instead of silently ignoring it.
@@ -1373,6 +1411,24 @@ class RemoteNodeAdapter(NodeAdapter):
     def list_wireguard_clients(self) -> list[str]:
         data = self._request("GET", "/clients/wireguard")
         return data.get("clients", [])
+
+    def awg3_health(self) -> dict:
+        return self._request("GET", "/awg3/health")
+
+    def awg3_monitoring(self) -> dict:
+        return self._request("GET", "/awg3/monitoring")
+
+    def awg3_list_clients(self) -> list[dict]:
+        return self._request("GET", "/awg3/clients").get("clients", [])
+
+    def awg3_create_client(self, client_name: str) -> dict:
+        return self._request("POST", "/awg3/clients", json={"client_name": client_name})
+
+    def awg3_client_config(self, client_name: str) -> str:
+        return self._request("GET", f"/awg3/clients/{client_name}/config")["config"]
+
+    def awg3_delete_client(self, client_name: str) -> None:
+        self._request("DELETE", f"/awg3/clients/{client_name}")
 
     def awg2_add_client(self, client_name: str, ttl: str | None = None) -> str:
         payload: dict[str, str] = {"client_name": client_name}
