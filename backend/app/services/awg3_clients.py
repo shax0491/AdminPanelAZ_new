@@ -17,6 +17,7 @@ import ipaddress
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import tarfile
@@ -27,7 +28,10 @@ from typing import Callable
 from app.services.native_awg3_runtime import AWG3_CONF_DIR, AWG3_OBFUSCATION_KEYS
 
 IFACE = "awg1"
-PORT = 51821
+PORT = 51821  # interface ListenPort; clients may use any port from PORT_RANGE, DNAT'd to PORT on the node
+PORT_RANGE = (51900, 51999)
+# Client profile files, next to the AmneziaWG 1.5/2.0 ones written by client.sh.
+CLIENT_DIR = Path("/root/antizapret/client/amneziawg3")
 MTU_DEFAULT = 1280  # used when the node has no mtu file (installs before the auto-MTU step)
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 
@@ -54,8 +58,9 @@ def _default_runner(args: list[str], stdin: str | None) -> str:
 class Awg3Store:
     """Paths and file I/O for the awg1 server config and client registry."""
 
-    def __init__(self, conf_dir: Path = AWG3_CONF_DIR):
+    def __init__(self, conf_dir: Path = AWG3_CONF_DIR, client_dir: Path = CLIENT_DIR):
         self.conf_dir = conf_dir
+        self.client_dir = client_dir
         self.server_conf = conf_dir / f"{IFACE}.conf"
         self.registry = conf_dir / "clients.json"
 
@@ -98,6 +103,28 @@ def _validate_name(name: str) -> None:
         raise Awg3ClientError("name: 1-32 chars, letters, digits, '_' or '-'")
 
 
+def _random_port(used: set[int]) -> int:
+    free = [p for p in range(PORT_RANGE[0], PORT_RANGE[1] + 1) if p not in used]
+    if not free:
+        raise Awg3ClientError("no free client ports left in the AWG 3.0 range")
+    return secrets.choice(free)
+
+
+def _profile_path(store: "Awg3Store", mode: str, name: str) -> Path:
+    folder = "antizapret" if mode == "split" else "vpn"
+    return store.client_dir / folder / f"{folder}-{name}-awg3.conf"
+
+
+def _write_profile(store: "Awg3Store", mode: str, name: str, config: str) -> Path:
+    path = _profile_path(store, mode, name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".conf.tmp")
+    tmp.write_text(config, encoding="utf-8")
+    tmp.chmod(0o600)
+    tmp.replace(path)
+    return path
+
+
 def _next_ip(mode: str, used: set[str]) -> str:
     subnet = MODES[mode]["subnet"]
     server_ip = MODES[mode]["server_ip"]
@@ -132,6 +159,7 @@ def build_config(
     obfuscation: list[str],
     split_allowed_ips: list[str],
     mtu: int = MTU_DEFAULT,
+    port: int = PORT,
 ) -> str:
     lines = [
         "[Interface]",
@@ -144,7 +172,7 @@ def build_config(
         "[Peer]",
         f"PublicKey = {server_public}",
         f"PresharedKey = {psk}",
-        f"Endpoint = {endpoint_host}:{PORT}",
+        f"Endpoint = {endpoint_host}:{port}",
         f"AllowedIPs = {', '.join(allowed_ips_for(mode, split_allowed_ips))}",
         "PersistentKeepalive = 15",
         "",
@@ -184,13 +212,14 @@ def create_client(
     psk = run(["awg", "genpsk"], None).strip()
     used = {c["ip"] for c in clients.values() if _mode_of(c) == mode}
     ip = _next_ip(mode, used)
+    port = _random_port({int(c.get("port", PORT)) for c in clients.values()})
 
     run(["awg", "set", IFACE, "peer", public, "preshared-key", "/dev/stdin", "allowed-ips", f"{ip}/32"], psk)
 
     with store.server_conf.open("a", encoding="utf-8") as fh:
         fh.write(_peer_block(name, public, psk, ip))
 
-    clients[name] = {"mode": mode, "public_key": public, "ip": ip, "psk": psk, "private_key": private}
+    clients[name] = {"mode": mode, "public_key": public, "ip": ip, "port": port, "psk": psk, "private_key": private}
     store.save_clients(clients)
 
     config = build_config(
@@ -203,8 +232,10 @@ def create_client(
         obfuscation=obfuscation_lines(server_text),
         split_allowed_ips=split_allowed_ips,
         mtu=read_mtu(store.conf_dir),
+        port=port,
     )
-    return {"name": name, "mode": mode, "ip": ip, "public_key": public, "config": config}
+    profile = _write_profile(store, mode, name, config)
+    return {"name": name, "mode": mode, "ip": ip, "port": port, "public_key": public, "config": config, "profile": str(profile)}
 
 
 def get_client_config(
@@ -223,7 +254,7 @@ def get_client_config(
     c = clients[name]
     server_text = store.server_conf.read_text(encoding="utf-8")
     server_public = run(["awg", "pubkey"], _server_values(server_text)["PrivateKey"]).strip()
-    return build_config(
+    config = build_config(
         mode=_mode_of(c),
         client_private=c["private_key"],
         client_ip=c["ip"],
@@ -233,13 +264,16 @@ def get_client_config(
         obfuscation=obfuscation_lines(server_text),
         split_allowed_ips=split_allowed_ips,
         mtu=read_mtu(store.conf_dir),
+        port=int(c.get("port", PORT)),
     )
+    _write_profile(store, _mode_of(c), name, config)
+    return config
 
 
 def list_clients(store: Awg3Store | None = None) -> list[dict]:
     store = store or Awg3Store()
     return [
-        {"name": n, "mode": _mode_of(c), "ip": c["ip"], "public_key": c["public_key"]}
+        {"name": n, "mode": _mode_of(c), "ip": c["ip"], "port": int(c.get("port", PORT)), "public_key": c["public_key"]}
         for n, c in sorted(store.load_clients().items())
     ]
 
@@ -258,6 +292,7 @@ def delete_client(name: str, *, store: Awg3Store | None = None, run: Runner | No
     kept = [blocks[0]] + [b for b in blocks[1:] if f"PublicKey = {public}" not in b]
     store.server_conf.write_text("\n[Peer]\n".join(kept), encoding="utf-8")
 
+    _profile_path(store, _mode_of(clients[name]), name).unlink(missing_ok=True)
     del clients[name]
     store.save_clients(clients)
 

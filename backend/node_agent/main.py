@@ -485,7 +485,7 @@ def awg3_create_client_endpoint(payload: Awg3ClientRequest, _: None = Depends(ve
         endpoint_host=_awg3_call(_awg3.endpoint_from_env),
         split_allowed_ips=_awg3_call(_awg3.split_allowed_from_file),
     )
-    return {"message": "AmneziaWG 3.0 клиент создан", "name": res["name"], "mode": res["mode"], "ip": res["ip"], "public_key": res["public_key"]}
+    return {"message": "AmneziaWG 3.0 клиент создан", "name": res["name"], "mode": res["mode"], "ip": res["ip"], "port": res["port"], "public_key": res["public_key"], "profile": res["profile"]}
 
 
 @app.get("/awg3/clients/{client_name}/config")

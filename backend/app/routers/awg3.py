@@ -45,7 +45,14 @@ def awg3_create_client(payload: Awg3ClientCreate, db: Session = Depends(get_db),
         res = get_active_adapter(db).awg3_create_client(payload.name, payload.mode)
     except awg3_clients.Awg3ClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return {"name": res.get("name", payload.name), "mode": res.get("mode", payload.mode), "ip": res.get("ip"), "public_key": res.get("public_key")}
+    return {
+        "name": res.get("name", payload.name),
+        "mode": res.get("mode", payload.mode),
+        "ip": res.get("ip"),
+        "port": res.get("port"),
+        "public_key": res.get("public_key"),
+        "profile": res.get("profile"),
+    }
 
 
 @router.get("/clients/{name}/config")

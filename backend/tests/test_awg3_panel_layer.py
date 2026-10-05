@@ -88,7 +88,7 @@ def test_local_adapter_full_client_lifecycle(tmp_path: Path, monkeypatch):
     assert created["ip"] == "10.9.0.2"
     assert [c["name"] for c in adapter.awg3_list_clients()] == ["phone"]
     cfg = adapter.awg3_client_config("phone")
-    assert "Endpoint = nl1.example:51821" in cfg and "AllowedIPs = 10.9.0.0/24, 1.1.1.1/32, 198.18.0.0/15" in cfg
+    assert "Endpoint = nl1.example:" in cfg and "AllowedIPs = 10.9.0.0/24, 1.1.1.1/32, 198.18.0.0/15" in cfg
     adapter.awg3_delete_client("phone")
     assert adapter.awg3_list_clients() == []
     assert "# phone" not in (tmp_path / "awg1.conf").read_text(encoding="utf-8")

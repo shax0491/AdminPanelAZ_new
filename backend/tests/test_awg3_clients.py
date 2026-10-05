@@ -50,7 +50,7 @@ class FakeAwg:
 @pytest.fixture
 def store(tmp_path: Path) -> svc.Awg3Store:
     (tmp_path / "awg1.conf").write_text(SERVER_CONF, encoding="utf-8")
-    return svc.Awg3Store(conf_dir=tmp_path)
+    return svc.Awg3Store(conf_dir=tmp_path, client_dir=tmp_path / "client")
 
 
 def test_create_client_writes_server_peer_and_registry(store):
@@ -70,7 +70,7 @@ def test_client_config_has_split_allowed_ips_and_obfuscation(store):
     assert "Address = 10.9.0.2/32" in cfg
     assert "DNS = 10.9.0.1" in cfg
     assert "AllowedIPs = 10.9.0.0/24, 1.1.1.1/32, 198.18.0.0/15" in cfg
-    assert "Endpoint = de2.example:51821" in cfg
+    assert f"Endpoint = de2.example:{res['port']}" in cfg
     for line in ["Jc = 4", "S4 = 12", "H1 = 1000-2000", "HeaderProtectionKey = HPK="]:
         assert line in cfg
     assert "0.0.0.0/0" not in cfg
@@ -222,3 +222,51 @@ def test_mtu_read_from_node_file_and_clamped(tmp_path):
     assert svc.read_mtu(tmp_path) == 1280
     (tmp_path / "mtu").write_text("junk", encoding="utf-8")
     assert svc.read_mtu(tmp_path) == svc.MTU_DEFAULT
+
+
+def test_new_client_gets_random_port_in_range_and_profile_file(store):
+    res = svc.create_client("rnd", endpoint_host="vpn.example", split_allowed_ips=SPLIT, store=store, run=FakeAwg())
+    assert svc.PORT_RANGE[0] <= res["port"] <= svc.PORT_RANGE[1]
+    assert f"Endpoint = vpn.example:{res['port']}" in res["config"]
+    profile = store.client_dir / "antizapret" / "antizapret-rnd-awg3.conf"
+    assert res["profile"] == str(profile)
+    assert profile.read_text(encoding="utf-8") == res["config"]
+    if os.name == "posix":
+        assert profile.stat().st_mode & 0o777 == 0o600
+    assert store.load_clients()["rnd"]["port"] == res["port"]
+
+
+def test_clients_get_distinct_ports_and_full_mode_uses_vpn_folder(store):
+    fake = FakeAwg()
+    ports = set()
+    for i in range(20):
+        ports.add(svc.create_client(f"c{i}", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)["port"])
+    assert len(ports) == 20
+    full = svc.create_client("full1", mode="full", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)
+    assert (store.client_dir / "vpn" / "vpn-full1-awg3.conf").exists()
+    assert full["port"] not in ports
+
+
+def test_config_refresh_keeps_stored_port(store):
+    fake = FakeAwg()
+    res = svc.create_client("keep", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)
+    cfg = svc.get_client_config("keep", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)
+    assert f"Endpoint = h:{res['port']}" in cfg
+
+
+def test_delete_removes_profile_file(store):
+    svc.create_client("gone", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=FakeAwg())
+    profile = store.client_dir / "antizapret" / "antizapret-gone-awg3.conf"
+    assert profile.exists()
+    svc.delete_client("gone", store=store, run=FakeAwg())
+    assert not profile.exists()
+
+
+def test_legacy_record_without_port_uses_server_port(store):
+    fake = FakeAwg()
+    svc.create_client("old", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)
+    data = store.load_clients()
+    data["old"].pop("port")
+    store.save_clients(data)
+    assert f"Endpoint = h:{svc.PORT}" in svc.get_client_config("old", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)
+    assert svc.list_clients(store)[0]["port"] == svc.PORT
