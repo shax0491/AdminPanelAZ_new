@@ -22,8 +22,8 @@
 
 ## Агент ноды
 Эндпоинты `/awg3/*` в `backend/node_agent/main.py` требуют на ноде:
-- `AWG3_ENDPOINT_HOST` — адрес, который попадает в клиентские конфиги (например, `de2.example.com`), в `node_agent.env`;
-- `AWG3_SPLIT_ALLOWED_FILE` — список маршрутов антизапрета (по умолчанию `/etc/amnezia/amneziawg3/split-allowed.txt`).
+- `AWG3_ENDPOINT_HOST` — необязательно: адрес в клиентских конфигах (например, `de2.example.com`). По умолчанию берётся из `/etc/amnezia/amneziawg3/server_host`, который пишет `setup.sh`;
+- `AWG3_SPLIT_ALLOWED_FILE` — необязательно: свой список маршрутов антизапрета. По умолчанию `/etc/wireguard/ips`, тот же файл, что у AWG 2.0.
 
 ## Хранение
 - Клиенты, их ключи и PSK: `/etc/amnezia/amneziawg3/clients.json` на ноде, права 600. Пиры дублируются в `awg1.conf`, чтобы сохраняться после перезапуска `awg3@awg1`.
