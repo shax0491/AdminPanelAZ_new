@@ -31,7 +31,7 @@ from app.services.background_gate import pause_background_work, resume_backgroun
 from app.services.background_tasks import background_task_service
 from app.services.backup_manager import BackupManager
 from app.services.backup_overlays import apply_backup_overlays
-from app.services.backup_scheduler import collect_awg2_backup_archive
+from app.services.backup_scheduler import collect_awg2_backup_archive, collect_awg3_backup_archive
 from app.services.node_manager import get_active_adapter
 from app.services.node_update import resolve_repo_root
 from app.services.notify_time import get_client_timezone_from_request
@@ -149,6 +149,7 @@ def get_backup_settings(db: Session = Depends(get_db), _: User = Depends(require
         telegram_on_backup=_get_setting(db, "backup_telegram_enabled", "false") == "true",
         backup_az_enabled=_get_setting(db, "backup_az_enabled", "true") == "true",
         backup_awg2_enabled=_get_setting(db, "backup_awg2_enabled", "true") == "true",
+        backup_awg3_enabled=_get_setting(db, "backup_awg3_enabled", "true") == "true",
         retention_count=int(_get_setting(db, "backup_retention", "5") or "5"),
     )
 
@@ -169,6 +170,8 @@ def update_backup_settings(
         _set_setting(db, "backup_az_enabled", "true" if payload.backup_az_enabled else "false")
     if payload.backup_awg2_enabled is not None:
         _set_setting(db, "backup_awg2_enabled", "true" if payload.backup_awg2_enabled else "false")
+    if payload.backup_awg3_enabled is not None:
+        _set_setting(db, "backup_awg3_enabled", "true" if payload.backup_awg3_enabled else "false")
     if payload.retention_count is not None:
         _set_setting(db, "backup_retention", str(payload.retention_count))
     db.commit()
@@ -178,6 +181,7 @@ def update_backup_settings(
         telegram_on_backup=_get_setting(db, "backup_telegram_enabled", "false") == "true",
         backup_az_enabled=_get_setting(db, "backup_az_enabled", "true") == "true",
         backup_awg2_enabled=_get_setting(db, "backup_awg2_enabled", "true") == "true",
+        backup_awg3_enabled=_get_setting(db, "backup_awg3_enabled", "true") == "true",
         retention_count=int(_get_setting(db, "backup_retention", "5") or "5"),
     )
 
@@ -196,7 +200,8 @@ def _create_backup_with_optional_telegram(
     include_configs: bool,
     include_antizapret_backup: bool,
     include_awg2_backup: bool,
-    send_to_telegram: bool,
+    include_awg3_backup: bool = False,
+    send_to_telegram: bool = False,
     panel_caption_prefix: str,
     az_caption_prefix: str,
 ) -> dict:
@@ -218,11 +223,16 @@ def _create_backup_with_optional_telegram(
                 raise
             logger.warning("AZ-AWG2 overlay backup failed: %s", exc)
 
+    awg3_archive = None
+    if include_awg3_backup:
+        awg3_archive = collect_awg3_backup_archive(db)
+
     result = manager.create_backup(
         include_configs=include_configs,
         config_contents=config_contents,
         retention=int(_get_setting(db, "backup_retention", "5") or "5"),
         awg2_archive=awg2_archive,
+        awg3_archive=awg3_archive,
     )
 
     send_tg = send_to_telegram or _get_setting(db, "backup_telegram_enabled", "false") == "true"
@@ -302,6 +312,7 @@ def create_backup(
         include_configs=payload.include_configs,
         include_antizapret_backup=payload.include_antizapret_backup,
         include_awg2_backup=payload.include_awg2_backup,
+        include_awg3_backup=payload.include_awg3_backup,
         send_to_telegram=payload.send_to_telegram,
         panel_caption_prefix="Бэкап AdminPanelAZ",
         az_caption_prefix="Бэкап AntiZapret",
@@ -543,6 +554,7 @@ def test_backup_telegram(
 
     include_az = bool(payload.include_antizapret_backup)
     include_awg2 = bool(payload.include_awg2_backup)
+    include_awg3 = bool(payload.include_awg3_backup)
     include_configs = bool(payload.include_configs)
 
     def _task(progress_updater=None):
@@ -557,6 +569,7 @@ def test_backup_telegram(
                 include_configs=include_configs,
                 include_antizapret_backup=include_az,
                 include_awg2_backup=include_awg2,
+                include_awg3_backup=include_awg3,
                 send_to_telegram=True,
                 panel_caption_prefix="Тест бэкапа AdminPanelAZ",
                 az_caption_prefix="Тест бэкапа AntiZapret",

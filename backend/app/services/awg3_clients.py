@@ -12,11 +12,15 @@ awg1.conf so the interface keeps them after `awg3@awg1` restarts, and added live
 
 from __future__ import annotations
 
+import io
 import ipaddress
 import json
 import os
 import re
+import shutil
 import subprocess
+import tarfile
+import tempfile
 from pathlib import Path
 from typing import Callable
 
@@ -246,12 +250,14 @@ def delete_client(name: str, *, store: Awg3Store | None = None, run: Runner | No
     store.save_clients(clients)
 
 
-SERVER_HOST_FILE = Path("/etc/amnezia/amneziawg/server_host")
-AWG2_CLIENT_TEMPLATE = Path("/etc/amneziawg/templates/antizapret2-client.conf")
+# Written by setup.sh: the address clients connect to (WIREGUARD_HOST, else the public IP).
+SERVER_HOST_FILE = AWG3_CONF_DIR / "server_host"
+# Antizapret route list shared with AWG 2.0, rebuilt by parse.sh: ", ip, ip, ...".
+ANTIZAPRET_IPS_FILE = Path("/etc/wireguard/ips")
 
 
 def endpoint_from_env() -> str:
-    """AWG3_ENDPOINT_HOST, else the server host written by the AWG 2.0 install (fresh installs need no env)."""
+    """AWG3_ENDPOINT_HOST, else the server_host file written by setup.sh."""
     host = os.environ.get("AWG3_ENDPOINT_HOST", "").strip()
     if not host and SERVER_HOST_FILE.is_file():
         host = SERVER_HOST_FILE.read_text(encoding="utf-8").strip()
@@ -261,19 +267,75 @@ def endpoint_from_env() -> str:
 
 
 def split_allowed_from_file(path: str | None = None) -> list[str]:
-    """Antizapret route list: explicit file, else the AllowedIPs of the AWG 2.0 client template (fresh installs)."""
-    file = Path(path or os.environ.get("AWG3_SPLIT_ALLOWED_FILE", "/etc/amnezia/amneziawg3/split-allowed.txt"))
-    if file.is_file():
-        text = file.read_text(encoding="utf-8")
-    elif path is None and AWG2_CLIENT_TEMPLATE.is_file():
-        text = "\n".join(
-            line.split("=", 1)[1].replace(" ", "").replace(",", "\n")
-            for line in AWG2_CLIENT_TEMPLATE.read_text(encoding="utf-8").splitlines()
-            if line.startswith("AllowedIPs")
-        )
-    else:
+    """Antizapret route list: AWG3_SPLIT_ALLOWED_FILE (or path) if set, else the live list /etc/wireguard/ips."""
+    explicit = path or os.environ.get("AWG3_SPLIT_ALLOWED_FILE", "").strip()
+    file = Path(explicit) if explicit else ANTIZAPRET_IPS_FILE
+    if not file.is_file():
         raise Awg3ClientError(f"split allowed-ips list not found: {file}")
+    text = file.read_text(encoding="utf-8").replace(",", "\n")
     items = [line.strip() for line in text.splitlines() if line.strip()]
     if not items:
         raise Awg3ClientError("split allowed-ips list is empty")
     return items
+
+# Files that make up the AWG 3.0 layer; the backup archive carries nothing else.
+STATE_FILES = ("awg1.conf", "clients.json", "server.key", "server.pub", "split-allowed.txt")
+STATE_BACKUP_KIND = "awg3-state"
+UNIT = f"awg3@{IFACE}"
+
+
+def export_state_archive(conf_dir: Path = AWG3_CONF_DIR) -> bytes:
+    """tar.gz of the AWG 3.0 layer (server keys, awg1.conf, client registry, split list)."""
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for name in STATE_FILES:
+            path = conf_dir / name
+            if path.is_file():
+                archive.add(path, arcname=name)
+        manifest = STATE_BACKUP_KIND.encode("utf-8")
+        info = tarfile.TarInfo("MANIFEST")
+        info.size = len(manifest)
+        archive.addfile(info, io.BytesIO(manifest))
+    return buffer.getvalue()
+
+
+def import_state_archive(data: bytes, conf_dir: Path = AWG3_CONF_DIR) -> None:
+    """Replace the AWG 3.0 layer with an archive made by export_state_archive."""
+    if not data:
+        raise Awg3ClientError("empty AWG 3.0 backup")
+    with tempfile.TemporaryDirectory(prefix="awg3-restore-") as temp_dir:
+        temp_root = Path(temp_dir)
+        try:
+            with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+                members = archive.getmembers()
+                for member in members:
+                    if not member.isfile() or member.name not in (*STATE_FILES, "MANIFEST"):
+                        raise Awg3ClientError(f"unexpected member in AWG 3.0 backup: {member.name}")
+                archive.extractall(path=temp_root, members=members, filter="data")
+        except tarfile.TarError as exc:
+            raise Awg3ClientError(f"invalid AWG 3.0 backup: {exc}") from exc
+
+        manifest = temp_root / "MANIFEST"
+        if not manifest.is_file() or manifest.read_text(encoding="utf-8").strip() != STATE_BACKUP_KIND:
+            raise Awg3ClientError(f"AWG 3.0 backup MANIFEST kind must be {STATE_BACKUP_KIND}")
+        if not (temp_root / "awg1.conf").is_file():
+            raise Awg3ClientError("AWG 3.0 backup has no awg1.conf")
+
+        conf_dir.mkdir(parents=True, exist_ok=True)
+        for name in STATE_FILES:
+            source = temp_root / name
+            if not source.is_file():
+                continue
+            target = conf_dir / name
+            tmp = target.with_suffix(target.suffix + ".tmp")
+            shutil.copyfile(source, tmp)
+            tmp.chmod(0o600)
+            tmp.replace(target)
+
+
+def restart_runtime() -> dict:
+    """Restart the awg1 unit after a restore so the restored peers and keys take effect."""
+    res = subprocess.run(["systemctl", "restart", UNIT], capture_output=True, text=True, timeout=60, check=False)
+    if res.returncode != 0:
+        return {"success": False, "errors": [res.stderr.strip() or f"systemctl restart {UNIT} failed"]}
+    return {"success": True, "errors": []}

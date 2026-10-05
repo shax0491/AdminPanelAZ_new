@@ -505,6 +505,21 @@ def awg3_delete_client_endpoint(client_name: str, _: None = Depends(verify_api_k
     return {"message": f"Клиент '{client_name}' удалён"}
 
 
+@app.post("/awg3/backup")
+def awg3_backup_endpoint(_: None = Depends(verify_api_key)):
+    return Response(
+        content=_awg3.export_state_archive(),
+        media_type="application/gzip",
+        headers={"Content-Disposition": 'attachment; filename="az-awg3-backup.tar.gz"'},
+    )
+
+
+@app.post("/awg3/restore")
+async def awg3_restore_endpoint(archive: UploadFile = File(...), _: None = Depends(verify_api_key)):
+    _awg3_call(_awg3.import_state_archive, await archive.read())
+    return _awg3.restart_runtime()
+
+
 @app.get("/clients/wireguard")
 def list_wireguard(_: None = Depends(verify_api_key)):
     return {"clients": service.list_wireguard_clients()}

@@ -606,6 +606,17 @@ class LocalNodeAdapter(NodeAdapter):
 
         awg3_clients.delete_client(client_name)
 
+    def export_awg3_backup(self) -> bytes:
+        from app.services import awg3_clients
+
+        return awg3_clients.export_state_archive()
+
+    def restore_awg3_backup(self, data: bytes) -> dict:
+        from app.services import awg3_clients
+
+        awg3_clients.import_state_archive(data)
+        return awg3_clients.restart_runtime()
+
     def awg2_add_client(self, client_name: str, ttl: str | None = None) -> str:
         # Native AmneziaWG 2.0 (client.sh / setup.sh) has no ephemeral/TTL client concept —
         # that was an az-awg2 overlay-only feature. Fail loudly instead of silently ignoring it.
@@ -1430,6 +1441,17 @@ class RemoteNodeAdapter(NodeAdapter):
 
     def awg3_delete_client(self, client_name: str) -> None:
         self._request("DELETE", f"/awg3/clients/{client_name}")
+
+    def export_awg3_backup(self) -> bytes:
+        return self._request_bytes("POST", "/awg3/backup", timeout=120.0)
+
+    def restore_awg3_backup(self, data: bytes, archive_name: str = "az-awg3-backup.tar.gz") -> dict:
+        return self._request(
+            "POST",
+            "/awg3/restore",
+            files={"archive": (archive_name, data, "application/gzip")},
+            timeout=120.0,
+        )
 
     def awg2_add_client(self, client_name: str, ttl: str | None = None) -> str:
         payload: dict[str, str] = {"client_name": client_name}

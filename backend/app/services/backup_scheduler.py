@@ -101,6 +101,20 @@ def collect_awg2_backup_archive(db) -> bytes | None:
         return None
 
 
+def collect_awg3_backup_archive(db) -> bytes | None:
+    if not get_feature_service().is_enabled("awg3"):
+        return None
+    try:
+        adapter = get_active_adapter(db)
+        health = adapter.awg3_health()
+        if not isinstance(health, dict) or not health.get("tools_present"):
+            return None
+        return adapter.export_awg3_backup()
+    except Exception as exc:
+        logger.warning("Could not export AZ-AWG3 layer for backup: %s", exc)
+        return None
+
+
 def _run_auto_backup_once(
     *,
     app_root: Path,
@@ -131,12 +145,16 @@ def _run_auto_backup_once(
         awg2_archive = None
         if _get_setting(db, "backup_awg2_enabled", "true") == "true":
             awg2_archive = collect_awg2_backup_archive(db)
+        awg3_archive = None
+        if _get_setting(db, "backup_awg3_enabled", "true") == "true":
+            awg3_archive = collect_awg3_backup_archive(db)
         try:
             result = manager.create_backup(
                 include_configs=bool(config_contents),
                 config_contents=config_contents,
                 retention=retention,
                 awg2_archive=awg2_archive,
+                awg3_archive=awg3_archive,
             )
         except Exception as exc:
             _record_auto_backup_failure(db, exc)

@@ -656,6 +656,7 @@ export interface BackupSettings {
   telegram_on_backup: boolean
   backup_az_enabled: boolean
   backup_awg2_enabled: boolean
+  backup_awg3_enabled: boolean
   retention_count: number
 }
 

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -163,9 +164,49 @@ def test_endpoint_falls_back_to_server_host_file(tmp_path, monkeypatch):
     assert svc.endpoint_from_env() == "de9.example.org"
 
 
-def test_split_list_falls_back_to_awg2_template(tmp_path, monkeypatch):
-    tpl = tmp_path / "antizapret2-client.conf"
-    tpl.write_text("[Interface]\nAddress = 10.29.9.5/32\n\n[Peer]\nAllowedIPs = 1.1.1.1/32, 198.18.0.0/15\n", encoding="utf-8")
+def test_split_list_reads_live_antizapret_ips(tmp_path, monkeypatch):
+    ips = tmp_path / "ips"
+    ips.write_text(", 198.18.0.0/15, 1.1.1.0/24, 8.8.8.0/24", encoding="utf-8")
     monkeypatch.delenv("AWG3_SPLIT_ALLOWED_FILE", raising=False)
-    monkeypatch.setattr(svc, "AWG2_CLIENT_TEMPLATE", tpl)
-    assert svc.split_allowed_from_file() == ["1.1.1.1/32", "198.18.0.0/15"]
+    monkeypatch.setattr(svc, "ANTIZAPRET_IPS_FILE", ips)
+    assert svc.split_allowed_from_file() == ["198.18.0.0/15", "1.1.1.0/24", "8.8.8.0/24"]
+
+def test_state_archive_roundtrip(tmp_path, monkeypatch):
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "awg1.conf").write_text(SERVER_CONF, encoding="utf-8")
+    (src / "clients.json").write_text("{}", encoding="utf-8")
+    (src / "server.key").write_text("SERVERPRIV=\n", encoding="utf-8")
+    (src / "split-allowed.txt").write_text("1.1.1.1/32\n", encoding="utf-8")
+    archive = svc.export_state_archive(src)
+
+    dst = tmp_path / "dst"
+    monkeypatch.setattr(svc, "UNIT", "awg3@awg1")
+    svc.import_state_archive(archive, dst)
+    assert (dst / "awg1.conf").read_text(encoding="utf-8") == SERVER_CONF
+    assert (dst / "split-allowed.txt").read_text(encoding="utf-8") == "1.1.1.1/32\n"
+    if os.name == "posix":
+        assert (dst / "server.key").stat().st_mode & 0o777 == 0o600
+
+
+def test_state_archive_rejects_foreign_member(tmp_path):
+    import io
+    import tarfile
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        payload = b"x"
+        info = tarfile.TarInfo("../evil")
+        info.size = len(payload)
+        tar.addfile(info, io.BytesIO(payload))
+    with pytest.raises(svc.Awg3ClientError):
+        svc.import_state_archive(buf.getvalue(), tmp_path / "dst")
+
+
+def test_state_archive_requires_awg1_conf(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "clients.json").write_text("{}", encoding="utf-8")
+    archive = svc.export_state_archive(src)
+    with pytest.raises(svc.Awg3ClientError):
+        svc.import_state_archive(archive, tmp_path / "dst")

@@ -44,6 +44,7 @@ export async function createBackup(
   includeAntizapretBackup = false,
   sendToTelegram = false,
   includeAwg2Backup = false,
+  includeAwg3Backup = false,
 ) {
   return apiFetch<BackupEntry>('/backups/create', {
     method: 'POST',
@@ -51,6 +52,7 @@ export async function createBackup(
       include_configs: includeConfigs,
       include_antizapret_backup: includeAntizapretBackup,
       include_awg2_backup: includeAwg2Backup,
+      include_awg3_backup: includeAwg3Backup,
       send_to_telegram: sendToTelegram,
     }),
   })

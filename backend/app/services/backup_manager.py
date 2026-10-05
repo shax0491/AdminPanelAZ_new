@@ -80,6 +80,7 @@ class BackupManager:
         "allow-ips.txt",
     )
     AWG2_ARCHIVE_MEMBER = "awg2/az-awg2-backup.tar.gz"
+    AWG3_ARCHIVE_MEMBER = "awg3/az-awg3-backup.tar.gz"
     PRE_RESTORE_DIR = ".pre-restore"
     PRE_RESTORE_KEEP = 3
     PRE_RESTORE_NAMES = {"db": "adminpanel.db", "cidr_db": "cidr.db", "env": ".env"}
@@ -143,6 +144,7 @@ class BackupManager:
         config_contents: dict[str, str] | None = None,
         retention: int = 5,
         awg2_archive: bytes | None = None,
+        awg3_archive: bytes | None = None,
     ) -> dict:
         self._ensure_backup_root()
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
@@ -162,6 +164,7 @@ class BackupManager:
                 include_configs=include_configs,
                 config_contents=config_contents,
                 awg2_archive=awg2_archive,
+                awg3_archive=awg3_archive,
             )
             os.replace(partial_path, archive_path)
         except BaseException:
@@ -197,6 +200,7 @@ class BackupManager:
         include_configs: bool,
         config_contents: dict[str, str] | None,
         awg2_archive: bytes | None,
+        awg3_archive: bytes | None = None,
     ) -> None:
         with tarfile.open(archive_path, "w:gz") as tar:
             if self.db_path.exists():
@@ -239,6 +243,16 @@ class BackupManager:
                 components.append("awg2")
                 summary_parts.append("AWG2:1")
 
+            if awg3_archive:
+                tmp = self.backup_root / ".tmp_az-awg3-backup.tar.gz"
+                try:
+                    _write_private_bytes(tmp, awg3_archive)
+                    tar.add(tmp, arcname=self.AWG3_ARCHIVE_MEMBER)
+                finally:
+                    tmp.unlink(missing_ok=True)
+                components.append("awg3")
+                summary_parts.append("AWG3:1")
+
     def inspect_backup_archive(self, archive_path: Path) -> dict:
         path = archive_path.resolve()
         if not path.is_file():
@@ -264,6 +278,8 @@ class BackupManager:
             components.append("configs")
         if self.AWG2_ARCHIVE_MEMBER in member_names:
             components.append("awg2")
+        if self.AWG3_ARCHIVE_MEMBER in member_names:
+            components.append("awg3")
 
         if not components:
             raise HTTPException(
@@ -357,6 +373,12 @@ class BackupManager:
                 if extracted:
                     files["awg2"] = extracted.read()
                     restored.append("awg2")
+
+            if self.AWG3_ARCHIVE_MEMBER in members:
+                extracted = tar.extractfile(members[self.AWG3_ARCHIVE_MEMBER])
+                if extracted:
+                    files["awg3"] = extracted.read()
+                    restored.append("awg3")
 
         if not restored:
             raise HTTPException(

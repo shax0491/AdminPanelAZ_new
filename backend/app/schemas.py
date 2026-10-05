@@ -838,6 +838,7 @@ class BackupCreateRequest(BaseModel):
     include_configs: bool = False
     include_antizapret_backup: bool = False
     include_awg2_backup: bool = False
+    include_awg3_backup: bool = False
     send_to_telegram: bool = False
 
 
@@ -845,6 +846,7 @@ class BackupTestTelegramRequest(BaseModel):
     include_configs: bool = False
     include_antizapret_backup: bool = False
     include_awg2_backup: bool = False
+    include_awg3_backup: bool = False
 
 
 class BackupRestoreRequest(BaseModel):
@@ -857,6 +859,7 @@ class BackupSettingsResponse(BaseModel):
     telegram_on_backup: bool = False
     backup_az_enabled: bool = True
     backup_awg2_enabled: bool = True
+    backup_awg3_enabled: bool = True
     retention_count: int = 5
 
 
@@ -866,6 +869,7 @@ class BackupSettingsUpdate(BaseModel):
     telegram_on_backup: bool | None = None
     backup_az_enabled: bool | None = None
     backup_awg2_enabled: bool | None = None
+    backup_awg3_enabled: bool | None = None
     retention_count: int | None = Field(default=None, ge=1, le=30)
 
 

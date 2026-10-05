@@ -42,6 +42,8 @@ def _apply_local(payload: dict, *, config_root: Path | None) -> None:
     except Exception as exc:
         logger.warning("Could not restore AntiZapret routing lists: %s", exc)
 
+    _apply_awg3_local(payload)
+
     data = (payload.get("_files") or {}).get("awg2")
     if not data:
         return
@@ -70,6 +72,8 @@ def _apply_adapter(payload: dict, *, db) -> None:
         except Exception as exc:
             logger.warning("Could not restore AntiZapret routing lists: %s", exc)
 
+    _apply_awg3_adapter(payload, db=db)
+
     data = (payload.get("_files") or {}).get("awg2")
     if not data:
         return
@@ -89,3 +93,31 @@ def _apply_adapter(payload: dict, *, db) -> None:
             logger.warning("AZ-AWG2 HA sync after panel restore: %s", ha["errors"])
     except Exception as exc:
         logger.warning("Could not restore AZ-AWG2 overlay from panel backup: %s", exc)
+
+
+def _apply_awg3_local(payload: dict) -> None:
+    data = (payload.get("_files") or {}).get("awg3")
+    if not data:
+        return
+    try:
+        from app.services import awg3_clients
+
+        awg3_clients.import_state_archive(data)
+        runtime = awg3_clients.restart_runtime()
+        if runtime.get("success") is False:
+            logger.warning("AZ-AWG3 runtime restart after panel restore failed: %s", runtime.get("errors") or [])
+    except Exception as exc:
+        logger.warning("Could not restore AZ-AWG3 layer from panel backup: %s", exc)
+
+
+def _apply_awg3_adapter(payload: dict, *, db) -> None:
+    data = (payload.get("_files") or {}).get("awg3")
+    if not data:
+        return
+    try:
+        adapter = get_active_adapter(db)
+        runtime = adapter.restore_awg3_backup(data)
+        if runtime.get("success") is False:
+            logger.warning("AZ-AWG3 runtime restart after panel restore failed: %s", runtime.get("errors") or [])
+    except Exception as exc:
+        logger.warning("Could not restore AZ-AWG3 layer from panel backup: %s", exc)

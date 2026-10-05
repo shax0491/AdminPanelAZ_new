@@ -94,6 +94,8 @@ def _format_backup_menu(settings, backups) -> str:
     ]
     if get_feature_service().is_enabled("awg2"):
         lines.append(f"AWG2-слой: <b>{_on_off(settings.backup_awg2_enabled)}</b>")
+    if get_feature_service().is_enabled("awg3"):
+        lines.append(f"AWG3-слой: <b>{_on_off(settings.backup_awg3_enabled)}</b>")
     lines.extend(
         [
             f"Хранить копий: <code>{settings.retention_count}</code>",
@@ -139,6 +141,16 @@ def _backup_main_keyboard(settings) -> dict:
                 inline_button(
                     f"🧩 AWG2: {_on_off(awg2)}",
                     callback_data=f"st:bk:awg2:{0 if awg2 else 1}",
+                )
+            ]
+        )
+    if get_feature_service().is_enabled("awg3"):
+        awg3 = settings.backup_awg3_enabled
+        rows.append(
+            [
+                inline_button(
+                    f"🧩 AWG3: {_on_off(awg3)}",
+                    callback_data=f"st:bk:awg3:{0 if awg3 else 1}",
                 )
             ]
         )
@@ -306,6 +318,16 @@ async def handle_backups_callback(ctx: BotContext, data: str, *, message_id: int
             await handle_settings_backups(ctx, message_id=message_id)
             return
 
+        if rest.startswith("awg3:"):
+            enabled = rest.endswith(":1")
+            _apply_backup_settings_patch(
+                ctx,
+                BackupSettingsUpdate(backup_awg3_enabled=enabled),
+                log_details=f"field=backup_awg3_enabled; value={enabled}",
+            )
+            await handle_settings_backups(ctx, message_id=message_id)
+            return
+
         if rest.startswith("days:"):
             raw = rest.split(":", 1)[1]
             value = int(raw) if raw.isdigit() else -1
@@ -390,6 +412,7 @@ async def handle_backups_callback(ctx: BotContext, data: str, *, message_id: int
                 BackupTestTelegramRequest(
                     include_antizapret_backup=backup_settings.backup_az_enabled,
                     include_awg2_backup=backup_settings.backup_awg2_enabled,
+                    include_awg3_backup=backup_settings.backup_awg3_enabled,
                 ),
                 db=ctx.db,
                 admin=ctx.user,
