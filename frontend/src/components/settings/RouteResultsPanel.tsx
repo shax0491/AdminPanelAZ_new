@@ -39,6 +39,26 @@ const PUBLIC_SLUGS: Record<string, string> = {
   mikrotik_awg3: 'mikrotik-awg3',
 }
 
+// Same filenames as backend RESULT_FILES; a router key the node does not report yet
+// (older node code) still shows its row, marked as not ready.
+const ROUTER_FILENAMES: Record<string, string> = {
+  keenetic_wg: 'keenetic-wireguard-routes.txt',
+  mikrotik_wg: 'mikrotik-wireguard-routes.txt',
+  tplink_ovpn: 'tp-link-openvpn-routes.txt',
+  keenetic_awg2: 'keenetic-amneziawg2-routes.txt',
+  mikrotik_awg2: 'mikrotik-amneziawg2-routes.txt',
+  keenetic_awg3: 'keenetic-amneziawg3-routes.txt',
+  mikrotik_awg3: 'mikrotik-amneziawg3-routes.txt',
+}
+
+function withMissingRouterFiles(files: RouteResultFileEntry[]): RouteResultFileEntry[] {
+  const present = new Set(files.map((f) => f.key))
+  const missing = Object.keys(PUBLIC_SLUGS)
+    .filter((key) => !present.has(key))
+    .map((key) => ({ key, filename: ROUTER_FILENAMES[key] ?? '', exists: false, line_count: 0 }))
+  return [...files, ...missing]
+}
+
 function buildPublicRouteUrl(key: string): string | null {
   const slug = PUBLIC_SLUGS[key]
   if (!slug) return null
@@ -153,7 +173,7 @@ export default function RouteResultsPanel({ showPublicLinks = false }: RouteResu
       else setLoading(true)
       try {
         const result = await getRoutingResults()
-        setFiles(result.files)
+        setFiles(withMissingRouterFiles(result.files))
       } catch (err) {
         notifyError(err instanceof ApiError ? err.message : 'Не удалось загрузить файлы маршрутов')
       } finally {

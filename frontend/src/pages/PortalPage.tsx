@@ -77,6 +77,16 @@ const APP_DOWNLOADS: Record<string, Partial<Record<OsId, { label: string; url: s
     android: { label: 'AmneziaWG', url: 'https://amnezia.org/en/downloads' },
     ios: { label: 'AmneziaWG', url: 'https://apps.apple.com/app/amneziawg/id6478942365' },
   },
+  amneziawg3: {
+    windows: {
+      label: 'AmneziaWG',
+      url: 'https://github.com/amnezia-vpn/amneziawg-windows-client/releases',
+    },
+    mac: { label: 'AmneziaWG', url: 'https://amnezia.org/en/downloads' },
+    linux: { label: 'AmneziaWG', url: 'https://amnezia.org/en/downloads' },
+    android: { label: 'AmneziaWG', url: 'https://amnezia.org/en/downloads' },
+    ios: { label: 'AmneziaWG', url: 'https://apps.apple.com/app/amneziawg/id6478942365' },
+  },
 }
 
 function protocolTitle(vpnType: string): string {
@@ -84,6 +94,7 @@ function protocolTitle(vpnType: string): string {
   if (vpnType === 'wireguard') return 'WireGuard'
   if (vpnType === 'amneziawg') return 'AmneziaWG'
   if (vpnType === 'amneziawg2') return 'AmneziaWG 2.0'
+  if (vpnType === 'amneziawg3') return 'AmneziaWG 3.0'
   return vpnType
 }
 
@@ -122,7 +133,7 @@ function profileHint(protocol: string): string {
 
 /** Prefer OpenVPN → AWG2 → AWG → WG when choosing the initial protocol tab. */
 function preferredProtocol(protocols: string[]): string {
-  for (const key of ['openvpn', 'amneziawg2', 'amneziawg', 'wireguard']) {
+  for (const key of ['openvpn', 'amneziawg3', 'amneziawg2', 'amneziawg', 'wireguard']) {
     if (protocols.includes(key)) return key
   }
   return protocols[0] || ''
@@ -507,7 +518,9 @@ export default function PortalPage() {
               ? 'WireGuard'
               : protocol === 'amneziawg2'
                 ? 'AmneziaWG 2.0'
-                : protocol,
+                : protocol === 'amneziawg3'
+                  ? 'AmneziaWG 3.0'
+                  : protocol,
         )
         .join(', ')
       if (appliedLatest && result.access_until && appliedLatest.slice(0, 10) !== result.access_until.slice(0, 10)) {
@@ -707,7 +720,7 @@ export default function PortalPage() {
             {activeClient && activeClient.protocols.length > 1 && (
               <div className="flex flex-wrap gap-1.5">
                 {[...activeClient.protocols].sort((a, b) => {
-                  const order = ['openvpn', 'amneziawg2', 'amneziawg', 'wireguard']
+                  const order = ['openvpn', 'amneziawg3', 'amneziawg2', 'amneziawg', 'wireguard']
                   const ia = order.indexOf(a)
                   const ib = order.indexOf(b)
                   return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)

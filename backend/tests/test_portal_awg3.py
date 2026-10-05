@@ -1,0 +1,48 @@
+"""Client portal shows AmneziaWG 3.0 profiles the same way as AmneziaWG 2.0."""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+from app.models import VpnType
+from app.services import client_portal as portal
+from app.services.profile_download_name import build_profile_download_filename
+from app.services.vpn_profile_visibility import (
+    PROTOCOLS,
+    intersect_policy_with_features,
+    protocol_key_from_file,
+)
+
+
+def test_awg3_is_a_visibility_protocol_and_follows_its_feature_flag():
+    assert "amneziawg3" in PROTOCOLS
+    full = {"protocols": sorted(PROTOCOLS), "routes": ["az", "vpn"], "openvpn_groups": []}
+    on = intersect_policy_with_features(full, amneziawg3_enabled=True)
+    off = intersect_policy_with_features(full, amneziawg3_enabled=False)
+    assert "amneziawg3" in on["protocols"]
+    assert "amneziawg3" not in off["protocols"]
+    assert protocol_key_from_file(protocol="amneziawg3") == "amneziawg3"
+
+
+def test_awg3_download_names_by_mode():
+    assert build_profile_download_filename("ivan", protocol="amneziawg3", variant="antizapret") == "AWG3-AZ-ivan.conf"
+    assert build_profile_download_filename("ivan", protocol="amneziawg3", variant="vpn") == "AWG3-VPN-ivan.conf"
+
+
+def test_awg3_portal_entries_come_from_registry_mode():
+    adapter = MagicMock()
+    adapter.awg3_list_clients.return_value = [{"name": "ivan", "mode": "full"}, {"name": "anna", "mode": "split"}]
+    entries = portal._awg3_portal_entries(adapter, "ivan")
+    assert entries == [{
+        "path": "awg3:ivan",
+        "name": "AmneziaWG 3.0 (полный VPN)",
+        "protocol": "amneziawg3",
+        "variant": "vpn",
+    }]
+    assert portal._awg3_portal_entries(adapter, "missing") == []
+
+
+def test_awg3_protocol_feature_key_and_title():
+    assert portal._protocol_feature_key("amneziawg3") == "awg3"
+    assert portal._portal_protocol_for_file({"protocol": "amneziawg3"}, SimpleNamespace(vpn_type=VpnType.wireguard)) == "amneziawg3"

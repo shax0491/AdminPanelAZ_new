@@ -585,7 +585,7 @@ def _portal_protocol_for_file(file_item: dict, config: VpnConfig) -> str:
     ``wireguard`` and ``amneziawg`` profile files — same split as dashboard tabs.
     """
     proto = (file_item.get("protocol") or "").strip().lower()
-    if proto in {"openvpn", "wireguard", "amneziawg", "amneziawg2"}:
+    if proto in {"openvpn", "wireguard", "amneziawg", "amneziawg2", "amneziawg3"}:
         return proto
     return config.vpn_type.value
 
@@ -599,6 +599,8 @@ def _protocol_feature_key(protocol: str) -> str | None:
         return "amneziawg"
     if protocol == "amneziawg2":
         return "awg2"
+    if protocol == "amneziawg3":
+        return "awg3"
     return None
 
 
@@ -628,6 +630,7 @@ def _portal_visibility_policy(db: Session, owner: User | None) -> dict:
         wireguard_enabled=flags.get("wireguard", True),
         amneziawg_enabled=flags.get("amneziawg", True),
         amneziawg2_enabled=flags.get("awg2", True),
+        amneziawg3_enabled=flags.get("awg3", True),
     )
 
 
@@ -636,6 +639,23 @@ def _owner_for_config(db: Session, config: VpnConfig) -> User | None:
     if not isinstance(owner_id, int):
         return None
     return db.get(User, owner_id)
+
+
+AWG3_PORTAL_PATH_PREFIX = "awg3:"
+
+
+def _awg3_portal_entries(adapter, client_name: str) -> list[dict]:
+    """One portal file per AWG 3.0 client; the content comes from the node registry (virtual path)."""
+    record = next((c for c in adapter.awg3_list_clients() if c.get("name") == client_name), None)
+    if record is None:
+        return []
+    split = record.get("mode", "split") == "split"
+    return [{
+        "path": f"{AWG3_PORTAL_PATH_PREFIX}{client_name}",
+        "name": "AmneziaWG 3.0 (антизапрет)" if split else "AmneziaWG 3.0 (полный VPN)",
+        "protocol": "amneziawg3",
+        "variant": "antizapret" if split else "vpn",
+    }]
 
 
 def _list_files_for_configs(db: Session, configs: list[VpnConfig]) -> list[dict]:
@@ -650,8 +670,11 @@ def _list_files_for_configs(db: Session, configs: list[VpnConfig]) -> list[dict]
         if cache_key not in policy_cache:
             policy_cache[cache_key] = _portal_visibility_policy(db, owner)
         policy = policy_cache[cache_key]
-        files = adapter.get_profile_files(config.client_name, config.vpn_type)
-        files = enrich_profile_files(config.client_name, files)
+        if config.vpn_type == VpnType.amneziawg3:
+            files = _awg3_portal_entries(adapter, config.client_name)
+        else:
+            files = adapter.get_profile_files(config.client_name, config.vpn_type)
+            files = enrich_profile_files(config.client_name, files)
         for f in files:
             path = f.get("path") or ""
             if not path:
@@ -1043,10 +1066,14 @@ def _read_client_portal_profile(
         )
         .all()
     )
-    allowed = {item["path"] for item in _list_files_for_configs(db, configs)}
-    if path not in allowed:
+    listed = {item["path"]: item for item in _list_files_for_configs(db, configs)}
+    if path not in listed:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Файл не найден")
     adapter = _adapter_for_node_id(db, node_id)
+    if path.startswith(AWG3_PORTAL_PATH_PREFIX):
+        awg3_name = path[len(AWG3_PORTAL_PATH_PREFIX):]
+        content = adapter.awg3_client_config(awg3_name)
+        return listed[path]["filename"], content
     hosts = load_node_remote_hosts(db, node_id)
     content = read_profile_file_for_delivery(adapter, path, hosts)
     filename = build_profile_download_filename(client_name, path=path)

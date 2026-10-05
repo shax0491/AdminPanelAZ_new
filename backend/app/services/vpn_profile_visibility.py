@@ -18,7 +18,7 @@ from app.services.telegram_profile_ui import is_az_profile
 SETTING_VISIBLE_VPN_PROFILES_DEFAULT = "user_visible_vpn_profiles_default"
 
 ROUTES = frozenset({"az", "vpn"})
-PROTOCOLS = frozenset({"openvpn", "wireguard", "amneziawg", "amneziawg2"})
+PROTOCOLS = frozenset({"openvpn", "wireguard", "amneziawg", "amneziawg2", "amneziawg3"})
 OPENVPN_GROUPS = frozenset({"udp_tcp", "udp", "tcp"})
 
 # Policy openvpn_groups key ↔ stored GROUP_* preference key
@@ -179,6 +179,7 @@ def intersect_policy_with_features(
     wireguard_enabled: bool = True,
     amneziawg_enabled: bool = True,
     amneziawg2_enabled: bool = True,
+    amneziawg3_enabled: bool = True,
 ) -> dict[str, list[str]]:
     protocols = list(policy.get("protocols") or [])
     allowed: list[str] = []
@@ -190,6 +191,8 @@ def intersect_policy_with_features(
         elif key == "amneziawg" and amneziawg_enabled:
             allowed.append(key)
         elif key == "amneziawg2" and amneziawg2_enabled:
+            allowed.append(key)
+        elif key == "amneziawg3" and amneziawg3_enabled:
             allowed.append(key)
     result = copy_policy(policy)
     result["protocols"] = allowed
@@ -208,6 +211,7 @@ def feature_flags_from_service(service: Any | None = None) -> dict[str, bool]:
         "wireguard": bool(service.is_enabled("wireguard")),
         "amneziawg": bool(service.is_enabled("amneziawg")),
         "awg2": bool(service.is_enabled("awg2")),
+        "awg3": bool(service.is_enabled("awg3")),
     }
 
 
@@ -225,6 +229,7 @@ def resolve_effective_visible_vpn_profiles(
         wireguard_enabled=flags.get("wireguard", True),
         amneziawg_enabled=flags.get("amneziawg", True),
         amneziawg2_enabled=flags.get("awg2", flags.get("amneziawg2", True)),
+        amneziawg3_enabled=flags.get("awg3", True),
     )
 
 
@@ -312,6 +317,7 @@ def can_create_vpn_type(
         wireguard_enabled=flags.get("wireguard", True),
         amneziawg_enabled=flags.get("amneziawg", True),
         amneziawg2_enabled=flags.get("awg2", flags.get("amneziawg2", True)),
+        amneziawg3_enabled=flags.get("awg3", True),
     )
     protocols = set(effective.get("protocols") or [])
     vt = vpn_type.value if isinstance(vpn_type, VpnType) else str(vpn_type).lower()
@@ -321,6 +327,8 @@ def can_create_vpn_type(
         return "wireguard" in protocols or "amneziawg" in protocols
     if vt == VpnType.amneziawg2.value:
         return "amneziawg2" in protocols and flags.get("awg2", flags.get("amneziawg2", True))
+    if vt == VpnType.amneziawg3.value:
+        return "amneziawg3" in protocols and flags.get("awg3", True)
     return False
 
 
