@@ -21,6 +21,7 @@ router = APIRouter(prefix="/awg3", tags=["awg3"])
 
 class Awg3ClientCreate(BaseModel):
     name: str
+    mode: str = "split"
 
 
 @router.get("/health")
@@ -41,10 +42,10 @@ def awg3_list_clients(db: Session = Depends(get_db), _: User = Depends(require_a
 @router.post("/clients", status_code=201)
 def awg3_create_client(payload: Awg3ClientCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     try:
-        res = get_active_adapter(db).awg3_create_client(payload.name)
+        res = get_active_adapter(db).awg3_create_client(payload.name, payload.mode)
     except awg3_clients.Awg3ClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return {"name": res.get("name", payload.name), "ip": res.get("ip"), "public_key": res.get("public_key")}
+    return {"name": res.get("name", payload.name), "mode": res.get("mode", payload.mode), "ip": res.get("ip"), "public_key": res.get("public_key")}
 
 
 @router.get("/clients/{name}/config")

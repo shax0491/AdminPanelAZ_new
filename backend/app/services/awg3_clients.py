@@ -1,17 +1,20 @@
-"""AmneziaWG 3.0 client lifecycle for interface awg1 (split / antizapret mode).
+"""AmneziaWG 3.0 client lifecycle for interface awg1.
 
-Local to the host where awg1 runs. Clients are stored in clients.json next to
-the server config; the server [Peer] blocks are kept in awg1.conf so the
-interface keeps them after `awg3@awg1` restarts, and added live with `awg set`.
+Two modes on the same interface, each with its own subnet and DNS:
+- split: antizapret, subnet 10.9.0.0/24, DNS 10.9.0.1, AllowedIPs = list of blocked
+  destinations + server subnet (the server only forwards antizapret destinations).
+- full: whole-traffic VPN, subnet 10.9.1.0/24, DNS 10.9.1.1, AllowedIPs = 0.0.0.0/0.
 
-Full-VPN mode is intentionally not offered here: it needs its own subnet and
-forwarding rules, not yet built.
+Clients live in clients.json next to the server config; the [Peer] blocks are kept in
+awg1.conf so the interface keeps them after `awg3@awg1` restarts, and added live with
+`awg set`. Client names are unique across modes. Records without "mode" are split.
 """
 
 from __future__ import annotations
 
 import ipaddress
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -20,11 +23,15 @@ from typing import Callable
 from app.services.native_awg3_runtime import AWG3_CONF_DIR, AWG3_OBFUSCATION_KEYS
 
 IFACE = "awg1"
-SUBNET = ipaddress.ip_network("10.9.0.0/24")
-SERVER_IP = "10.9.0.1"
 PORT = 51821
 MTU = 1280
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+
+MODES: dict[str, dict] = {
+    "split": {"subnet": ipaddress.ip_network("10.9.0.0/24"), "server_ip": "10.9.0.1"},
+    "full": {"subnet": ipaddress.ip_network("10.9.1.0/24"), "server_ip": "10.9.1.1"},
+}
+DEFAULT_MODE = "split"
 
 Runner = Callable[[list[str], str | None], str]
 
@@ -69,13 +76,24 @@ def _server_values(server_conf_text: str) -> dict[str, str]:
     return values
 
 
-def _next_ip(used: set[str]) -> str:
-    for host in SUBNET.hosts():
+def _mode_of(record: dict) -> str:
+    return record.get("mode", DEFAULT_MODE)
+
+
+def _validate_name(name: str) -> None:
+    if not NAME_RE.match(name):
+        raise Awg3ClientError("name: 1-32 chars, letters, digits, '_' or '-'")
+
+
+def _next_ip(mode: str, used: set[str]) -> str:
+    subnet = MODES[mode]["subnet"]
+    server_ip = MODES[mode]["server_ip"]
+    for host in subnet.hosts():
         ip = str(host)
-        if ip == SERVER_IP or ip in used:
+        if ip == server_ip or ip in used:
             continue
         return ip
-    raise Awg3ClientError("subnet 10.9.0.0/24 is full")
+    raise Awg3ClientError(f"subnet {subnet} is full")
 
 
 def obfuscation_lines(server_conf_text: str) -> list[str]:
@@ -83,35 +101,37 @@ def obfuscation_lines(server_conf_text: str) -> list[str]:
     return [f"{k} = {values[k]}" for k in AWG3_OBFUSCATION_KEYS if k in values]
 
 
-def _with_server_subnet(allowed_ips: list[str]) -> list[str]:
-    """Server subnet must be routed through the tunnel so DNS 10.9.0.1 reaches the server."""
-    subnet = str(SUBNET)
-    return [subnet, *[ip for ip in allowed_ips if ip != subnet]]
+def allowed_ips_for(mode: str, split_allowed_ips: list[str]) -> list[str]:
+    if mode == "full":
+        return ["0.0.0.0/0"]
+    subnet = str(MODES["split"]["subnet"])
+    return [subnet, *[ip for ip in split_allowed_ips if ip != subnet]]
 
 
-def build_split_config(
+def build_config(
     *,
+    mode: str,
     client_private: str,
     client_ip: str,
     server_public: str,
     psk: str,
     endpoint_host: str,
     obfuscation: list[str],
-    allowed_ips: list[str],
+    split_allowed_ips: list[str],
 ) -> str:
     lines = [
         "[Interface]",
         f"PrivateKey = {client_private}",
         f"Address = {client_ip}/32",
         f"MTU = {MTU}",
-        f"DNS = {SERVER_IP}",
+        f"DNS = {MODES[mode]['server_ip']}",
         *obfuscation,
         "",
         "[Peer]",
         f"PublicKey = {server_public}",
         f"PresharedKey = {psk}",
         f"Endpoint = {endpoint_host}:{PORT}",
-        f"AllowedIPs = {', '.join(_with_server_subnet(allowed_ips))}",
+        f"AllowedIPs = {', '.join(allowed_ips_for(mode, split_allowed_ips))}",
         "PersistentKeepalive = 15",
         "",
     ]
@@ -125,19 +145,21 @@ def _peer_block(name: str, public: str, psk: str, ip: str) -> str:
 def create_client(
     name: str,
     *,
+    mode: str = DEFAULT_MODE,
     endpoint_host: str,
     split_allowed_ips: list[str],
     store: Awg3Store | None = None,
     run: Runner | None = None,
 ) -> dict:
-    if not NAME_RE.match(name):
-        raise Awg3ClientError("name: 1-32 chars, letters, digits, '_' or '-'")
+    if mode not in MODES:
+        raise Awg3ClientError(f"unknown mode '{mode}', use split or full")
+    _validate_name(name)
     store = store or Awg3Store()
     run = run or _default_runner
     clients = store.load_clients()
     if name in clients:
         raise Awg3ClientError(f"client '{name}' already exists")
-    if not split_allowed_ips:
+    if mode == "split" and not split_allowed_ips:
         raise Awg3ClientError("split allowed-ips list is empty")
 
     server_text = store.server_conf.read_text(encoding="utf-8")
@@ -146,26 +168,28 @@ def create_client(
     private = run(["awg", "genkey"], None).strip()
     public = run(["awg", "pubkey"], private).strip()
     psk = run(["awg", "genpsk"], None).strip()
-    ip = _next_ip({c["ip"] for c in clients.values()})
+    used = {c["ip"] for c in clients.values() if _mode_of(c) == mode}
+    ip = _next_ip(mode, used)
 
     run(["awg", "set", IFACE, "peer", public, "preshared-key", "/dev/stdin", "allowed-ips", f"{ip}/32"], psk)
 
     with store.server_conf.open("a", encoding="utf-8") as fh:
         fh.write(_peer_block(name, public, psk, ip))
 
-    clients[name] = {"public_key": public, "ip": ip, "psk": psk, "private_key": private}
+    clients[name] = {"mode": mode, "public_key": public, "ip": ip, "psk": psk, "private_key": private}
     store.save_clients(clients)
 
-    config = build_split_config(
+    config = build_config(
+        mode=mode,
         client_private=private,
         client_ip=ip,
         server_public=server_public,
         psk=psk,
         endpoint_host=endpoint_host,
         obfuscation=obfuscation_lines(server_text),
-        allowed_ips=split_allowed_ips,
+        split_allowed_ips=split_allowed_ips,
     )
-    return {"name": name, "ip": ip, "public_key": public, "config": config}
+    return {"name": name, "mode": mode, "ip": ip, "public_key": public, "config": config}
 
 
 def get_client_config(
@@ -184,20 +208,24 @@ def get_client_config(
     c = clients[name]
     server_text = store.server_conf.read_text(encoding="utf-8")
     server_public = run(["awg", "pubkey"], _server_values(server_text)["PrivateKey"]).strip()
-    return build_split_config(
+    return build_config(
+        mode=_mode_of(c),
         client_private=c["private_key"],
         client_ip=c["ip"],
         server_public=server_public,
         psk=c["psk"],
         endpoint_host=endpoint_host,
         obfuscation=obfuscation_lines(server_text),
-        allowed_ips=split_allowed_ips,
+        split_allowed_ips=split_allowed_ips,
     )
 
 
 def list_clients(store: Awg3Store | None = None) -> list[dict]:
     store = store or Awg3Store()
-    return [{"name": n, "ip": c["ip"], "public_key": c["public_key"]} for n, c in sorted(store.load_clients().items())]
+    return [
+        {"name": n, "mode": _mode_of(c), "ip": c["ip"], "public_key": c["public_key"]}
+        for n, c in sorted(store.load_clients().items())
+    ]
 
 
 def delete_client(name: str, *, store: Awg3Store | None = None, run: Runner | None = None) -> None:
@@ -219,8 +247,6 @@ def delete_client(name: str, *, store: Awg3Store | None = None, run: Runner | No
 
 
 def endpoint_from_env() -> str:
-    import os
-
     host = os.environ.get("AWG3_ENDPOINT_HOST", "").strip()
     if not host:
         raise Awg3ClientError("AWG3_ENDPOINT_HOST is not set on this node")
@@ -228,8 +254,6 @@ def endpoint_from_env() -> str:
 
 
 def split_allowed_from_file(path: str | None = None) -> list[str]:
-    import os
-
     file = Path(path or os.environ.get("AWG3_SPLIT_ALLOWED_FILE", "/etc/amnezia/amneziawg3/split-allowed.txt"))
     if not file.is_file():
         raise Awg3ClientError(f"split allowed-ips list not found: {file}")

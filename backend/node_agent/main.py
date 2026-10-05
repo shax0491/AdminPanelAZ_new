@@ -451,6 +451,7 @@ from app.services.native_awg3_runtime import get_awg3_health as _awg3_health, ge
 
 class Awg3ClientRequest(BaseModel):
     client_name: str
+    mode: str = "split"
 
 
 def _awg3_call(fn, *args, **kwargs):
@@ -480,10 +481,11 @@ def awg3_create_client_endpoint(payload: Awg3ClientRequest, _: None = Depends(ve
     res = _awg3_call(
         _awg3.create_client,
         payload.client_name,
+        mode=payload.mode,
         endpoint_host=_awg3_call(_awg3.endpoint_from_env),
         split_allowed_ips=_awg3_call(_awg3.split_allowed_from_file),
     )
-    return {"message": "AmneziaWG 3.0 клиент создан", "name": res["name"], "ip": res["ip"], "public_key": res["public_key"]}
+    return {"message": "AmneziaWG 3.0 клиент создан", "name": res["name"], "mode": res["mode"], "ip": res["ip"], "public_key": res["public_key"]}
 
 
 @app.get("/awg3/clients/{client_name}/config")

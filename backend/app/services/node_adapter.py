@@ -582,11 +582,12 @@ class LocalNodeAdapter(NodeAdapter):
 
         return awg3_clients.list_clients()
 
-    def awg3_create_client(self, client_name: str) -> dict:
+    def awg3_create_client(self, client_name: str, mode: str = "split") -> dict:
         from app.services import awg3_clients
 
         return awg3_clients.create_client(
             client_name,
+            mode=mode,
             endpoint_host=awg3_clients.endpoint_from_env(),
             split_allowed_ips=awg3_clients.split_allowed_from_file(),
         )
@@ -1421,8 +1422,8 @@ class RemoteNodeAdapter(NodeAdapter):
     def awg3_list_clients(self) -> list[dict]:
         return self._request("GET", "/awg3/clients").get("clients", [])
 
-    def awg3_create_client(self, client_name: str) -> dict:
-        return self._request("POST", "/awg3/clients", json={"client_name": client_name})
+    def awg3_create_client(self, client_name: str, mode: str = "split") -> dict:
+        return self._request("POST", "/awg3/clients", json={"client_name": client_name, "mode": mode})
 
     def awg3_client_config(self, client_name: str) -> str:
         return self._request("GET", f"/awg3/clients/{client_name}/config")["config"]
