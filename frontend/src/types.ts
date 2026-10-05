@@ -2475,3 +2475,59 @@ export interface ServerRebootScheduleResponse extends ServerRebootPendingItem {
 export interface ServerRebootPendingResponse {
   items: ServerRebootPendingItem[]
 }
+
+export interface Awg3IfaceHealth {
+  label: string
+  name: string
+  port: number
+  subnet: string
+  conf_present: boolean
+  up: boolean
+}
+
+export interface Awg3HealthResponse {
+  tools_present: boolean
+  userspace_present: boolean
+  conf_dir: string
+  ifaces: Awg3IfaceHealth[]
+}
+
+export interface Awg3Peer {
+  public_key: string
+  allowed_ips: string
+  latest_handshake: number
+  rx: number
+  tx: number
+}
+
+export interface Awg3IfaceMonitoring {
+  name: string
+  up: boolean
+  peers: Awg3Peer[]
+}
+
+export interface Awg3MonitoringResponse {
+  ifaces: Record<string, Awg3IfaceMonitoring>
+}
+
+export interface Awg3Client {
+  name: string
+  ip: string
+  public_key: string
+}
+
+export interface Awg3ClientListResponse {
+  items: Awg3Client[]
+}
+
+export interface Awg3ClientCreated {
+  name: string
+  ip: string
+  public_key: string
+}
+
+export interface Awg3ClientConfigResponse {
+  name: string
+  filename: string
+  config: string
+}
