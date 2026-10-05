@@ -25,6 +25,8 @@ const ROUTER_META: Record<
   tplink_ovpn: { label: 'TP-Link', initial: 'T', hint: 'OpenVPN-маршруты' },
   keenetic_awg2: { label: 'Keenetic (AmneziaWG 2.0)', initial: 'K2', hint: 'AmneziaWG 2.0-маршруты' },
   mikrotik_awg2: { label: 'MikroTik (AmneziaWG 2.0)', initial: 'M2', hint: 'AmneziaWG 2.0-маршруты' },
+  keenetic_awg3: { label: 'Keenetic (AmneziaWG 3.0)', initial: 'K3', hint: 'AmneziaWG 3.0-маршруты' },
+  mikrotik_awg3: { label: 'MikroTik (AmneziaWG 3.0)', initial: 'M3', hint: 'AmneziaWG 3.0-маршруты' },
 }
 
 const PUBLIC_SLUGS: Record<string, string> = {
@@ -33,6 +35,8 @@ const PUBLIC_SLUGS: Record<string, string> = {
   tplink_ovpn: 'tplink',
   keenetic_awg2: 'keenetic-awg2',
   mikrotik_awg2: 'mikrotik-awg2',
+  keenetic_awg3: 'keenetic-awg3',
+  mikrotik_awg3: 'mikrotik-awg3',
 }
 
 function buildPublicRouteUrl(key: string): string | null {
