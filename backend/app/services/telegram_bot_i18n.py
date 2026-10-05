@@ -94,6 +94,7 @@ BTN_MENU_NODES = "🖥 Узлы"
 BTN_MENU_CIDR = "🗂 CIDR"
 BTN_MENU_WARPER = "🌐 WARP"
 BTN_MENU_AWG2 = "🛡️ AWG2"
+BTN_MENU_AWG3 = "🛡️ AWG3"
 BTN_MENU_UNLOCK_CODES = "🎟 Коды доступа"
 
 MENU_KEYBOARD_PLACEHOLDER = "Конфиги, статус или Ещё…"
@@ -111,6 +112,7 @@ MENU_ACTIONS: dict[str, str] = {
     BTN_MENU_CIDR: "cidr",
     BTN_MENU_WARPER: "warper",
     BTN_MENU_AWG2: "awg2",
+    BTN_MENU_AWG3: "awg3",
     # Старые подписи кнопок (до обновления меню)
     "🌐 AZ-WARP": "warper",
 }
@@ -181,6 +183,7 @@ HELP_ADMIN_NODES = "• /nodes — VPN-узлы (health, активация)"
 HELP_ADMIN_UNLOCK = "• /unlock — генерация unlock-ключа"
 HELP_ADMIN_WARPER = "• /warper — статус AZ-WARP"
 HELP_ADMIN_AWG2 = "• /awg2 — статус AZ-AWG2"
+HELP_ADMIN_AWG3 = "• /awg3 — статус AmneziaWG 3.0"
 HELP_ADMIN_SETTINGS = "/settings — настройки панели (inline-меню)"
 HELP_ADMIN_FOOTER = ""
 HELP_LINES = HELP_LINES_MAIN
