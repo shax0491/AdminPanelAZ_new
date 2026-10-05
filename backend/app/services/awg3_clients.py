@@ -246,18 +246,34 @@ def delete_client(name: str, *, store: Awg3Store | None = None, run: Runner | No
     store.save_clients(clients)
 
 
+SERVER_HOST_FILE = Path("/etc/amnezia/amneziawg/server_host")
+AWG2_CLIENT_TEMPLATE = Path("/etc/amneziawg/templates/antizapret2-client.conf")
+
+
 def endpoint_from_env() -> str:
+    """AWG3_ENDPOINT_HOST, else the server host written by the AWG 2.0 install (fresh installs need no env)."""
     host = os.environ.get("AWG3_ENDPOINT_HOST", "").strip()
+    if not host and SERVER_HOST_FILE.is_file():
+        host = SERVER_HOST_FILE.read_text(encoding="utf-8").strip()
     if not host:
-        raise Awg3ClientError("AWG3_ENDPOINT_HOST is not set on this node")
+        raise Awg3ClientError("server host unknown: set AWG3_ENDPOINT_HOST on this node")
     return host
 
 
 def split_allowed_from_file(path: str | None = None) -> list[str]:
+    """Antizapret route list: explicit file, else the AllowedIPs of the AWG 2.0 client template (fresh installs)."""
     file = Path(path or os.environ.get("AWG3_SPLIT_ALLOWED_FILE", "/etc/amnezia/amneziawg3/split-allowed.txt"))
-    if not file.is_file():
+    if file.is_file():
+        text = file.read_text(encoding="utf-8")
+    elif path is None and AWG2_CLIENT_TEMPLATE.is_file():
+        text = "\n".join(
+            line.split("=", 1)[1].replace(" ", "").replace(",", "\n")
+            for line in AWG2_CLIENT_TEMPLATE.read_text(encoding="utf-8").splitlines()
+            if line.startswith("AllowedIPs")
+        )
+    else:
         raise Awg3ClientError(f"split allowed-ips list not found: {file}")
-    items = [line.strip() for line in file.read_text(encoding="utf-8").splitlines() if line.strip()]
+    items = [line.strip() for line in text.splitlines() if line.strip()]
     if not items:
         raise Awg3ClientError("split allowed-ips list is empty")
     return items

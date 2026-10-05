@@ -153,3 +153,19 @@ def test_legacy_record_without_mode_is_split(store):
     store.save_clients(data)
     assert [c["mode"] for c in svc.list_clients(store)] == ["split"]
     assert "AllowedIPs = 10.9.0.0/24" in svc.get_client_config("old", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)
+
+
+def test_endpoint_falls_back_to_server_host_file(tmp_path, monkeypatch):
+    host_file = tmp_path / "server_host"
+    host_file.write_text("de9.example.org\n", encoding="utf-8")
+    monkeypatch.delenv("AWG3_ENDPOINT_HOST", raising=False)
+    monkeypatch.setattr(svc, "SERVER_HOST_FILE", host_file)
+    assert svc.endpoint_from_env() == "de9.example.org"
+
+
+def test_split_list_falls_back_to_awg2_template(tmp_path, monkeypatch):
+    tpl = tmp_path / "antizapret2-client.conf"
+    tpl.write_text("[Interface]\nAddress = 10.29.9.5/32\n\n[Peer]\nAllowedIPs = 1.1.1.1/32, 198.18.0.0/15\n", encoding="utf-8")
+    monkeypatch.delenv("AWG3_SPLIT_ALLOWED_FILE", raising=False)
+    monkeypatch.setattr(svc, "AWG2_CLIENT_TEMPLATE", tpl)
+    assert svc.split_allowed_from_file() == ["1.1.1.1/32", "198.18.0.0/15"]
