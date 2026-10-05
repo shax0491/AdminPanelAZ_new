@@ -35,6 +35,7 @@ export default function Awg3Page() {
   const [monitoring, setMonitoring] = useState<Awg3MonitoringResponse | null>(null)
   const [clients, setClients] = useState<Awg3Client[]>([])
   const [newName, setNewName] = useState('')
+  const [newMode, setNewMode] = useState<'split' | 'full'>('split')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -75,7 +76,7 @@ export default function Awg3Page() {
     setError(null)
     setNotice(null)
     try {
-      const created = await createAwg3Client(name)
+      const created = await createAwg3Client(name, newMode)
       setNewName('')
       setNotice(`Клиент «${created.name}» создан, IP ${created.ip}. Скачайте конфиг.`)
       await load()
@@ -155,7 +156,7 @@ export default function Awg3Page() {
       )}
 
       <section className="space-y-3">
-        <h2 className="text-lg font-medium">Клиенты (антизапрет, split)</h2>
+        <h2 className="text-lg font-medium">Клиенты</h2>
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex flex-col text-sm">
             Имя клиента
@@ -167,6 +168,17 @@ export default function Awg3Page() {
               maxLength={32}
             />
           </label>
+          <label className="flex flex-col text-sm">
+            Режим
+            <select
+              className="mt-1 h-10 rounded-md border border-input bg-background px-3"
+              value={newMode}
+              onChange={(e) => setNewMode(e.target.value as 'split' | 'full')}
+            >
+              <option value="split">Антизапрет (только заблокированное)</option>
+              <option value="full">Полный VPN (весь трафик)</option>
+            </select>
+          </label>
           <Button onClick={() => void onCreate()} disabled={busy || !newName.trim()}>
             Создать клиента
           </Button>
@@ -177,6 +189,7 @@ export default function Awg3Page() {
         {clients.map((c) => (
           <Card key={c.name}><CardContent className="flex flex-wrap items-center gap-4 p-4 text-sm">
             <span className="font-medium">{c.name}</span>
+            <Badge variant="outline">{c.mode === 'full' ? 'полный VPN' : 'антизапрет'}</Badge>
             <span className="font-mono">{c.ip}</span>
             <span>handshake: {formatHandshake(handshakeFor(c.public_key))}</span>
             <Button variant="outline" size="sm" onClick={() => void onDownload(c.name)}>

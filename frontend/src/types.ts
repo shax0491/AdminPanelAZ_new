@@ -2513,6 +2513,7 @@ export interface Awg3MonitoringResponse {
 export interface Awg3Client {
   name: string
   ip: string
+  mode: 'split' | 'full'
   public_key: string
 }
 

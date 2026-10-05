@@ -12,10 +12,10 @@ export async function listAwg3Clients() {
   return apiFetch<import('../types').Awg3ClientListResponse>('/awg3/clients')
 }
 
-export async function createAwg3Client(name: string) {
+export async function createAwg3Client(name: string, mode: 'split' | 'full' = 'split') {
   return apiFetch<import('../types').Awg3ClientCreated>('/awg3/clients', {
     method: 'POST',
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, mode }),
   })
 }
 
