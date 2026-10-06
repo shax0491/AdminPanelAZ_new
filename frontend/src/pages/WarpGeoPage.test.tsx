@@ -85,7 +85,7 @@ describe('WarpGeoPage mode switching', () => {
 
   it('switches the full VPN scope through the same confirmation', async () => {
     await openPage()
-    fireEvent.click(screen.getAllByRole('button', { name: 'Выключен' }).at(-1)!)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Выключен' }).slice(-1)[0])
     fireEvent.click(await screen.findByRole('button', { name: 'Сохранить и применить' }))
     await waitFor(() => expect(api.setWarpModes).toHaveBeenCalledWith(5, { vpn: '1' }))
     expect(api.applyWarpChanges).toHaveBeenCalledTimes(1)
