@@ -1,0 +1,17 @@
+[Unit]
+Description=AmneziaWG 3.0 interface %i
+# После antizapret.service: awg3-rules.sh использует цепочку ANTIZAPRET-WARP и интерфейсы warp-*, которые создаёт up.sh.
+# PartOf: любой перезапуск antizapret.service (панель, обновление, перезагрузка) перезапускает и AWG 3.1,
+# а awg3-rules.sh заново читает setup (адрес Proton, режим WARP). Так 3.1 не отстаёт от 1.5/2.0.
+After=network-online.target antizapret.service
+PartOf=antizapret.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/awg3-up.sh %i
+ExecStop=/usr/local/sbin/awg3-up.sh down %i
+
+[Install]
+WantedBy=multi-user.target

@@ -104,6 +104,13 @@ async def _node_agent_lifespan(_: FastAPI):
         awg3_clients.ensure_transport31()
     except Exception:
         pass
+    try:
+        # AmneziaWG 3.1 rules (WARP, DNS interception): scripts and unit come from the panel copy at every start.
+        from app.services import awg3_clients
+
+        awg3_clients.ensure_awg3_runtime()
+    except Exception:
+        pass
     yield
 
 

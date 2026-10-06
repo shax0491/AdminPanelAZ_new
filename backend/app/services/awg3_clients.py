@@ -454,6 +454,66 @@ def split_allowed_from_file(path: str | None = None) -> list[str]:
         raise Awg3ClientError("split allowed-ips list is empty")
     return items
 
+# Scripts and unit that run AWG 3.1 rules (WARP, DNS interception, NAT). The base AntiZapret setup copies them
+# once at install time; the panel keeps its own copy in node_agent/awg3_runtime and installs it at agent start,
+# so "Update node" alone delivers fixes. Keep these files identical to setup/root/antizapret/awg3 of the base repo.
+AWG3_RUNTIME_SRC = Path(__file__).resolve().parents[2] / "node_agent" / "awg3_runtime"
+AWG3_RUNTIME_FILES = (
+    ("awg3-rules.sh", Path("/usr/local/sbin/awg3-rules.sh"), 0o755),
+    ("awg3-up.sh", Path("/usr/local/sbin/awg3-up.sh"), 0o755),
+    ("awg3@.service", Path("/etc/systemd/system/awg3@.service"), 0o644),
+)
+
+
+def ensure_awg3_runtime(
+    store: "Awg3Store | None" = None,
+    *,
+    src_dir: Path | None = None,
+    files: tuple | None = None,
+    run: Callable | None = None,
+) -> dict:
+    """Install awg3-rules.sh, awg3-up.sh and awg3@.service from the panel copy when they differ. Idempotent.
+
+    Skipped when the AWG 3.1 layer is not installed (no awg1.conf). daemon-reload runs when the unit changed;
+    awg3@awg1 is restarted only when something changed, so repeated agent starts do nothing.
+    """
+    store = store or Awg3Store()
+    if not store.server_conf.is_file():
+        return {"skipped": True, "changed": [], "restarted": False, "error": None}
+    src_dir = src_dir or AWG3_RUNTIME_SRC
+    files = files or AWG3_RUNTIME_FILES
+    run = run or subprocess.run
+    changed: list[str] = []
+    for name, dest, mode in files:
+        source = src_dir / name
+        if not source.is_file():
+            continue
+        data = source.read_bytes()
+        if dest.is_file() and dest.read_bytes() == data:
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_name(dest.name + ".new")
+        tmp.write_bytes(data)
+        os.chmod(tmp, mode)
+        os.replace(tmp, dest)
+        changed.append(name)
+    if not changed:
+        return {"skipped": False, "changed": [], "restarted": False, "error": None}
+    logger.info("AWG 3.1 runtime files updated from the panel copy: %s", ", ".join(changed))
+    error = None
+    if "awg3@.service" in changed:
+        res = run(["systemctl", "daemon-reload"], capture_output=True, text=True, timeout=60, check=False)
+        if res.returncode != 0:
+            error = res.stderr.strip() or "systemctl daemon-reload failed"
+    if error is None:
+        res = run(["systemctl", "restart", UNIT], capture_output=True, text=True, timeout=60, check=False)
+        if res.returncode != 0:
+            error = res.stderr.strip() or f"systemctl restart {UNIT} failed"
+    if error:
+        logger.error("AWG 3.1 runtime files updated, but applying them failed: %s", error)
+    return {"skipped": False, "changed": changed, "restarted": error is None, "error": error}
+
+
 # Files that make up the AWG 3.1 layer; the backup archive carries nothing else.
 STATE_FILES = ("awg1.conf", "clients.json", "server.key", "server.pub", "split-allowed.txt", "mtu")
 STATE_BACKUP_KIND = "awg3-state"
