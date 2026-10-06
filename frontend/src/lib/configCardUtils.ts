@@ -374,6 +374,7 @@ export function getPolicyForConfig(
   if (!entry) return undefined
   if (config.vpn_type === 'openvpn') return entry.openvpn
   if (config.vpn_type === 'amneziawg2') return entry.amneziawg2 ?? entry.wireguard
+  if (config.vpn_type === 'amneziawg3') return entry.amneziawg3
   return entry.wireguard
 }
 

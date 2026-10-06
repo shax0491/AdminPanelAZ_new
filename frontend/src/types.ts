@@ -1656,6 +1656,7 @@ export interface ClientPoliciesResponseEntry {
   openvpn: ClientAccessPolicy
   wireguard: ClientAccessPolicy
   amneziawg2?: ClientAccessPolicy
+  amneziawg3?: ClientAccessPolicy
 }
 
 export interface FeatureToggleItem {

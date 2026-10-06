@@ -785,6 +785,14 @@ def awg3_set_access_until(
         details=f"{client_name} {payload.access_until.isoformat() if payload.access_until else 'null'}",
         remote_addr=request.client.host,
     )
+    _replicate_policy_after_success(
+        db,
+        client_name=client_name,
+        vpn_type=VpnType.amneziawg3,
+        op="set_access_until",
+        actor=user.username,
+        access_until=payload.access_until,
+    )
     return result
 
 
@@ -810,6 +818,14 @@ def awg3_temp_block(payload: BlockRequest, request: Request, db: Session = Depen
         details=f"{payload.client_name} {payload.days}d",
         remote_addr=request.client.host,
     )
+    _replicate_policy_after_success(
+        db,
+        client_name=payload.client_name,
+        vpn_type=VpnType.amneziawg3,
+        op="block_temp",
+        actor=user.username,
+        days=payload.days,
+    )
     return result
 
 
@@ -825,6 +841,13 @@ def awg3_perm_block(payload: BlockRequest, request: Request, db: Session = Depen
         details=payload.client_name,
         remote_addr=request.client.host,
     )
+    _replicate_policy_after_success(
+        db,
+        client_name=payload.client_name,
+        vpn_type=VpnType.amneziawg3,
+        op="block_permanent",
+        actor=user.username,
+    )
     return result
 
 
@@ -839,6 +862,13 @@ def awg3_unblock(payload: BlockRequest, request: Request, db: Session = Depends(
         username=user.username,
         details=payload.client_name,
         remote_addr=request.client.host,
+    )
+    _replicate_policy_after_success(
+        db,
+        client_name=payload.client_name,
+        vpn_type=VpnType.amneziawg3,
+        op="unblock",
+        actor=user.username,
     )
     return result
 

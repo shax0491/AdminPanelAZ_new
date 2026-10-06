@@ -611,6 +611,16 @@ class LocalNodeAdapter(NodeAdapter):
 
         return awg3_clients.suspend_client(client_name)
 
+    def awg3_get_server_host(self) -> str | None:
+        from app.services import awg3_clients
+
+        return awg3_clients.get_server_host()
+
+    def awg3_set_server_host(self, host: str) -> str:
+        from app.services import awg3_clients
+
+        return awg3_clients.set_server_host(host)
+
     def awg3_unsuspend_client(self, client_name: str) -> bool:
         from app.services import awg3_clients
 
@@ -1454,6 +1464,12 @@ class RemoteNodeAdapter(NodeAdapter):
 
     def awg3_suspend_client(self, client_name: str) -> bool:
         return bool(self._request("POST", f"/awg3/clients/{client_name}/suspend").get("changed"))
+
+    def awg3_get_server_host(self) -> str | None:
+        return self._request("GET", "/awg3/server-host").get("host")
+
+    def awg3_set_server_host(self, host: str) -> str:
+        return self._request("POST", "/awg3/server-host", json={"host": host}).get("host", host)
 
     def awg3_unsuspend_client(self, client_name: str) -> bool:
         return bool(self._request("POST", f"/awg3/clients/{client_name}/unsuspend").get("changed"))

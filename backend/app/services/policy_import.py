@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.models import AmneziaWg2AccessPolicy, Node, OpenVpnAccessPolicy, VpnType, WgAccessPolicy
+from app.models import AmneziaWg2AccessPolicy, AmneziaWg3AccessPolicy, Node, OpenVpnAccessPolicy, VpnType, WgAccessPolicy
 
 _OVPN_POLICY_FIELDS = (
     "access_until",
@@ -30,6 +30,17 @@ _WG_POLICY_FIELDS = (
     "block_until",
     "traffic_limit_bytes",
     "traffic_limit_period_days",
+    "updated_by",
+)
+
+_AWG3_POLICY_FIELDS = (
+    "access_until",
+    "is_temp_blocked",
+    "is_permanent_blocked",
+    "block_reason",
+    "block_started_at",
+    "block_days",
+    "block_until",
     "updated_by",
 )
 
@@ -157,6 +168,20 @@ def copy_single_client_policy(
             db.add(target)
             copied = 1
         _copy_policy_row(source, target, _AWG2_POLICY_FIELDS)
+        db.flush()
+        return copied
+
+    if vpn_type == VpnType.amneziawg3:
+        name = client_name.strip()
+        source = db.query(AmneziaWg3AccessPolicy).filter_by(node_id=source_node.id, client_name=name).first()
+        if source is None:
+            return 0
+        target = db.query(AmneziaWg3AccessPolicy).filter_by(node_id=target_node.id, client_name=name).first()
+        if target is None:
+            target = AmneziaWg3AccessPolicy(node_id=target_node.id, client_name=name)
+            db.add(target)
+            copied = 1
+        _copy_policy_row(source, target, _AWG3_POLICY_FIELDS)
         db.flush()
         return copied
 

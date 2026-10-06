@@ -76,6 +76,25 @@ def state_of(row: AmneziaWg3AccessPolicy, now: datetime | None = None) -> dict[s
     }
 
 
+def policy_view(db: Session, node_id: int, client_name: str, now: datetime | None = None) -> dict[str, Any]:
+    """Block state for the client list (same keys the UI reads for AmneziaWG 2.0)."""
+    row = get_row(db, node_id, client_name)
+    if row is None:
+        return {
+            "is_blocked": False,
+            "block_mode": "none",
+            "block_reason": None,
+            "access_expired": False,
+            "access_until": None,
+            "blocked_days_left": None,
+            "block_duration_days": None,
+            "block_until": None,
+            "traffic_limit_exceeded": False,
+        }
+    state = state_of(row, now)
+    return {**state, "block_reason": row.block_reason, "traffic_limit_exceeded": False}
+
+
 def reconcile(
     db: Session,
     node: Node,

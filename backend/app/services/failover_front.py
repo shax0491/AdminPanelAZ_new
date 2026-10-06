@@ -36,10 +36,10 @@ from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.models import FailoverPool, FailoverPoolMember, FailoverPoolStrategy, Node, NodeStatus
+from app.models import FailoverPool, FailoverPoolMember, FailoverPoolStrategy, Node, NodeStatus, VpnType
 from app.services.failover_pool import NATIVE_AWG2_IFACE
 from app.services.node_manager import get_adapter_for_node, get_proxy_adapter
-from app.services.node_sync.vpn_state_sync import sync_amneziawg2_state_from_primary
+from app.services.node_sync.vpn_state_sync import sync_amneziawg2_state_from_primary, sync_amneziawg3_state_from_primary
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +118,26 @@ def front_endpoint(pool: FailoverPool) -> str | None:
     return f"{pool.front_node.host}:{pool.front_port}"
 
 
+def awg3_front_host(pool: FailoverPool) -> str | None:
+    """AmneziaWG 3.0 clients connect to the front's host; the random client port is forwarded by the front."""
+    if pool.front_node_id is None or pool.front_node is None:
+        return None
+    return pool.front_node.host
+
+
+def rewrite_member_awg3_client_endpoints(pool: FailoverPool, member: FailoverPoolMember) -> int:
+    """Point AmneziaWG 3.0 client profiles on ``member`` at the pool's front host (best-effort)."""
+    host = awg3_front_host(pool)
+    if host is None:
+        return 0
+    try:
+        get_adapter_for_node(member.node).awg3_set_server_host(host)
+        return 1
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("rewrite_member_awg3_client_endpoints: pool %s member %s failed: %s", pool.id, member.node.name, exc)
+        return 0
+
+
 def rewrite_member_client_endpoints(pool: FailoverPool, member: FailoverPoolMember) -> int:
     """Point every AmneziaWG 2.0 client profile on ``member`` at the pool's
     front instead of wherever client.sh normally wrote (that member's own
@@ -125,6 +145,8 @@ def rewrite_member_client_endpoints(pool: FailoverPool, member: FailoverPoolMemb
     existing file is a correctness footgun for the *next* download, not a
     reason to fail whatever the caller (assign front / clone identity) was
     actually doing."""
+    if pool.vpn_type == VpnType.amneziawg3:
+        return rewrite_member_awg3_client_endpoints(pool, member)
     endpoint = front_endpoint(pool)
     if endpoint is None:
         return 0
@@ -146,6 +168,13 @@ def restore_member_client_endpoint(member: FailoverPoolMember) -> int:
     disk, with no idea pools exist) kept serving that dead Endpoint forever,
     and re-syncing configs couldn't fix it since the file itself was wrong."""
     node = member.node
+    if member.pool is not None and member.pool.vpn_type == VpnType.amneziawg3:
+        try:
+            get_adapter_for_node(node).awg3_set_server_host(node.host)
+            return 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("restore_member_client_endpoint (awg3): member %s failed: %s", node.name, exc)
+            return 0
     try:
         adapter = get_adapter_for_node(node)
         conf = adapter.read_amneziawg2_server_config(NATIVE_AWG2_IFACE)
@@ -182,6 +211,17 @@ def mirror_member_identity(db: Session, pool: FailoverPool, member: FailoverPool
 
     primary_adapter = get_adapter_for_node(primary.node)
     member_adapter = get_adapter_for_node(member.node)
+    if pool.vpn_type == VpnType.amneziawg3:
+        try:
+            sync_amneziawg3_state_from_primary(primary_adapter, member_adapter)
+        except Exception as exc:
+            raise FailoverFrontError(
+                f"Клонирование AmneziaWG 3.0 на {member.node.name} не удалось: {exc}"
+            ) from exc
+        rewrite_member_awg3_client_endpoints(pool, member)
+        member.identity_mirrored_at = datetime.utcnow()
+        db.commit()
+        return
     try:
         sync_amneziawg2_state_from_primary(
             primary_adapter, member_adapter, db=db, replica_node=member.node

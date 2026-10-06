@@ -18,6 +18,9 @@ import {
   awg2PermanentBlock,
   awg2TempBlock,
   awg2Unblock,
+  awg3PermanentBlock,
+  awg3TempBlock,
+  awg3Unblock,
   ApiError,
   createOneTimeLink,
   deleteConfig,
@@ -454,6 +457,7 @@ export default function ClientActionsDialog({
   const azFile = pickAzFile(config, tab)
   const isOpenVpn = config.vpn_type === 'openvpn'
   const isAwg2 = config.vpn_type === 'amneziawg2'
+  const isAwg3 = config.vpn_type === 'amneziawg3'
   const isBlocked = policy?.is_blocked ?? false
   const blockMode = (policy?.block_mode || 'none').toLowerCase()
   const blockReason = (policy?.block_reason || '').toLowerCase()
@@ -810,7 +814,7 @@ export default function ClientActionsDialog({
             ),
         },
       ]
-    : isAwg2
+    : isAwg2 || isAwg3
       ? [
           {
             key: 'temp-block',
@@ -823,7 +827,7 @@ export default function ClientActionsDialog({
                 `Укажите срок блокировки для клиента «${config.client_name}»`,
                 '7',
                 async (days) => {
-                  await awg2TempBlock(config.client_name, days)
+                  await (isAwg3 ? awg3TempBlock : awg2TempBlock)(config.client_name, days)
                   onNotifySuccess('Клиент временно заблокирован')
                 },
               ),
@@ -836,7 +840,7 @@ export default function ClientActionsDialog({
             hidden: !canManage || !['temp', 'permanent', 'access_expired'].includes(blockMode) || haReplicaReadonly,
             onClick: () =>
               runAction('unblock', async () => {
-                await awg2Unblock(config.client_name)
+                await (isAwg3 ? awg3Unblock : awg2Unblock)(config.client_name)
                 onNotifySuccess(
                   blockMode === 'access_expired'
                     ? 'Блокировка снята временно; при истёкшем доступе воркер снова отключит'
@@ -848,7 +852,7 @@ export default function ClientActionsDialog({
             key: 'traffic-limit',
             label: 'Лимит трафика',
             icon: <Gauge size={14} />,
-            hidden: !canManage || haReplicaReadonly,
+            hidden: !canManage || haReplicaReadonly || isAwg3,
             onClick: () => {
               setLimitValue('10')
               setLimitUnit('GB')
@@ -972,8 +976,8 @@ export default function ClientActionsDialog({
           async () => {
             if (isOpenVpn) {
               await openvpnPermanentBlock(config.client_name)
-            } else if (isAwg2) {
-              await awg2PermanentBlock(config.client_name)
+            } else if (isAwg2 || isAwg3) {
+              await (isAwg3 ? awg3PermanentBlock : awg2PermanentBlock)(config.client_name)
             } else {
               await wgPermanentBlock(config.client_name)
             }

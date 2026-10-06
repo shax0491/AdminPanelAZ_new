@@ -121,6 +121,27 @@ def _apply_policy_op(
             )
         raise ValueError(f"Unsupported AmneziaWG2 policy op: {op}")
 
+    if primary_config.vpn_type == VpnType.amneziawg3:
+        from app.services import awg3_access
+
+        node = svc.db.get(Node, svc.node_id)
+        if op == "block_temp":
+            return awg3_access.set_temp_block(svc.db, node, client_name, int(kwargs["days"]), actor=actor)
+        if op == "block_permanent":
+            return awg3_access.set_permanent_block(svc.db, node, client_name, actor=actor)
+        if op == "unblock":
+            return awg3_access.unblock(svc.db, node, client_name, actor=actor)
+        if op == "set_access_until":
+            return set_policy_access_until(
+                svc.db,
+                "amneziawg3",
+                svc.node_id,
+                client_name,
+                kwargs.get("access_until"),
+                actor=actor,
+            )
+        raise ValueError(f"Unsupported AmneziaWG3 policy op: {op}")
+
     if op == "set_wg_expiry":
         return svc.wg_set_expiry(
             client_name,

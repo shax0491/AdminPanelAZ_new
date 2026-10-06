@@ -517,6 +517,20 @@ def awg3_unsuspend_client_endpoint(client_name: str, _: None = Depends(verify_ap
     return {"name": client_name, "suspended": False, "changed": changed}
 
 
+class Awg3ServerHostRequest(BaseModel):
+    host: str
+
+
+@app.get("/awg3/server-host")
+def awg3_get_server_host_endpoint(_: None = Depends(verify_api_key)):
+    return {"host": _awg3.get_server_host()}
+
+
+@app.post("/awg3/server-host")
+def awg3_set_server_host_endpoint(payload: Awg3ServerHostRequest, _: None = Depends(verify_api_key)):
+    return {"host": _awg3_call(_awg3.set_server_host, payload.host)}
+
+
 @app.post("/awg3/backup")
 def awg3_backup_endpoint(_: None = Depends(verify_api_key)):
     return Response(

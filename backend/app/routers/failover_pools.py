@@ -111,11 +111,11 @@ def list_pools(db: Session = Depends(get_db), _: User = Depends(require_admin)):
 
 @router.post("", response_model=FailoverPoolResponse, status_code=status.HTTP_201_CREATED)
 def create_pool(payload: FailoverPoolCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
-    if payload.vpn_type != "amneziawg2":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Пока поддерживается только AmneziaWG 2.0")
+    if payload.vpn_type not in ("amneziawg2", "amneziawg3"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Поддерживаются AmneziaWG 2.0 и AmneziaWG 3.0")
     pool = FailoverPool(
         name=payload.name,
-        vpn_type=VpnType.amneziawg2,
+        vpn_type=VpnType(payload.vpn_type),
         mode=payload.mode,
         strategy=payload.strategy,
         health_check_target=payload.health_check_target,

@@ -81,6 +81,27 @@ export async function awg2Unblock(clientName: string) {
   })
 }
 
+export async function awg3TempBlock(clientName: string, days: number) {
+  return apiFetch('/client-access/amneziawg3/temp-block', {
+    method: 'POST',
+    body: JSON.stringify({ client_name: clientName, days }),
+  })
+}
+
+export async function awg3Unblock(clientName: string) {
+  return apiFetch('/client-access/amneziawg3/unblock', {
+    method: 'POST',
+    body: JSON.stringify({ client_name: clientName }),
+  })
+}
+
+export async function awg3PermanentBlock(clientName: string) {
+  return apiFetch('/client-access/amneziawg3/permanent-block', {
+    method: 'POST',
+    body: JSON.stringify({ client_name: clientName }),
+  })
+}
+
 export async function awg2PermanentBlock(clientName: string) {
   return apiFetch('/client-access/amneziawg2/permanent-block', {
     method: 'POST',

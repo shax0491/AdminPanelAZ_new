@@ -1100,13 +1100,19 @@ class AccessPolicyService:
             })
         return self._wg_state(row)
 
+    def _awg3_policy(self, client_name: str) -> dict:
+        from app.services import awg3_access
+
+        return awg3_access.policy_view(self.db, self._require_node_id(), client_name)
+
     def get_all_policies(self, client_names: list[str]) -> dict[str, dict]:
         result: dict[str, dict] = {}
         for name in client_names:
             ovpn = self.get_openvpn_policy(name)
             wg = self.get_wg_policy(name)
             awg2 = self.get_awg2_policy(name)
-            result[name] = {"openvpn": ovpn, "wireguard": wg, "amneziawg2": awg2}
+            awg3 = self._awg3_policy(name)
+            result[name] = {"openvpn": ovpn, "wireguard": wg, "amneziawg2": awg2, "amneziawg3": awg3}
         return result
 
     def reconcile_all_wg_policies(

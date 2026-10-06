@@ -358,6 +358,24 @@ SERVER_HOST_FILE = AWG3_CONF_DIR / "server_host"
 ANTIZAPRET_IPS_FILE = Path("/etc/wireguard/ips")
 
 
+def get_server_host() -> str | None:
+    """Host written into client Endpoint lines (the node's own address, or a failover front)."""
+    if SERVER_HOST_FILE.is_file():
+        return SERVER_HOST_FILE.read_text(encoding="utf-8").strip() or None
+    return None
+
+
+def set_server_host(host: str) -> str:
+    """Point new and refreshed client profiles at ``host`` (used by failover fronts)."""
+    host = (host or "").strip()
+    if not host or any(ch.isspace() for ch in host) or "/" in host:
+        raise Awg3ClientError("server host must be a bare host name or IP")
+    SERVER_HOST_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SERVER_HOST_FILE.write_text(host + "\n", encoding="utf-8")
+    SERVER_HOST_FILE.chmod(0o644)
+    return host
+
+
 def endpoint_from_env() -> str:
     """AWG3_ENDPOINT_HOST, else the server_host file written by setup.sh."""
     host = os.environ.get("AWG3_ENDPOINT_HOST", "").strip()
