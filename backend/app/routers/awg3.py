@@ -1,6 +1,6 @@
-"""AmneziaWG 3.0 endpoints, separate from /awg2.
+"""AmneziaWG 3.1 endpoints, separate from /awg2.
 
-Everything goes through the active node's adapter: the AWG 3.0 interface lives
+Everything goes through the active node's adapter: the AWG 3.1 interface lives
 on the node (DE2, NL1, ...), not on the panel host.
 """
 

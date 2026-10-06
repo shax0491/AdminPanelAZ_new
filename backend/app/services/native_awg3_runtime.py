@@ -1,4 +1,4 @@
-"""AmneziaWG 3.0 (userspace amneziawg-go) runtime for the panel.
+"""AmneziaWG 3.1 (userspace amneziawg-go) runtime for the panel.
 
 Separate from AWG 2.0 (native_awg2_runtime.py): own interface names, own
 config directory, own subnet, own systemd unit (awg3@<iface>). Read-only in this
@@ -20,10 +20,13 @@ AWG3_IFACES = {
 }
 AWG3_SUBNET = {"split": "10.9.0.0/24"}
 AWG3_PORT = {"split": 51821}
+# AmneziaWG 3.1 transport protection: shared by server and clients, so the client copies them from
+# awg1.conf (never generated per client - a per-client value would break the handshake).
+AWG31_TRANSPORT_KEYS = ("HeaderProtectionKey", "ContentPaddingAddition", "RandomTrailers", "DisableCookies")
 AWG3_OBFUSCATION_KEYS = (
     "Jc", "Jmin", "Jmax", "S1", "S2", "S3", "S4",
-    "H1", "H2", "H3", "H4", "HeaderProtectionKey",
-)
+    "H1", "H2", "H3", "H4",
+) + AWG31_TRANSPORT_KEYS
 
 
 def _run(args: list[str]) -> str:
@@ -38,7 +41,7 @@ def _iface_up(name: str) -> bool:
 
 
 def get_awg3_health() -> dict[str, Any]:
-    """Binary/config presence and per-interface state for the AWG 3.0 tab."""
+    """Binary/config presence and per-interface state for the AWG 3.1 tab."""
     tools_ok = shutil.which("awg") is not None
     go_ok = shutil.which("amneziawg-go") is not None
     ifaces = []
@@ -80,7 +83,7 @@ def _registry_by_public_key() -> dict[str, tuple[str, dict]]:
 
 
 def get_awg3_monitoring() -> dict[str, Any]:
-    """Peers per AWG 3.0 interface, plus `clients` shaped like AWG 2.0 monitoring.
+    """Peers per AWG 3.1 interface, plus `clients` shaped like AWG 2.0 monitoring.
 
     `clients` items carry the registry name, handshake age in seconds and the
     split/full mode, so the panel maps them to traffic and online status the

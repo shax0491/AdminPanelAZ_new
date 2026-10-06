@@ -1,4 +1,4 @@
-"""AmneziaWG 3.0 access policy: deadline, temporary and permanent blocks.
+"""AmneziaWG 3.1 access policy: deadline, temporary and permanent blocks.
 
 Same states and block reasons as AmneziaWG 2.0 (see access_policy.py), without traffic
 limits. A block is applied on the node: the peer is removed from awg1 on suspend and

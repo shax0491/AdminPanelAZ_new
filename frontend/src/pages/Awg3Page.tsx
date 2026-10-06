@@ -27,7 +27,7 @@ export default function Awg3Page() {
       setHealth(h)
       setMonitoring(m)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось загрузить AmneziaWG 3.0')
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить AmneziaWG 3.1')
     } finally {
       setLoading(false)
     }
@@ -40,13 +40,13 @@ export default function Awg3Page() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">AmneziaWG 3.0</h1>
+        <h1 className="text-2xl font-semibold">AmneziaWG 3.1</h1>
         <Button variant="outline" onClick={() => void load()} disabled={loading}>
           Обновить
         </Button>
       </div>
       <p className="text-sm text-muted-foreground">
-        Статус и мониторинг интерфейса awg1. Клиентов AWG 3.0 создают на странице «Клиенты» (протокол AmneziaWG 3.0, режим антизапрет или полный VPN).
+        Статус и мониторинг интерфейса awg1. Клиентов AWG 3.1 создают на странице «Клиенты» (протокол AmneziaWG 3.1, режим антизапрет или полный VPN).
       </p>
 
       {error && <SettingsAlert variant="danger">{error}</SettingsAlert>}
@@ -88,7 +88,7 @@ export default function Awg3Page() {
         <section className="space-y-2">
           <h2 className="text-lg font-medium">Пиры</h2>
           {Object.values(monitoring.ifaces).every((i) => i.peers.length === 0) && !loading && (
-            <div className="text-sm text-muted-foreground">Клиентов AWG 3.0 пока нет.</div>
+            <div className="text-sm text-muted-foreground">Клиентов AWG 3.1 пока нет.</div>
           )}
           {Object.values(monitoring.ifaces).flatMap((iface) =>
             iface.peers.map((peer) => (

@@ -230,10 +230,10 @@ FEATURE_TOGGLES: tuple[FeatureToggleDefinition, ...] = (
     FeatureToggleDefinition(
         key="awg3",
         env_key="FEATURE_AWG3_ENABLED",
-        label="AmneziaWG 3.0",
-        description="Статус и мониторинг пиров AmneziaWG 3.0 (отдельный интерфейс awg1, userspace amneziawg-go).",
+        label="AmneziaWG 3.1",
+        description="Статус и мониторинг пиров AmneziaWG 3.1 (отдельный интерфейс awg1, userspace amneziawg-go).",
         icon="🧬",
-        disable_hint="Раздел AmneziaWG 3.0 и связанные API станут недоступны.",
+        disable_hint="Раздел AmneziaWG 3.1 и связанные API станут недоступны.",
         resource_impact_level="minimal",
         default=False,
         group="app_module",

@@ -405,7 +405,7 @@ class AmneziaWg2AccessPolicy(Base):
 
 
 class AmneziaWg3AccessPolicy(Base):
-    """AmneziaWG 3.0 deadline and blocks (same states as AWG 2.0, no traffic limit)."""
+    """AmneziaWG 3.1 deadline and blocks (same states as AWG 2.0, no traffic limit)."""
 
     __tablename__ = "amneziawg3_access_policies"
     __table_args__ = (UniqueConstraint("node_id", "client_name", name="uq_awg3_access_node_client"),)

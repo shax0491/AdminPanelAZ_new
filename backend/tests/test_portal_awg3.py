@@ -1,4 +1,4 @@
-"""Client portal shows AmneziaWG 3.0 profiles the same way as AmneziaWG 2.0."""
+"""Client portal shows AmneziaWG 3.1 profiles the same way as AmneziaWG 2.0."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def test_awg3_portal_entries_come_from_registry_mode():
     entries = portal._awg3_portal_entries(adapter, "ivan")
     assert entries == [{
         "path": "awg3:ivan",
-        "name": "AmneziaWG 3.0 (полный VPN)",
+        "name": "AmneziaWG 3.1 (полный VPN)",
         "protocol": "amneziawg3",
         "variant": "vpn",
     }]

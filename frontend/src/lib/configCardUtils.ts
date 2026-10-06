@@ -73,7 +73,7 @@ export function protocolLabel(tab: ProtocolTab): string {
   if (tab === 'openvpn') return 'OpenVPN'
   if (tab === 'amneziawg') return 'AmneziaWG'
   if (tab === 'amneziawg2') return 'AmneziaWG 2.0'
-  if (tab === 'amneziawg3') return 'AmneziaWG 3.0'
+  if (tab === 'amneziawg3') return 'AmneziaWG 3.1'
   return 'WireGuard'
 }
 

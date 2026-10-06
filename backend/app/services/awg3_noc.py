@@ -1,4 +1,4 @@
-"""Map AmneziaWG 3.0 monitoring clients into WireGuardPeer for traffic and online surfaces.
+"""Map AmneziaWG 3.1 monitoring clients into WireGuardPeer for traffic and online surfaces.
 
 Same mapping as AmneziaWG 2.0 (see awg2_noc): the node reports handshake age per client,
 and the peer's interface label carries the mode, so the collector names profiles
@@ -28,7 +28,7 @@ def peers_from_awg3_monitoring(payload: dict) -> list[WireGuardPeer]:
 
 
 def fetch_awg3_peers_for_adapter(adapter: Any) -> list[WireGuardPeer]:
-    """AWG 3.0 peers from a node adapter; [] on missing interface or errors."""
+    """AWG 3.1 peers from a node adapter; [] on missing interface or errors."""
     try:
         return peers_from_awg3_monitoring(adapter.awg3_monitoring())
     except Exception:

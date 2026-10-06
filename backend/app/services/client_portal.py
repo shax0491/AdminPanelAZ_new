@@ -645,14 +645,14 @@ AWG3_PORTAL_PATH_PREFIX = "awg3:"
 
 
 def _awg3_portal_entries(adapter, client_name: str) -> list[dict]:
-    """One portal file per AWG 3.0 client; the content comes from the node registry (virtual path)."""
+    """One portal file per AWG 3.1 client; the content comes from the node registry (virtual path)."""
     record = next((c for c in adapter.awg3_list_clients() if c.get("name") == client_name), None)
     if record is None:
         return []
     split = record.get("mode", "split") == "split"
     return [{
         "path": f"{AWG3_PORTAL_PATH_PREFIX}{client_name}",
-        "name": "AmneziaWG 3.0 (антизапрет)" if split else "AmneziaWG 3.0 (полный VPN)",
+        "name": "AmneziaWG 3.1 (антизапрет)" if split else "AmneziaWG 3.1 (полный VPN)",
         "protocol": "amneziawg3",
         "variant": "antizapret" if split else "vpn",
     }]

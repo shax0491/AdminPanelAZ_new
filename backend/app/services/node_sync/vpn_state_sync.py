@@ -411,14 +411,14 @@ def _mirror_amneziawg2_server_configs(primary_adapter, replica_adapter) -> None:
 
 
 def sync_amneziawg3_state_from_primary(primary_adapter, replica_adapter) -> dict:
-    """Copy the AmneziaWG 3.0 layer (awg1.conf, keys, client registry incl. suspended flags) to the replica.
+    """Copy the AmneziaWG 3.1 layer (awg1.conf, keys, client registry incl. suspended flags) to the replica.
 
     The layer is the same archive the panel backup uses, so suspended peers stay suspended on the
     replica and the replica restarts awg3@awg1 with the primary's peers and keys.
     """
     archive = primary_adapter.export_awg3_backup()
     if not archive:
-        raise RuntimeError("Пустой архив AmneziaWG 3.0 с primary")
+        raise RuntimeError("Пустой архив AmneziaWG 3.1 с primary")
     result = replica_adapter.restore_awg3_backup(archive)
     if result.get("success") is False:
         errors = result.get("errors") or []

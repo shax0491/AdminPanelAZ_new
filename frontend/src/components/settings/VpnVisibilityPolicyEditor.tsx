@@ -25,7 +25,7 @@ const PROTOCOL_OPTIONS = [
   { key: 'wireguard', label: 'WireGuard' },
   { key: 'amneziawg', label: 'AmneziaWG' },
   { key: 'amneziawg2', label: 'AmneziaWG 2.0' },
-  { key: 'amneziawg3', label: 'AmneziaWG 3.0' },
+  { key: 'amneziawg3', label: 'AmneziaWG 3.1' },
 ] as const
 
 function toggleValue(list: string[], key: string, checked: boolean): string[] {

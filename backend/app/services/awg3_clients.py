@@ -1,4 +1,4 @@
-"""AmneziaWG 3.0 client lifecycle for interface awg1.
+"""AmneziaWG 3.1 client lifecycle for interface awg1.
 
 Two modes on the same interface, each with its own subnet and DNS:
 - split: antizapret, subnet 10.9.0.0/24, DNS 10.9.0.1, AllowedIPs = list of blocked
@@ -106,7 +106,7 @@ def _validate_name(name: str) -> None:
 def _random_port(used: set[int]) -> int:
     free = [p for p in range(PORT_RANGE[0], PORT_RANGE[1] + 1) if p not in used]
     if not free:
-        raise Awg3ClientError("no free client ports left in the AWG 3.0 range")
+        raise Awg3ClientError("no free client ports left in the AWG 3.1 range")
     return secrets.choice(free)
 
 
@@ -398,14 +398,14 @@ def split_allowed_from_file(path: str | None = None) -> list[str]:
         raise Awg3ClientError("split allowed-ips list is empty")
     return items
 
-# Files that make up the AWG 3.0 layer; the backup archive carries nothing else.
+# Files that make up the AWG 3.1 layer; the backup archive carries nothing else.
 STATE_FILES = ("awg1.conf", "clients.json", "server.key", "server.pub", "split-allowed.txt", "mtu")
 STATE_BACKUP_KIND = "awg3-state"
 UNIT = f"awg3@{IFACE}"
 
 
 def export_state_archive(conf_dir: Path = AWG3_CONF_DIR) -> bytes:
-    """tar.gz of the AWG 3.0 layer (server keys, awg1.conf, client registry, split list)."""
+    """tar.gz of the AWG 3.1 layer (server keys, awg1.conf, client registry, split list)."""
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
         for name in STATE_FILES:
@@ -420,9 +420,9 @@ def export_state_archive(conf_dir: Path = AWG3_CONF_DIR) -> bytes:
 
 
 def import_state_archive(data: bytes, conf_dir: Path = AWG3_CONF_DIR) -> None:
-    """Replace the AWG 3.0 layer with an archive made by export_state_archive."""
+    """Replace the AWG 3.1 layer with an archive made by export_state_archive."""
     if not data:
-        raise Awg3ClientError("empty AWG 3.0 backup")
+        raise Awg3ClientError("empty AWG 3.1 backup")
     with tempfile.TemporaryDirectory(prefix="awg3-restore-") as temp_dir:
         temp_root = Path(temp_dir)
         try:
@@ -430,16 +430,16 @@ def import_state_archive(data: bytes, conf_dir: Path = AWG3_CONF_DIR) -> None:
                 members = archive.getmembers()
                 for member in members:
                     if not member.isfile() or member.name not in (*STATE_FILES, "MANIFEST"):
-                        raise Awg3ClientError(f"unexpected member in AWG 3.0 backup: {member.name}")
+                        raise Awg3ClientError(f"unexpected member in AWG 3.1 backup: {member.name}")
                 archive.extractall(path=temp_root, members=members, filter="data")
         except tarfile.TarError as exc:
-            raise Awg3ClientError(f"invalid AWG 3.0 backup: {exc}") from exc
+            raise Awg3ClientError(f"invalid AWG 3.1 backup: {exc}") from exc
 
         manifest = temp_root / "MANIFEST"
         if not manifest.is_file() or manifest.read_text(encoding="utf-8").strip() != STATE_BACKUP_KIND:
-            raise Awg3ClientError(f"AWG 3.0 backup MANIFEST kind must be {STATE_BACKUP_KIND}")
+            raise Awg3ClientError(f"AWG 3.1 backup MANIFEST kind must be {STATE_BACKUP_KIND}")
         if not (temp_root / "awg1.conf").is_file():
-            raise Awg3ClientError("AWG 3.0 backup has no awg1.conf")
+            raise Awg3ClientError("AWG 3.1 backup has no awg1.conf")
 
         conf_dir.mkdir(parents=True, exist_ok=True)
         for name in STATE_FILES:

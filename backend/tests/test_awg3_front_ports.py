@@ -1,4 +1,4 @@
-"""Failover front for AmneziaWG 3.0: the whole client UDP range 51900-51999 follows the active member."""
+"""Failover front for AmneziaWG 3.1: the whole client UDP range 51900-51999 follows the active member."""
 
 import pytest
 

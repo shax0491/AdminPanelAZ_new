@@ -95,7 +95,7 @@ def require_front(pool: FailoverPool) -> tuple[Node, int]:
     if pool.strategy != FailoverPoolStrategy.dnat_front:
         raise FailoverFrontError("Пул не в режиме dnat_front")
     is_awg3 = pool.vpn_type == VpnType.amneziawg3
-    # AmneziaWG 3.0 fronts forward a fixed client range (51900-51999), so the pool has no port of its own.
+    # AmneziaWG 3.1 fronts forward a fixed client range (51900-51999), so the pool has no port of its own.
     if pool.front_node_id is None or (pool.front_port is None and not is_awg3):
         raise FailoverFrontError("У пула не задан фронт-узел и/или порт")
     front = pool.front_node
@@ -121,14 +121,14 @@ def front_endpoint(pool: FailoverPool) -> str | None:
 
 
 def awg3_front_host(pool: FailoverPool) -> str | None:
-    """AmneziaWG 3.0 clients connect to the front's host; the random client port is forwarded by the front."""
+    """AmneziaWG 3.1 clients connect to the front's host; the random client port is forwarded by the front."""
     if pool.front_node_id is None or pool.front_node is None:
         return None
     return pool.front_node.host
 
 
 def rewrite_member_awg3_client_endpoints(pool: FailoverPool, member: FailoverPoolMember) -> int:
-    """Point AmneziaWG 3.0 client profiles on ``member`` at the pool's front host (best-effort)."""
+    """Point AmneziaWG 3.1 client profiles on ``member`` at the pool's front host (best-effort)."""
     host = awg3_front_host(pool)
     if host is None:
         return 0
@@ -218,7 +218,7 @@ def mirror_member_identity(db: Session, pool: FailoverPool, member: FailoverPool
             sync_amneziawg3_state_from_primary(primary_adapter, member_adapter)
         except Exception as exc:
             raise FailoverFrontError(
-                f"Клонирование AmneziaWG 3.0 на {member.node.name} не удалось: {exc}"
+                f"Клонирование AmneziaWG 3.1 на {member.node.name} не удалось: {exc}"
             ) from exc
         rewrite_member_awg3_client_endpoints(pool, member)
         member.identity_mirrored_at = datetime.utcnow()
@@ -372,7 +372,7 @@ def _apply_switch_to_target(db: Session, pool: FailoverPool, target: FailoverPoo
 
 
 def _apply_awg3_switch_to_target(db: Session, pool: FailoverPool, target: FailoverPoolMember, adapter, label: str, result: dict) -> dict:
-    """AmneziaWG 3.0 pool: the whole client range 51900-51999 follows the active member."""
+    """AmneziaWG 3.1 pool: the whole client range 51900-51999 follows the active member."""
     try:
         target_ip = _resolve_destination_ip(target.node)
         status_now = adapter.failover_awg3_status(label)
@@ -391,7 +391,7 @@ def _apply_awg3_switch_to_target(db: Session, pool: FailoverPool, target: Failov
     try:
         adapter.failover_awg3_set_destination(label, target_ip)
     except Exception as exc:
-        pool.last_switch_error = f"Не удалось переключить фронт AmneziaWG 3.0: {exc}"
+        pool.last_switch_error = f"Не удалось переключить фронт AmneziaWG 3.1: {exc}"
         db.commit()
         result["errors"].append(pool.last_switch_error)
         return result

@@ -1,4 +1,4 @@
-"""AWG 3.0 traffic statistics and online status follow the AWG 2.0 path."""
+"""AWG 3.1 traffic statistics and online status follow the AWG 2.0 path."""
 
 import json
 import time
@@ -89,5 +89,5 @@ def test_only_fresh_handshakes_become_online_rows(tmp_path, monkeypatch):
     assert client["common_name"] == "alice"
     assert client["session_kind"] == "amneziawg3"
     assert client["bytes_received"] == 7
-    # Session identity for AWG 3.0 is the public key, like the other handshake protocols.
+    # Session identity for AWG 3.1 is the public key, like the other handshake protocols.
     assert build_session_key("antizapret-awg3", client).startswith("antizapret-awg3|wg|alice|")

@@ -1,4 +1,4 @@
-"""AWG 3.0 connection accounting follows the AWG 2.0 path."""
+"""AWG 3.1 connection accounting follows the AWG 2.0 path."""
 
 from datetime import datetime, timedelta
 from types import SimpleNamespace

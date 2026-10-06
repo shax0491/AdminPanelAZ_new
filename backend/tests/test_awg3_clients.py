@@ -299,3 +299,28 @@ def test_suspend_unknown_client_fails_clearly(store):
         svc.suspend_client("ghost", store=store, run=FakeAwg())
     with pytest.raises(svc.Awg3ClientError):
         svc.unsuspend_client("ghost", store=store, run=FakeAwg())
+
+
+def test_client_config_copies_awg31_transport_keys_from_server(store):
+    text = store.server_conf.read_text(encoding="utf-8")
+    store.server_conf.write_text(
+        text + "ContentPaddingAddition = 2\nRandomTrailers = true\nDisableCookies = true\n",
+        encoding="utf-8",
+    )
+    cfg = svc.create_client("v31", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=FakeAwg())["config"]
+    assert "HeaderProtectionKey = HPK=" in cfg
+    assert "ContentPaddingAddition = 2" in cfg
+    assert "RandomTrailers = true" in cfg
+    assert "DisableCookies = true" in cfg
+    assert "MTU = 1280" in cfg
+
+
+def test_transport_keys_are_shared_not_generated_per_client(store):
+    text = store.server_conf.read_text(encoding="utf-8")
+    store.server_conf.write_text(text + "ContentPaddingAddition = 2\n", encoding="utf-8")
+    fake = FakeAwg()
+    a = svc.create_client("a1", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)["config"]
+    b = svc.create_client("b1", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=fake)["config"]
+    line = "ContentPaddingAddition = 2"
+    assert line in a and line in b
+    assert "HeaderProtectionKey = HPK=" in a and "HeaderProtectionKey = HPK=" in b

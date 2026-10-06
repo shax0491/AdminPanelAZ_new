@@ -583,7 +583,7 @@ def create_config(
         if not health.get("tools_present") or not health.get("userspace_present"):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail={"message": "AmneziaWG 3.0 не установлен на узле (awg / amneziawg-go). Установите через setup.sh."},
+                detail={"message": "AmneziaWG 3.1 не установлен на узле (awg / amneziawg-go). Установите через setup.sh."},
             )
         try:
             adapter.awg3_create_client(payload.client_name, payload.awg3_mode or "split")

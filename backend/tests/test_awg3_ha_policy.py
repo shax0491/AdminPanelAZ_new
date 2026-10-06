@@ -1,4 +1,4 @@
-"""AmneziaWG 3.0 access policy is copied and replicated to HA replicas like AmneziaWG 2.0."""
+"""AmneziaWG 3.1 access policy is copied and replicated to HA replicas like AmneziaWG 2.0."""
 
 from datetime import datetime, timedelta
 from types import SimpleNamespace

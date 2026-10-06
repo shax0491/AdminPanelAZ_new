@@ -30,14 +30,14 @@ const PROTOCOL_ORDER: VpnType[] = ['openvpn', 'wireguard', 'amneziawg2', 'amnezi
 function vpnLabel(type: VpnType): string {
   if (type === 'openvpn') return 'OpenVPN'
   if (type === 'wireguard') return 'WireGuard / AmneziaWG'
-  if (type === 'amneziawg3') return 'AmneziaWG 3.0'
+  if (type === 'amneziawg3') return 'AmneziaWG 3.1'
   return 'AmneziaWG 2.0'
 }
 
 function vpnHint(type: VpnType): string {
   if (type === 'openvpn') return 'Сертификат + .ovpn'
   if (type === 'wireguard') return 'WG / AWG профиль'
-  if (type === 'amneziawg3') return 'AWG 3.0 peer'
+  if (type === 'amneziawg3') return 'AWG 3.1 peer'
   return 'AWG 2.0 peer'
 }
 
@@ -401,7 +401,7 @@ export default function CreateClientDialog({
               </div>
               {selectedProtocols.includes('amneziawg3') && (
                 <div className="flex flex-col gap-1 text-sm">
-                  <Label className="lg:text-base">Режим AmneziaWG 3.0</Label>
+                  <Label className="lg:text-base">Режим AmneziaWG 3.1</Label>
                   <select
                     className="h-10 rounded-md border border-input bg-background px-3"
                     value={awg3Mode}

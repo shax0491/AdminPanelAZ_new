@@ -1,4 +1,4 @@
-"""AmneziaWG 3.0 deadline and blocks: state machine and node runtime calls."""
+"""AmneziaWG 3.1 deadline and blocks: state machine and node runtime calls."""
 
 from datetime import datetime, timedelta
 from types import SimpleNamespace

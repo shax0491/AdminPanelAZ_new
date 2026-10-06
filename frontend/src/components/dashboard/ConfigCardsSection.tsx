@@ -548,7 +548,7 @@ export default function ConfigCardsSection({
                 )}
                 {visibleTabs.includes('amneziawg3') && (
                   <TabsTrigger value="amneziawg3" className="gap-1.5 data-[state=active]:shadow-sm">
-                    AmneziaWG 3.0
+                    AmneziaWG 3.1
                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
                       {tabCounts.amneziawg3}
                     </Badge>
