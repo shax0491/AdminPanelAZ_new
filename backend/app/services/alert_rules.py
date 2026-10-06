@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models import AlertRule, AlertRuleMetric, AlertRuleOperator, Node, NodeStatus, TrafficSessionState
 from app.services.admin_notify import admin_notify_service
-from app.services.noc_report import _wg_profile
+from app.services.noc_report import _awg_profile, _wg_profile
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +71,8 @@ def _session_counts(db: Session) -> tuple[int, int]:
     total_ovpn = 0
     total_wg = 0
     for profile, count in active_rows:
+        if _awg_profile(profile):
+            continue
         if _wg_profile(profile):
             total_wg += int(count or 0)
         else:

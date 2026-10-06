@@ -9,10 +9,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models import Node
-from app.services.awg2_noc import fetch_awg2_peers_for_adapter
-from app.services.feature_toggles import is_awg2_enabled
+from app.services.feature_toggles import is_awg2_enabled, is_awg3_enabled
 from app.services.node_manager import is_vpn_node, get_adapter_for_node
-from app.services.traffic.collector import TrafficCollectorService, build_status_rows
+from app.services.traffic.collector import TrafficCollectorService, build_status_rows_for_adapter
 from app.services.background_gate import run_background_step
 
 logger = logging.getLogger(__name__)
@@ -48,6 +47,7 @@ def _collect_all_nodes():
     try:
         nodes = db.query(Node).all()
         awg2_enabled = is_awg2_enabled(db)
+        awg3_enabled = is_awg3_enabled(db)
         for node in nodes:
             if not is_vpn_node(node):
                 continue
@@ -57,10 +57,9 @@ def _collect_all_nodes():
             clients_changed = 0
             try:
                 adapter = get_adapter_for_node(node)
-                ovpn = adapter.parse_openvpn_status()
-                wg = adapter.parse_wireguard_status()
-                awg2_peers = fetch_awg2_peers_for_adapter(adapter) if awg2_enabled else []
-                status_rows = build_status_rows(ovpn, wg, awg2_peers)
+                status_rows = build_status_rows_for_adapter(
+                    db, adapter, awg2_enabled=awg2_enabled, awg3_enabled=awg3_enabled
+                )
                 collector = TrafficCollectorService(db, node.id)
                 collector.persist_snapshot(status_rows)
                 if settings.traffic_limit_reconcile_after_sync:

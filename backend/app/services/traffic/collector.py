@@ -666,11 +666,37 @@ class TrafficCollectorService:
         return deleted
 
 
-def collect_traffic_snapshot_for_node(db: Session, node_id: int) -> dict:
-    """Fetch live status from node adapter and persist traffic snapshot (best-effort)."""
+def build_status_rows_for_adapter(
+    db: Session,
+    adapter,
+    *,
+    awg2_enabled: bool | None = None,
+    awg3_enabled: bool | None = None,
+) -> list[dict]:
+    """Live status rows of one node: OpenVPN, WireGuard, AmneziaWG 2.0 and AmneziaWG 3.1.
+
+    The single place where every traffic collector (background worker, manual snapshot, maintenance) builds
+    its input, so a protocol cannot be collected by one path and forgotten by another. The enabled flags
+    let a caller that loops over nodes read the feature toggles once.
+    """
     from app.services.awg2_noc import fetch_awg2_peers_for_adapter
     from app.services.awg3_noc import fetch_awg3_peers_for_adapter
     from app.services.feature_toggles import is_awg2_enabled, is_awg3_enabled
+
+    if awg2_enabled is None:
+        awg2_enabled = is_awg2_enabled(db)
+    if awg3_enabled is None:
+        awg3_enabled = is_awg3_enabled(db)
+    return build_status_rows(
+        adapter.parse_openvpn_status(),
+        adapter.parse_wireguard_status(),
+        fetch_awg2_peers_for_adapter(adapter) if awg2_enabled else [],
+        fetch_awg3_peers_for_adapter(adapter) if awg3_enabled else [],
+    )
+
+
+def collect_traffic_snapshot_for_node(db: Session, node_id: int) -> dict:
+    """Fetch live status from node adapter and persist traffic snapshot (best-effort)."""
     from app.services.node_manager import is_vpn_node, get_adapter_for_node
 
     node = db.get(Node, node_id)
@@ -678,14 +704,7 @@ def collect_traffic_snapshot_for_node(db: Session, node_id: int) -> dict:
         return {"samples_added": 0, "active_sessions": 0, "skipped": True}
 
     adapter = get_adapter_for_node(node)
-    awg2_peers = fetch_awg2_peers_for_adapter(adapter) if is_awg2_enabled(db) else []
-    awg3_peers = fetch_awg3_peers_for_adapter(adapter) if is_awg3_enabled(db) else []
-    status_rows = build_status_rows(
-        adapter.parse_openvpn_status(),
-        adapter.parse_wireguard_status(),
-        awg2_peers,
-        awg3_peers,
-    )
+    status_rows = build_status_rows_for_adapter(db, adapter)
     collector = TrafficCollectorService(db, node_id)
     result = collector.persist_snapshot(status_rows)
     result["skipped"] = False

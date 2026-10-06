@@ -21,3 +21,21 @@ export function warpModeLabel(options: readonly WarpModeOption[], value: string 
 export function warpModeUsesList(value: string | undefined): boolean {
   return value === '3' || value === '4'
 }
+
+/** Что показать пользователю после выбора режима: именно из-за отсутствия этого шага режим «не работал». */
+export function describeModeSwitch(
+  scopeTitle: string,
+  options: readonly WarpModeOption[],
+  from: string | undefined,
+  to: string,
+): { title: string; summary: string } {
+  return {
+    title: `Режим WARP: ${scopeTitle}`,
+    summary: `${warpModeLabel(options, from)} → ${warpModeLabel(options, to)}`,
+  }
+}
+
+/** Режим записан в setup, но правила узла ещё от прежнего: нужен up.sh. */
+export function isScopePending(pendingScopes: readonly string[] | undefined, scope: 'antizapret' | 'vpn'): boolean {
+  return Boolean(pendingScopes?.includes(scope))
+}

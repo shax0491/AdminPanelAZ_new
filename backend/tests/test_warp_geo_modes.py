@@ -1,5 +1,6 @@
 """WARP mode switching (ANTIZAPRET_WARP 1-4, VPN_WARP 1-2) written into setup, applied separately by up.sh."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -140,3 +141,84 @@ def test_missing_setup_is_a_clear_404_not_a_500(tmp_path, monkeypatch):
     with pytest.raises(HTTPException) as exc:
         LocalNodeAdapter(service=MagicMock(base_path=tmp_path)).set_warp_modes("2", None)
     assert exc.value.status_code == 404
+
+
+# Real `ip rule show` output captured from the nodes (priority, tab, rule).
+NL1_MODE4 = (
+    "0:\tfrom all lookup local\n"
+    "5000:\tfrom 10.29.0.0/16 to 10.29.0.0/16 lookup main\n"
+    "5000:\tfrom 10.9.0.0/24 to 10.9.0.0/24 lookup main\n"
+    "10000:\tfrom 10.29.0.0/16 fwmark 0x2 lookup 13335\n"
+    "10000:\tfrom 10.9.0.0/24 fwmark 0x2 lookup 13335\n"
+    "10000:\tfrom 10.9.1.0/24 lookup 13336\n"
+    "10000:\tfrom 10.28.0.0/16 lookup 13336\n"
+    "32766:\tfrom all lookup main\n"
+)
+DE2_MODE2 = (
+    "0:\tfrom all lookup local\n"
+    "5000:\tfrom 10.29.0.0/16 to 10.29.0.0/16 lookup main\n"
+    "10000:\tfrom 10.29.0.0/16 lookup 13335\n"
+    "10000:\tfrom 10.9.0.0/24 lookup 13335\n"
+    "10000:\tfrom 10.28.0.0/16 lookup 13336\n"
+    "32766:\tfrom all lookup main\n"
+)
+
+
+def _live(monkeypatch, text, rc=0):
+    from app.services import warp_geo
+
+    monkeypatch.setattr(
+        warp_geo.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=rc, stdout=text, stderr="")
+    )
+    return warp_geo
+
+
+def test_live_rules_are_classified_like_the_real_nodes(monkeypatch):
+    warp = _live(monkeypatch, NL1_MODE4)
+    assert warp.read_live_warp_rules() == {"antizapret": "marked", "vpn": "all"}
+    warp = _live(monkeypatch, DE2_MODE2)
+    assert warp.read_live_warp_rules() == {"antizapret": "all", "vpn": "all"}
+    warp = _live(monkeypatch, "0:\tfrom all lookup local\n32766:\tfrom all lookup main\n")
+    assert warp.read_live_warp_rules() == {"antizapret": "none", "vpn": "none"}
+
+
+def test_mixed_rules_when_one_protocol_is_not_updated_yet(monkeypatch):
+    text = "10000:\tfrom 10.29.0.0/16 fwmark 0x2 lookup 13335\n10000:\tfrom 10.9.0.0/24 lookup 13335\n"
+    assert _live(monkeypatch, text).read_live_warp_rules()["antizapret"] == "mixed"
+
+
+def test_status_flags_saved_but_not_applied_mode(tmp_path, monkeypatch):
+    """de2 case from the logs: setup says 4, the kernel still runs mode 2."""
+    _setup(tmp_path, "WARP_PROVIDER=proton\nANTIZAPRET_WARP=4\nVPN_WARP=2\n")
+    _live(monkeypatch, DE2_MODE2)
+    status = read_warp_status(tmp_path)
+    assert status["pending_apply"] is True and status["pending_scopes"] == ["antizapret"]
+    assert status["live_antizapret_warp"] == "all" and status["live_vpn_warp"] == "all"
+
+
+def test_status_not_pending_when_rules_match_setup(tmp_path, monkeypatch):
+    _setup(tmp_path, "ANTIZAPRET_WARP=4\nVPN_WARP=2\n")
+    _live(monkeypatch, NL1_MODE4)
+    status = read_warp_status(tmp_path)
+    assert status["pending_apply"] is False and status["pending_scopes"] == []
+
+
+def test_status_flags_vpn_mode_that_is_off_in_kernel(tmp_path, monkeypatch):
+    _setup(tmp_path, "ANTIZAPRET_WARP=1\nVPN_WARP=2\n")
+    _live(monkeypatch, "0:\tfrom all lookup local\n32766:\tfrom all lookup main\n")
+    status = read_warp_status(tmp_path)
+    assert status["pending_scopes"] == ["vpn"]
+
+
+def test_status_is_quietly_not_pending_when_ip_rule_cannot_be_read(tmp_path, monkeypatch):
+    _setup(tmp_path, "ANTIZAPRET_WARP=4\nVPN_WARP=2\n")
+    _live(monkeypatch, "", rc=1)
+    status = read_warp_status(tmp_path)
+    assert status["pending_apply"] is False and status["live_antizapret_warp"] is None
+
+
+def test_status_ignores_unknown_legacy_values(tmp_path, monkeypatch):
+    """Old setups store y/n; an unrecognised value must not raise a false 'not applied' alarm."""
+    _setup(tmp_path, "ANTIZAPRET_WARP=y\nVPN_WARP=\n")
+    _live(monkeypatch, NL1_MODE4)
+    assert read_warp_status(tmp_path)["pending_apply"] is False

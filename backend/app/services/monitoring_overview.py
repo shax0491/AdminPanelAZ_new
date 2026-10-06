@@ -19,7 +19,8 @@ from app.schemas import (
     WireGuardPeer,
 )
 from app.services.awg2_noc import fetch_awg2_peers_for_adapter
-from app.services.feature_toggles import is_awg2_enabled, is_proxy_nodes_enabled
+from app.services.awg3_noc import fetch_awg3_peers_for_adapter
+from app.services.feature_toggles import is_awg2_enabled, is_awg3_enabled, is_proxy_nodes_enabled
 from app.services.node_sync.groups import build_ha_metadata
 from app.services.ip_geo import is_local_geoip_loaded, lookup_ips_geo, parse_client_endpoint
 from app.services.node_health_score import compute_node_health_score
@@ -103,6 +104,12 @@ def _load_awg2_peers_for_node(db: Session, adapter: Any) -> list[WireGuardPeer]:
     return fetch_awg2_peers_for_adapter(adapter)
 
 
+def _load_awg3_peers_for_node(db: Session, adapter: Any) -> list[WireGuardPeer]:
+    if not is_awg3_enabled(db):
+        return []
+    return fetch_awg3_peers_for_adapter(adapter)
+
+
 def _collect_nodes_monitoring_data(db: Session) -> list[dict]:
     nodes = db.query(Node).order_by(Node.id.asc()).all()
     latest_metrics = get_latest_samples_by_node(db)
@@ -116,6 +123,7 @@ def _collect_nodes_monitoring_data(db: Session) -> list[dict]:
             "ovpn_clients": [],
             "wireguard_peers": [],
             "amneziawg2_peers": [],
+            "amneziawg3_peers": [],
             "services": [],
             "server_ip": None,
             "error": None,
@@ -146,11 +154,13 @@ def _collect_nodes_monitoring_data(db: Session) -> list[dict]:
                 ovpn_clients, _ = adapter.get_openvpn_status_snapshot()
                 wireguard_peers = adapter.parse_wireguard_status()
                 amneziawg2_peers = _load_awg2_peers_for_node(db, adapter)
+                amneziawg3_peers = _load_awg3_peers_for_node(db, adapter)
                 payload.update(
                     {
                         "ovpn_clients": ovpn_clients,
                         "wireguard_peers": wireguard_peers,
                         "amneziawg2_peers": amneziawg2_peers,
+                        "amneziawg3_peers": amneziawg3_peers,
                         "services": adapter.get_service_status(),
                         "server_ip": adapter.get_server_ip(),
                         "cidr_routes_count": extract_cidr_routes_count(adapter, node_id=node.id),
@@ -168,6 +178,7 @@ def _build_node_summary(payload: dict) -> MonitoringNodeSummary:
     ovpn_clients: list[OpenVpnClient] = payload["ovpn_clients"]
     wireguard_peers: list[WireGuardPeer] = payload["wireguard_peers"]
     amneziawg2_peers: list[WireGuardPeer] = payload.get("amneziawg2_peers") or []
+    amneziawg3_peers: list[WireGuardPeer] = payload.get("amneziawg3_peers") or []
     services: list[MonitoringService] = payload["services"]
     status = _node_status_value(node)
     active_services = sum(1 for service in services if service.active)
@@ -187,6 +198,7 @@ def _build_node_summary(payload: dict) -> MonitoringNodeSummary:
         connected_openvpn=len(ovpn_clients),
         connected_wireguard=sum(1 for peer in wireguard_peers if _wg_is_online(peer)),
         connected_amneziawg2=sum(1 for peer in amneziawg2_peers if _wg_is_online(peer)),
+        connected_amneziawg3=sum(1 for peer in amneziawg3_peers if _wg_is_online(peer)),
         active_services=active_services,
         total_services=total_services,
         cpu_percent=payload.get("cpu_percent"),
@@ -206,6 +218,7 @@ def build_global_dashboard_summary(db: Session) -> GlobalDashboardSummary:
     total_connected_openvpn = 0
     total_connected_wireguard = 0
     total_connected_amneziawg2 = 0
+    total_connected_amneziawg3 = 0
 
     for payload in node_payloads:
         node: Node = payload["node"]
@@ -215,6 +228,7 @@ def build_global_dashboard_summary(db: Session) -> GlobalDashboardSummary:
         total_connected_openvpn += summary.connected_openvpn
         total_connected_wireguard += summary.connected_wireguard
         total_connected_amneziawg2 += summary.connected_amneziawg2
+        total_connected_amneziawg3 += summary.connected_amneziawg3
         nodes_summary.append(summary)
 
     return GlobalDashboardSummary(
@@ -225,6 +239,7 @@ def build_global_dashboard_summary(db: Session) -> GlobalDashboardSummary:
         total_connected_openvpn=total_connected_openvpn,
         total_connected_wireguard=total_connected_wireguard,
         total_connected_amneziawg2=total_connected_amneziawg2,
+        total_connected_amneziawg3=total_connected_amneziawg3,
     )
 
 
@@ -291,6 +306,7 @@ def _collect_lookup_ips(
     wireguard_peers: list[WireGuardPeer],
     *,
     amneziawg2_peers: list[WireGuardPeer] | None = None,
+    amneziawg3_peers: list[WireGuardPeer] | None = None,
     proxy_ips: set[str] | None = None,
     mappings_by_proxy_ip: dict[str, list[dict[str, Any]]] | None = None,
 ) -> list[str | None]:
@@ -304,6 +320,8 @@ def _collect_lookup_ips(
     for peer in wireguard_peers:
         ips.append(_geo_lookup_ip_for_endpoint(peer.endpoint, proxy_ips, mappings_by_proxy_ip))
     for peer in amneziawg2_peers or []:
+        ips.append(_geo_lookup_ip_for_endpoint(peer.endpoint, proxy_ips, mappings_by_proxy_ip))
+    for peer in amneziawg3_peers or []:
         ips.append(_geo_lookup_ip_for_endpoint(peer.endpoint, proxy_ips, mappings_by_proxy_ip))
     return ips
 
@@ -447,6 +465,7 @@ def build_monitoring_overview_for_node(db: Session, node: Node) -> MonitoringOve
             openvpn_clients=[],
             wireguard_peers=[],
             amneziawg2_peers=[],
+            amneziawg3_peers=[],
             server_ip=server_ip,
             timestamp=datetime.utcnow(),
             node_id=node.id,
@@ -458,6 +477,7 @@ def build_monitoring_overview_for_node(db: Session, node: Node) -> MonitoringOve
             total_connected_openvpn=0,
             total_connected_wireguard=0,
             total_connected_amneziawg2=0,
+            total_connected_amneziawg3=0,
             served_from_cache=False,
             geoip_mode=resolve_geoip_mode(),
             ha_mode="dedupe",
@@ -467,6 +487,7 @@ def build_monitoring_overview_for_node(db: Session, node: Node) -> MonitoringOve
     ovpn_clients, openvpn_data_source = adapter.get_openvpn_status_snapshot()
     wireguard_peers = adapter.parse_wireguard_status()
     amneziawg2_peers = _load_awg2_peers_for_node(db, adapter)
+    amneziawg3_peers = _load_awg3_peers_for_node(db, adapter)
     services = adapter.get_service_status()
     proxy_ips, mappings_by_proxy_ip = _load_proxy_noc_context(db)
     geo_map = lookup_ips_geo(
@@ -474,12 +495,19 @@ def build_monitoring_overview_for_node(db: Session, node: Node) -> MonitoringOve
             ovpn_clients,
             wireguard_peers,
             amneziawg2_peers=amneziawg2_peers,
+            amneziawg3_peers=amneziawg3_peers,
             proxy_ips=proxy_ips,
             mappings_by_proxy_ip=mappings_by_proxy_ip,
         )
     )
     enriched_awg2 = enrich_wireguard_peers(
         amneziawg2_peers,
+        geo_map,
+        proxy_ips=proxy_ips,
+        mappings_by_proxy_ip=mappings_by_proxy_ip,
+    )
+    enriched_awg3 = enrich_wireguard_peers(
+        amneziawg3_peers,
         geo_map,
         proxy_ips=proxy_ips,
         mappings_by_proxy_ip=mappings_by_proxy_ip,
@@ -500,6 +528,7 @@ def build_monitoring_overview_for_node(db: Session, node: Node) -> MonitoringOve
             mappings_by_proxy_ip=mappings_by_proxy_ip,
         ),
         amneziawg2_peers=enriched_awg2,
+        amneziawg3_peers=enriched_awg3,
         server_ip=adapter.get_server_ip(),
         timestamp=datetime.utcnow(),
         node_id=node.id,
@@ -511,6 +540,7 @@ def build_monitoring_overview_for_node(db: Session, node: Node) -> MonitoringOve
         total_connected_openvpn=len(ovpn_clients),
         total_connected_wireguard=sum(1 for peer in wireguard_peers if _wg_is_online(peer)),
         total_connected_amneziawg2=sum(1 for peer in enriched_awg2 if _wg_is_online(peer)),
+        total_connected_amneziawg3=sum(1 for peer in enriched_awg3 if _wg_is_online(peer)),
         served_from_cache=False,
         geoip_mode=resolve_geoip_mode(),
         ha_mode="dedupe",
@@ -681,6 +711,15 @@ def _aggregate_ha_amneziawg2_peers(
     )
 
 
+def _aggregate_ha_amneziawg3_peers(
+    peers: list[WireGuardPeer],
+    ha_lookup: dict[_HaLookupKey, tuple[_AggregationKey, VpnConfigHaInfo]],
+) -> list[WireGuardPeer]:
+    return _aggregate_ha_wireguard_peers(
+        peers, ha_lookup, protocol=VpnType.amneziawg3.value
+    )
+
+
 def _annotate_raw_ha_clients(
     clients: list[OpenVpnClient],
     ha_lookup: dict[_HaLookupKey, tuple[_AggregationKey, VpnConfigHaInfo]],
@@ -749,6 +788,13 @@ def _annotate_raw_ha_amneziawg2_peers(
     return _annotate_raw_ha_peers(peers, ha_lookup, protocol=VpnType.amneziawg2.value)
 
 
+def _annotate_raw_ha_amneziawg3_peers(
+    peers: list[WireGuardPeer],
+    ha_lookup: dict[_HaLookupKey, tuple[_AggregationKey, VpnConfigHaInfo]],
+) -> list[WireGuardPeer]:
+    return _annotate_raw_ha_peers(peers, ha_lookup, protocol=VpnType.amneziawg3.value)
+
+
 def build_federated_monitoring_overview(
     db: Session,
     *,
@@ -763,6 +809,7 @@ def build_federated_monitoring_overview(
                 payload["ovpn_clients"],
                 payload["wireguard_peers"],
                 amneziawg2_peers=payload.get("amneziawg2_peers") or [],
+                amneziawg3_peers=payload.get("amneziawg3_peers") or [],
                 proxy_ips=proxy_ips,
                 mappings_by_proxy_ip=mappings_by_proxy_ip,
             ),
@@ -772,11 +819,13 @@ def build_federated_monitoring_overview(
     all_openvpn: list[OpenVpnClient] = []
     all_wireguard: list[WireGuardPeer] = []
     all_amneziawg2: list[WireGuardPeer] = []
+    all_amneziawg3: list[WireGuardPeer] = []
     nodes_summary: list[MonitoringNodeSummary] = []
     nodes_online = 0
     total_connected_openvpn = 0
     total_connected_wireguard = 0
     total_connected_amneziawg2 = 0
+    total_connected_amneziawg3 = 0
     server_ips: list[str] = []
 
     for payload in node_payloads:
@@ -784,12 +833,14 @@ def build_federated_monitoring_overview(
         ovpn_clients: list[OpenVpnClient] = payload["ovpn_clients"]
         wireguard_peers: list[WireGuardPeer] = payload["wireguard_peers"]
         amneziawg2_peers: list[WireGuardPeer] = payload.get("amneziawg2_peers") or []
+        amneziawg3_peers: list[WireGuardPeer] = payload.get("amneziawg3_peers") or []
         summary = _build_node_summary(payload)
         if node.status == NodeStatus.online:
             nodes_online += 1
         total_connected_openvpn += summary.connected_openvpn
         total_connected_wireguard += summary.connected_wireguard
         total_connected_amneziawg2 += summary.connected_amneziawg2
+        total_connected_amneziawg3 += summary.connected_amneziawg3
         if payload["server_ip"]:
             server_ips.append(payload["server_ip"])
         all_openvpn.extend(
@@ -822,6 +873,16 @@ def build_federated_monitoring_overview(
                 mappings_by_proxy_ip=mappings_by_proxy_ip,
             )
         )
+        all_amneziawg3.extend(
+            enrich_wireguard_peers(
+                amneziawg3_peers,
+                geo_map,
+                node_id=node.id,
+                node_name=node.name,
+                proxy_ips=proxy_ips,
+                mappings_by_proxy_ip=mappings_by_proxy_ip,
+            )
+        )
         nodes_summary.append(summary)
 
     ha_lookup = _build_ha_monitoring_lookup(db)
@@ -829,16 +890,20 @@ def build_federated_monitoring_overview(
         all_openvpn = _annotate_raw_ha_clients(all_openvpn, ha_lookup)
         all_wireguard = _annotate_raw_ha_peers(all_wireguard, ha_lookup)
         all_amneziawg2 = _annotate_raw_ha_amneziawg2_peers(all_amneziawg2, ha_lookup)
+        all_amneziawg3 = _annotate_raw_ha_amneziawg3_peers(all_amneziawg3, ha_lookup)
         total_connected_openvpn = len(all_openvpn)
         total_connected_wireguard = sum(1 for peer in all_wireguard if _wg_is_online(peer))
         total_connected_amneziawg2 = sum(1 for peer in all_amneziawg2 if _wg_is_online(peer))
+        total_connected_amneziawg3 = sum(1 for peer in all_amneziawg3 if _wg_is_online(peer))
     else:
         all_openvpn = _aggregate_ha_openvpn_clients(all_openvpn, ha_lookup)
         all_wireguard = _aggregate_ha_wireguard_peers(all_wireguard, ha_lookup)
         all_amneziawg2 = _aggregate_ha_amneziawg2_peers(all_amneziawg2, ha_lookup)
+        all_amneziawg3 = _aggregate_ha_amneziawg3_peers(all_amneziawg3, ha_lookup)
         total_connected_openvpn = len(all_openvpn)
         total_connected_wireguard = sum(1 for peer in all_wireguard if _wg_is_online(peer))
         total_connected_amneziawg2 = sum(1 for peer in all_amneziawg2 if _wg_is_online(peer))
+        total_connected_amneziawg3 = sum(1 for peer in all_amneziawg3 if _wg_is_online(peer))
 
     nodes = [payload["node"] for payload in node_payloads]
     active_node = None
@@ -853,6 +918,7 @@ def build_federated_monitoring_overview(
         openvpn_clients=all_openvpn,
         wireguard_peers=all_wireguard,
         amneziawg2_peers=all_amneziawg2,
+        amneziawg3_peers=all_amneziawg3,
         server_ip=", ".join(sorted(set(server_ips))) if server_ips else None,
         timestamp=datetime.utcnow(),
         node_id=active_node.id if active_node else None,
@@ -864,6 +930,7 @@ def build_federated_monitoring_overview(
         total_connected_openvpn=total_connected_openvpn,
         total_connected_wireguard=total_connected_wireguard,
         total_connected_amneziawg2=total_connected_amneziawg2,
+        total_connected_amneziawg3=total_connected_amneziawg3,
         served_from_cache=False,
         geoip_mode=resolve_geoip_mode(),
         ha_mode=ha_mode,

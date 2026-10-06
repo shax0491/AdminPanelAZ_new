@@ -83,7 +83,8 @@ def test_collector_recovers_after_db_error_on_one_node(session_factory, monkeypa
     monkeypatch.setattr(worker_mod, "is_vpn_node", lambda node: True)
     monkeypatch.setattr(worker_mod, "get_adapter_for_node", lambda node: adapter)
     monkeypatch.setattr(worker_mod, "is_awg2_enabled", lambda db: False)
-    monkeypatch.setattr(worker_mod, "build_status_rows", lambda ovpn, wg, awg2: _wg_status_rows())
+    monkeypatch.setattr(worker_mod, "is_awg3_enabled", lambda db: False)
+    monkeypatch.setattr(worker_mod, "build_status_rows_for_adapter", lambda db, adapter, **kw: _wg_status_rows())
     monkeypatch.setattr(
         worker_mod,
         "get_settings",
@@ -110,6 +111,7 @@ def test_unreachable_node_is_logged_at_debug_not_warning(session_factory, monkey
     monkeypatch.setattr(worker_mod, "is_vpn_node", lambda node: True)
     monkeypatch.setattr(worker_mod, "get_adapter_for_node", _adapter)
     monkeypatch.setattr(worker_mod, "is_awg2_enabled", lambda db: False)
+    monkeypatch.setattr(worker_mod, "is_awg3_enabled", lambda db: False)
     monkeypatch.setattr(
         worker_mod,
         "get_settings",
@@ -136,7 +138,8 @@ def test_db_error_on_node_is_logged_as_warning(session_factory, monkeypatch, cap
     monkeypatch.setattr(worker_mod, "is_vpn_node", lambda node: True)
     monkeypatch.setattr(worker_mod, "get_adapter_for_node", lambda node: adapter)
     monkeypatch.setattr(worker_mod, "is_awg2_enabled", lambda db: False)
-    monkeypatch.setattr(worker_mod, "build_status_rows", lambda ovpn, wg, awg2: [])
+    monkeypatch.setattr(worker_mod, "is_awg3_enabled", lambda db: False)
+    monkeypatch.setattr(worker_mod, "build_status_rows_for_adapter", lambda db, adapter, **kw: [])
     monkeypatch.setattr(
         worker_mod,
         "get_settings",

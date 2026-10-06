@@ -160,7 +160,8 @@ class NocWeeklyImageRenderer:
         nodes = summary.get("nodes") or []
         top = self.data.get("top_clients") or []
         awg2_enabled = bool(summary.get("awg2_enabled"))
-        kpi_cards = 9 if awg2_enabled else 8
+        awg3_enabled = bool(summary.get("awg3_enabled"))
+        kpi_cards = 8 + int(awg2_enabled) + int(awg3_enabled)
         kpi_rows = (kpi_cards + 1) // 2
 
         h = self.theme.PAD
@@ -316,6 +317,17 @@ class NocWeeklyImageRenderer:
                     "sub": "среднее / пик",
                 }
             )
+        if bool(summary.get("awg3_enabled")):
+            cards.append(
+                {
+                    "label": "AmneziaWG 3.1 сессии",
+                    "value": (
+                        f"{summary.get('total_amneziawg3', 0)} / "
+                        f"{summary.get('total_amneziawg3_peak', 0)}"
+                    ),
+                    "sub": "среднее / пик",
+                }
+            )
         cards.extend(
             [
                 {
@@ -390,8 +402,12 @@ class NocWeeklyImageRenderer:
         x0 = t.PAD
         cw = self._content_w()
         awg2_enabled = bool(summary.get("awg2_enabled"))
-        if awg2_enabled:
-            cols = ["Узел", "Статус", "OVPN", "WG", "AWG2", "CPU", "RAM", "Диск", "7д", "Всего"]
+        awg3_enabled = bool(summary.get("awg3_enabled"))
+        if awg2_enabled and awg3_enabled:
+            cols = ["Узел", "Статус", "OVPN", "WG", "AWG2", "AWG3", "CPU", "RAM", "Диск", "7д", "Всего"]
+            widths = [0.14, 0.06, 0.06, 0.06, 0.07, 0.07, 0.11, 0.11, 0.11, 0.09, 0.12]
+        elif awg2_enabled or awg3_enabled:
+            cols = ["Узел", "Статус", "OVPN", "WG", "AWG2" if awg2_enabled else "AWG3", "CPU", "RAM", "Диск", "7д", "Всего"]
             widths = [0.15, 0.07, 0.07, 0.07, 0.07, 0.12, 0.12, 0.12, 0.09, 0.12]
         else:
             cols = ["Узел", "Статус", "OVPN", "WG", "CPU", "RAM", "Диск", "7д", "Всего"]
@@ -422,6 +438,10 @@ class NocWeeklyImageRenderer:
             if awg2_enabled:
                 values.append(
                     f"{node.get('amneziawg2', 0)}/{node.get('amneziawg2_peak', 0)}"
+                )
+            if awg3_enabled:
+                values.append(
+                    f"{node.get('amneziawg3', 0)}/{node.get('amneziawg3_peak', 0)}"
                 )
             values.extend(
                 [

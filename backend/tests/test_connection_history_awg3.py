@@ -74,3 +74,29 @@ def test_collect_samples_awg3_zero_when_toggle_off(monkeypatch):
     monkeypatch.setattr(ch, "persist_connection_sample", lambda *a, **k: MagicMock())
     ch.collect_connection_samples(db)
     fetch.assert_not_called()
+
+
+def test_history_api_point_keeps_the_awg3_count_instead_of_dropping_it():
+    """ConnectionHistoryPoint(**point) used to discard `amneziawg3`: the chart never saw AWG 3.1."""
+    from app.schemas import ConnectionHistoryPoint
+
+    sample = SimpleNamespace(
+        created_at=datetime.utcnow(),
+        node_id=1,
+        openvpn_count=1,
+        wireguard_count=2,
+        amneziawg2_count=3,
+        amneziawg3_count=4,
+    )
+    point = ch._aggregate_bucket([sample], sum_nodes=False)
+    api_point = ConnectionHistoryPoint(**point)
+    assert api_point.amneziawg3 == 4
+    assert api_point.total == 10
+    assert api_point.model_dump()["amneziawg3"] == 4
+
+
+def test_history_point_defaults_awg3_to_zero_for_old_payloads():
+    from app.schemas import ConnectionHistoryPoint
+
+    point = ConnectionHistoryPoint(timestamp=datetime.utcnow(), openvpn=1, wireguard=1, total=2)
+    assert point.amneziawg2 == 0 and point.amneziawg3 == 0

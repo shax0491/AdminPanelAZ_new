@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models import User
 from app.services.tg_mini_status import (
     build_awg2_status_payload,
+    build_awg3_status_payload,
     build_cidr_status_payload,
     build_warper_status_payload,
 )
@@ -33,6 +34,15 @@ def mini_awg2_status(db: Session = Depends(get_db), _: User = Depends(require_tg
     if not root.get_feature_service().is_enabled("awg2"):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Модуль AZ-AWG2 отключён")
     return build_awg2_status_payload(db)
+
+
+@router.get("/awg3/status")
+def mini_awg3_status(db: Session = Depends(get_db), _: User = Depends(require_tg_mini_admin)):
+    from app.routers import tg_mini as root
+
+    if not root.get_feature_service().is_enabled("awg3"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Модуль AmneziaWG 3.1 отключён")
+    return build_awg3_status_payload(db)
 
 
 @router.get("/cidr/status")

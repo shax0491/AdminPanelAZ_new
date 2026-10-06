@@ -602,6 +602,7 @@ class MonitoringNodeSummary(BaseModel):
     connected_openvpn: int = 0
     connected_wireguard: int = 0
     connected_amneziawg2: int = 0
+    connected_amneziawg3: int = 0
     active_services: int = 0
     total_services: int = 0
     cpu_percent: float | None = None
@@ -643,6 +644,7 @@ class GlobalDashboardSummary(BaseModel):
     total_connected_openvpn: int = 0
     total_connected_wireguard: int = 0
     total_connected_amneziawg2: int = 0
+    total_connected_amneziawg3: int = 0
 
 
 class MonitoringOverview(BaseModel):
@@ -650,6 +652,7 @@ class MonitoringOverview(BaseModel):
     openvpn_clients: list[OpenVpnClient]
     wireguard_peers: list[WireGuardPeer]
     amneziawg2_peers: list[WireGuardPeer] = Field(default_factory=list)
+    amneziawg3_peers: list[WireGuardPeer] = Field(default_factory=list)
     server_ip: str | None = None
     timestamp: datetime
     node_id: int | None = None
@@ -662,6 +665,7 @@ class MonitoringOverview(BaseModel):
     total_connected_openvpn: int = 0
     total_connected_wireguard: int = 0
     total_connected_amneziawg2: int = 0
+    total_connected_amneziawg3: int = 0
     served_from_cache: bool = False
     geoip_mode: Literal["local_mmdb", "ip_api", "none"] = "ip_api"
     ha_mode: Literal["dedupe", "raw"] = "dedupe"
@@ -687,6 +691,7 @@ class ConnectionHistoryPoint(BaseModel):
     openvpn: int
     wireguard: int
     amneziawg2: int = 0
+    amneziawg3: int = 0
     total: int
 
 

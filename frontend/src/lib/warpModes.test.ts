@@ -22,3 +22,22 @@ describe('warp modes', () => {
     expect(warpModeUsesList('2')).toBe(false)
   })
 })
+
+import { describeModeSwitch, isScopePending } from './warpModes'
+
+describe('mode switch confirmation', () => {
+  it('describes the transition with readable labels', () => {
+    expect(describeModeSwitch('AntiZapret VPN', ANTIZAPRET_WARP_OPTIONS, '2', '4')).toEqual({
+      title: 'Режим WARP: AntiZapret VPN',
+      summary: 'Весь трафик → Только список',
+    })
+    expect(describeModeSwitch('Полный VPN', VPN_WARP_OPTIONS, undefined, '1').summary).toBe('— → Выключен')
+  })
+
+  it('knows which scope still waits for up.sh', () => {
+    expect(isScopePending(['antizapret'], 'antizapret')).toBe(true)
+    expect(isScopePending(['antizapret'], 'vpn')).toBe(false)
+    expect(isScopePending(undefined, 'vpn')).toBe(false)
+    expect(isScopePending([], 'antizapret')).toBe(false)
+  })
+})

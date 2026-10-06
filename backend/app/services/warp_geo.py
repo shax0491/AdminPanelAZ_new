@@ -64,6 +64,43 @@ def _read_setup_file(antizapret_path: Path) -> dict[str, str]:
     return values
 
 
+_IP_RULE_TABLE_RE = re.compile(r"^\d+:\s+from\s+\S+\s+(fwmark\s+\S+\s+)?lookup\s+(\d+)\s*$")
+
+
+def _mode_class(rules_text: str, table: str) -> str:
+    """Класс живых правил policy-routing таблицы WARP: none / all / marked / mixed.
+
+    all - весь трафик подсети в WARP (правило без fwmark), marked - только пакеты с меткой 0x2
+    (режимы 3 и 4), mixed - у разных подсетей по-разному (например, 1.5 уже применён, а 3.1 нет).
+    """
+    kinds: set[str] = set()
+    for line in rules_text.splitlines():
+        match = _IP_RULE_TABLE_RE.match(line.strip())
+        if match and match.group(2) == table:
+            kinds.add("marked" if match.group(1) else "all")
+    if not kinds:
+        return "none"
+    return next(iter(kinds)) if len(kinds) == 1 else "mixed"
+
+
+_EXPECTED_ANTIZAPRET_CLASS = {"1": "none", "2": "all", "3": "marked", "4": "marked"}
+_EXPECTED_VPN_CLASS = {"1": "none", "2": "all"}
+
+
+def read_live_warp_rules() -> dict[str, str] | None:
+    """Режимы WARP, которые реально действуют в ядре (по ip rule); None, если прочитать не удалось."""
+    try:
+        result = subprocess.run(["ip", "rule", "show"], capture_output=True, text=True, timeout=5)
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    return {
+        "antizapret": _mode_class(result.stdout, "13335"),
+        "vpn": _mode_class(result.stdout, "13336"),
+    }
+
+
 def read_warp_status(antizapret_path: Path) -> dict:
     """Снимок настроек WARP для панели: PrivateKey никогда не возвращается (секрет),
     остальные поля Proton-конфига (PublicKey/Address/Endpoint) - да, чтобы их можно
@@ -80,7 +117,31 @@ def read_warp_status(antizapret_path: Path) -> dict:
             "endpoint_host": raw.get(field_keys["endpoint_host"], ""),
             "endpoint_port": raw.get(field_keys["endpoint_port"], ""),
         }
+    status.update(_pending_apply_fields(raw))
     return status
+
+
+def _pending_apply_fields(raw: dict[str, str]) -> dict[str, object]:
+    """Сравнить режимы из setup с живыми правилами: записанный, но не применённый режим виден сразу."""
+    live = read_live_warp_rules()
+    fields: dict[str, object] = {
+        "live_antizapret_warp": live["antizapret"] if live else None,
+        "live_vpn_warp": live["vpn"] if live else None,
+        "pending_apply": False,
+        "pending_scopes": [],
+    }
+    if live is None:
+        return fields
+    pending: list[str] = []
+    expected_az = _EXPECTED_ANTIZAPRET_CLASS.get(raw.get("ANTIZAPRET_WARP", "").strip())
+    if expected_az is not None and live["antizapret"] != expected_az:
+        pending.append("antizapret")
+    expected_vpn = _EXPECTED_VPN_CLASS.get(raw.get("VPN_WARP", "").strip())
+    if expected_vpn is not None and live["vpn"] != expected_vpn:
+        pending.append("vpn")
+    fields["pending_scopes"] = pending
+    fields["pending_apply"] = bool(pending)
+    return fields
 
 
 def _run_curl_once(url: str, *, interface: str | None) -> tuple[bool, str]:

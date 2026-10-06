@@ -1,25 +1,39 @@
-"""Telegram bot /awg3 — AmneziaWG 3.1 status (admin, if awg3 enabled)."""
+"""Telegram bot /awg3 — AmneziaWG 3.1 status (admin, if awg3 enabled): online, interfaces, top traffic."""
 
 from __future__ import annotations
 
+from app.services import telegram_bot_i18n as i18n
 from app.services.feature_guards import get_feature_service
-from app.services.node_manager import get_active_adapter
 from app.services.telegram_bot_handlers.base import BotContext, is_admin, unlinked_message
 from app.services.telegram_bot_handlers.ui import nav_footer_keyboard, send_or_edit
-from app.services import telegram_bot_i18n as i18n
+from app.services.tg_mini_status import build_awg3_status_payload
+from app.services.traffic_limit import human_bytes
 
 
-def _format_awg3_text(health: dict, monitoring: dict) -> str:
-    lines = ["<b>AmneziaWG 3.1</b>"]
-    lines.append(
-        f"инструменты: {'да' if health.get('tools_present') else 'нет'}, "
-        f"userspace: {'да' if health.get('userspace_present') else 'нет'}"
-    )
-    for iface in health.get("ifaces") or []:
-        state = "поднят" if iface.get("up") else "выключен"
-        lines.append(f"• <code>{iface.get('name')}</code> UDP {iface.get('port')} {iface.get('subnet')} — {state}")
-    peers = sum(len(v.get("peers") or []) for v in (monitoring.get("ifaces") or {}).values())
-    lines.append(f"клиентов: {peers}")
+def _format_awg3_text(payload: dict) -> str:
+    lines = [
+        "<b>AmneziaWG 3.1</b>",
+        f"Узел: <code>{payload.get('node_name') or '—'}</code> ({payload.get('node_host') or '—'})",
+    ]
+    if payload.get("health_error"):
+        lines.append(f"Ошибка проверки: {payload['health_error']}")
+    if not payload.get("installed"):
+        missing = payload.get("missing_components") or []
+        lines.append("Установлен: нет" + (f" (нет {', '.join(missing)})" if missing else ""))
+        return "\n".join(lines)
+    lines.append("Установлен: да")
+    lines.append(f"Онлайн: {int(payload.get('online_count') or 0)} из {int(payload.get('peer_count') or 0)}")
+    lines.append(f"Интерфейсы: {payload.get('ifaces_summary') or '—'}")
+    top = payload.get("top_traffic") or []
+    if top:
+        lines.append("Топ по трафику:")
+        for row in top:
+            lines.append(
+                f"• <code>{row.get('name')}</code> — ↓{human_bytes(int(row.get('rx') or 0)) or '0 B'} "
+                f"↑{human_bytes(int(row.get('tx') or 0)) or '0 B'}"
+            )
+    else:
+        lines.append("Трафика по клиентам пока нет.")
     return "\n".join(lines)
 
 
@@ -36,8 +50,7 @@ async def handle_awg3_status(ctx: BotContext, *, message_id: int | None = None) 
         await send_message(ctx.bot_token, ctx.chat_id, "AmneziaWG 3.1 выключен в настройках панели.")
         return
     try:
-        adapter = get_active_adapter(ctx.db)
-        text = _format_awg3_text(adapter.awg3_health(), adapter.awg3_monitoring())
+        text = _format_awg3_text(build_awg3_status_payload(ctx.db))
     except Exception as exc:  # noqa: BLE001
         await send_message(ctx.bot_token, ctx.chat_id, f"AmneziaWG 3.1: ошибка — {exc}")
         return

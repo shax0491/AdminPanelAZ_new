@@ -2116,6 +2116,12 @@ export interface WarpGeoStatusResponse {
   warp_provider: string
   antizapret_warp: string
   vpn_warp: string
+  /** Класс живых правил ip rule: none / all / marked / mixed; null, если прочитать не удалось. */
+  live_antizapret_warp?: string | null
+  live_vpn_warp?: string | null
+  /** Режим записан в setup, но правила узла ещё от прежнего (не выполнялся up.sh). */
+  pending_apply?: boolean
+  pending_scopes?: Array<'antizapret' | 'vpn'>
   proton_antizapret_configured: boolean
   proton_vpn_configured: boolean
   proton_antizapret_fields: WarpGeoProtonFields

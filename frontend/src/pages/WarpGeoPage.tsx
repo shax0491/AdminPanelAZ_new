@@ -16,7 +16,15 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ANTIZAPRET_WARP_OPTIONS, VPN_WARP_OPTIONS, warpModeLabel, warpModeUsesList } from '@/lib/warpModes'
+import ConfirmDialog from '@/components/shared/ConfirmDialog'
+import {
+  ANTIZAPRET_WARP_OPTIONS,
+  describeModeSwitch,
+  isScopePending,
+  VPN_WARP_OPTIONS,
+  warpModeLabel,
+  warpModeUsesList,
+} from '@/lib/warpModes'
 import type { WarpGeoCheckResponse, WarpGeoNodesResponse, WarpGeoStatusResponse } from '@/types'
 
 const EMPTY_PROTON_FIELDS: ProtonFields = {
@@ -50,6 +58,7 @@ export default function WarpGeoPage() {
   const [manageMessage, setManageMessage] = useState<string | null>(null)
   const [switchingProvider, setSwitchingProvider] = useState(false)
   const [switchingMode, setSwitchingMode] = useState<'antizapret' | 'vpn' | null>(null)
+  const [modeDraft, setModeDraft] = useState<{ scope: 'antizapret' | 'vpn'; value: string } | null>(null)
   const [applying, setApplying] = useState(false)
   const [expandedProtonScope, setExpandedProtonScope] = useState<'antizapret' | 'vpn' | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -166,15 +175,28 @@ export default function WarpGeoPage() {
     }
   }
 
-  const handleSwitchMode = async (scope: 'antizapret' | 'vpn', value: string) => {
+  // Выбор режима только открывает подтверждение: запись в setup без up.sh ничего не меняет на узле.
+  const handleSwitchMode = (scope: 'antizapret' | 'vpn', value: string) => {
     const current = scope === 'antizapret' ? status?.antizapret_warp : status?.vpn_warp
-    if (nodeId === null || current === value) return
+    if (nodeId === null || (current === value && !isScopePending(status?.pending_scopes, scope))) return
+    setModeDraft({ scope, value })
+  }
+
+  const confirmModeSwitch = async () => {
+    if (nodeId === null || modeDraft === null) return
+    const { scope, value } = modeDraft
     setSwitchingMode(scope)
     setManageError(null)
     setManageMessage(null)
     try {
       await setWarpModes(nodeId, scope === 'antizapret' ? { antizapret: value } : { vpn: value })
-      setManageMessage('Режим сохранён в конфиг. Нажмите «Применить», чтобы правила AmneziaWG и OpenVPN подхватили его.')
+      const result = await applyWarpChanges(nodeId)
+      setManageMessage(
+        result.success
+          ? 'Режим сохранён и применён: правила AmneziaWG, WireGuard и OpenVPN пересобраны, туннели подняты заново.'
+          : `Режим записан, но up.sh завершился с ошибкой: ${result.output}`,
+      )
+      setModeDraft(null)
       loadStatus(nodeId)
     } catch (err) {
       setManageError(err instanceof Error ? err.message : 'Не удалось сменить режим WARP')
@@ -380,6 +402,11 @@ export default function WarpGeoPage() {
               <div key={scope} className="flex flex-col gap-1.5">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="w-28 shrink-0 text-sm text-muted-foreground">{title}:</span>
+                  {isScopePending(status?.pending_scopes, scope) && (
+                    <Badge variant="outline" className="border-amber-500 text-amber-700 dark:text-amber-400" title="Режим записан в setup, но правила узла ещё от прежнего. Выберите режим ещё раз или нажмите «Применить».">
+                      не применено
+                    </Badge>
+                  )}
                   {options.map((option) => (
                     <Button
                       key={option.value}
@@ -551,6 +578,45 @@ export default function WarpGeoPage() {
           </div>
 
           {manageMessage && <p className="text-sm text-muted-foreground">{manageMessage}</p>}
+          {modeDraft && (
+            <ConfirmDialog
+              open
+              onOpenChange={(open) => {
+                if (!open && switchingMode === null) setModeDraft(null)
+              }}
+              title={describeModeSwitch(
+                modeDraft.scope === 'antizapret' ? 'AntiZapret VPN' : 'Полный VPN',
+                modeDraft.scope === 'antizapret' ? ANTIZAPRET_WARP_OPTIONS : VPN_WARP_OPTIONS,
+                modeDraft.scope === 'antizapret' ? status?.antizapret_warp : status?.vpn_warp,
+                modeDraft.value,
+              ).title}
+              description={
+                <>
+                  <strong>
+                    {describeModeSwitch(
+                      modeDraft.scope === 'antizapret' ? 'AntiZapret VPN' : 'Полный VPN',
+                      modeDraft.scope === 'antizapret' ? ANTIZAPRET_WARP_OPTIONS : VPN_WARP_OPTIONS,
+                      modeDraft.scope === 'antizapret' ? status?.antizapret_warp : status?.vpn_warp,
+                      modeDraft.value,
+                    ).summary}
+                  </strong>
+                  <br />
+                  Режим будет записан в setup узла и сразу применён: выполняется <code className="font-mono">up.sh</code>,
+                  правила WireGuard, AmneziaWG 1.5, 2.0 и 3.1 пересобираются под новый режим.
+                </>
+              }
+              alert={{
+                variant: 'warning',
+                title: 'Туннели узла прервутся на несколько секунд',
+                children: 'Все активные подключения на этом сервере (OpenVPN, WireGuard, AmneziaWG) переподключатся.',
+              }}
+              confirmLabel="Сохранить и применить"
+              cancelLabel="Отмена"
+              destructive
+              loading={switchingMode !== null}
+              onConfirm={confirmModeSwitch}
+            />
+          )}
           {manageError && <p className="text-sm text-destructive">{manageError}</p>}
         </CardContent>
       </Card>

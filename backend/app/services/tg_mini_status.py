@@ -101,6 +101,76 @@ def build_awg2_status_payload(db: Session) -> dict:
     }
 
 
+def _awg3_top_traffic(clients: list[Any], *, limit: int = 3) -> list[dict[str, Any]]:
+    """Top clients by traffic; a client has an AntiZapret and a Full VPN profile, so sum them per name."""
+    totals: dict[str, dict[str, Any]] = {}
+    for client in clients:
+        if not isinstance(client, dict):
+            continue
+        name = str(client.get("name") or "").strip()
+        if not name:
+            continue
+        rx = int(client["rx"]) if isinstance(client.get("rx"), (int, float)) else 0
+        tx = int(client["tx"]) if isinstance(client.get("tx"), (int, float)) else 0
+        row = totals.setdefault(name, {"name": name, "rx": 0, "tx": 0})
+        row["rx"] += rx
+        row["tx"] += tx
+    ranked = sorted(totals.values(), key=lambda row: row["rx"] + row["tx"], reverse=True)
+    return ranked[:limit]
+
+
+def build_awg3_status_payload(db: Session) -> dict:
+    """Health + short monitoring overview of AmneziaWG 3.1 for the bot `/awg3`: online, interfaces, top traffic."""
+    from app.services.awg3_noc import awg3_monitoring_view
+
+    node = get_active_node(db)
+    adapter = get_active_adapter(db)
+
+    health: dict[str, Any] = {}
+    health_error: str | None = None
+    try:
+        fetched = adapter.awg3_health()
+        if isinstance(fetched, dict):
+            health = fetched
+    except Exception as exc:  # noqa: BLE001
+        health_error = str(exc)
+
+    missing = [
+        label
+        for label, present in (("awg", health.get("tools_present")), ("amneziawg-go", health.get("userspace_present")))
+        if not present
+    ]
+    installed = not health_error and not missing
+
+    online_count = 0
+    peer_count = 0
+    ifaces_summary = "—"
+    top_traffic: list[dict[str, Any]] = []
+    if installed:
+        try:
+            view = awg3_monitoring_view(adapter.awg3_monitoring())
+            clients = view.get("clients") or []
+            peer_count = len(clients)
+            online_count = sum(1 for c in clients if c.get("online") is True)
+            ifaces_summary = _awg2_ifaces_summary(view.get("ifaces") or [])
+            top_traffic = _awg3_top_traffic(clients)
+        except Exception:  # noqa: BLE001 - best effort, the health block is still useful
+            pass
+
+    return {
+        "node_id": node.id,
+        "node_name": node.name,
+        "node_host": node.host,
+        "installed": installed,
+        "missing_components": missing,
+        "online_count": online_count,
+        "peer_count": peer_count,
+        "ifaces_summary": ifaces_summary,
+        "top_traffic": top_traffic,
+        "health_error": health_error,
+    }
+
+
 def _warper_fake_subnet(status_data: dict[str, Any]) -> str | None:
     subnet = status_data.get("subnet")
     if isinstance(subnet, dict):

@@ -14,7 +14,7 @@ from app.models import TrafficSessionState, UserTrafficSample, UserTrafficStatPr
 from app.services.traffic.collector import (
     _parse_status_timestamp,
     build_session_key,
-    build_status_rows,
+    build_status_rows_for_adapter,
     load_relevant_sessions,
     protocol_type_from_profile,
 )
@@ -86,13 +86,7 @@ class TrafficMaintenanceService:
         return result
 
     def collect_status_rows_for_snapshot(self, adapter) -> list[dict]:
-        from app.services.awg2_noc import fetch_awg2_peers_for_adapter
-        from app.services.feature_toggles import is_awg2_enabled
-
-        ovpn = adapter.parse_openvpn_status()
-        wg = adapter.parse_wireguard_status()
-        awg2 = fetch_awg2_peers_for_adapter(adapter) if is_awg2_enabled(self.db) else []
-        return build_status_rows(ovpn, wg, awg2)
+        return build_status_rows_for_adapter(self.db, adapter)
 
     def get_deleted_persisted_traffic_rows(self) -> tuple[list[dict], dict]:
         existing = self.collect_existing_config_client_names()
