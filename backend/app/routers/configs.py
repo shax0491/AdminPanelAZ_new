@@ -198,7 +198,7 @@ def _to_response(
             files = profile_files
         else:
             node_adapter = adapter or get_active_adapter(db)
-            files = node_adapter.get_profile_files(config.client_name, config.vpn_type)
+            files = _node_profile_files(node_adapter, config)
         if config.vpn_type == VpnType.openvpn and openvpn_group:
             files = filter_openvpn_profile_files(files, openvpn_group)
         if visibility_policy is not None:
@@ -248,15 +248,16 @@ def _fetch_profile_files_map(
     except Exception:
         files_by_key = {}
 
+    # AWG 3.1 files come from the node registry, not from the generic batch.
     missing = [
         c
         for c in configs
-        if profile_files_batch_key(c.client_name, c.vpn_type) not in files_by_key
+        if c.vpn_type == VpnType.amneziawg3 or profile_files_batch_key(c.client_name, c.vpn_type) not in files_by_key
     ]
     if missing:
         with ThreadPoolExecutor(max_workers=PROFILE_FILES_MAX_WORKERS) as pool:
             futures = {
-                pool.submit(adapter.get_profile_files, c.client_name, c.vpn_type): c
+                pool.submit(_node_profile_files, adapter, c): c
                 for c in missing
             }
             for future in as_completed(futures):
@@ -279,6 +280,14 @@ def _fetch_profile_files_map(
     return result
 
 
+def _node_profile_files(adapter: NodeAdapter, config: VpnConfig) -> list[dict[str, str]]:
+    if config.vpn_type == VpnType.amneziawg3:
+        from app.services.client_portal import _awg3_portal_entries
+
+        return _awg3_portal_entries(adapter, config.client_name)
+    return adapter.get_profile_files(config.client_name, config.vpn_type)
+
+
 def _viewer_visibility_policy(db: Session, current_user: User) -> dict:
     return resolve_effective_visible_vpn_profiles(db, current_user)
 
@@ -294,7 +303,7 @@ def _require_profile_path_allowed(
     if current_user.role == UserRole.admin:
         return
     node_adapter = adapter or get_active_adapter(db)
-    files = node_adapter.get_profile_files(config.client_name, config.vpn_type)
+    files = _node_profile_files(node_adapter, config)
     match = next((item for item in files if item.get("path") == path), None)
     if match is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Файл профиля недоступен")
@@ -585,8 +594,21 @@ def create_config(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={"message": "AmneziaWG 3.1 не установлен на узле (awg / amneziawg-go). Установите через setup.sh."},
             )
+        from app.services.awg3_clients import BASE_NAME_MAX, profile_record
+
+        if len(payload.client_name) > BASE_NAME_MAX:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Имя клиента AmneziaWG 3.1: не длиннее {BASE_NAME_MAX} символов",
+            )
+        # One client, two profiles: antizapret and full VPN records are created together.
         try:
-            adapter.awg3_create_client(payload.client_name, payload.awg3_mode or "split")
+            adapter.awg3_create_client(profile_record(payload.client_name, "split"), "split")
+            try:
+                adapter.awg3_create_client(profile_record(payload.client_name, "full"), "full")
+            except Exception:
+                adapter.awg3_delete_client(profile_record(payload.client_name, "split"))
+                raise
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     else:
@@ -797,6 +819,7 @@ def delete_config(
 def download_profile(
     config_id: int,
     path: str,
+    awg3_mode: str = Query("split", pattern="^(split|full)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -808,8 +831,20 @@ def download_profile(
 
     adapter = get_active_adapter(db)
     if config.vpn_type == VpnType.amneziawg3:
-        text = adapter.awg3_client_config(config.client_name)
-        return attachment_response(text, f"awg3-{config.client_name}.conf")
+        from app.services.awg3_clients import base_name, profile_record
+        from app.services.client_portal import AWG3_PORTAL_PATH_PREFIX
+
+        # Card path "awg3:<record>" as in the portal; a bare path falls back to the mode for direct links.
+        if not path.startswith(AWG3_PORTAL_PATH_PREFIX):
+            path = AWG3_PORTAL_PATH_PREFIX + profile_record(config.client_name, awg3_mode)
+        _require_profile_path_allowed(db, current_user, config, path, adapter=adapter)
+        record = path[len(AWG3_PORTAL_PATH_PREFIX):]
+        if base_name(record) != config.client_name:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Файл не найден")
+        text = adapter.awg3_client_config(record)
+        variant = "antizapret" if record.endswith("_az") else "vpn"
+        filename = build_profile_download_filename(config.client_name, protocol="amneziawg3", variant=variant, path=path)
+        return attachment_response(text, filename)
     _require_profile_path_allowed(db, current_user, config, path, adapter=adapter)
     hosts = load_node_remote_hosts(db, config.node_id)
     content = read_profile_file_for_delivery(adapter, path, hosts)

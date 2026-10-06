@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.schemas import WireGuardPeer
+from app.services.awg3_clients import base_name
 from app.services.native_awg3_runtime import AWG3_PORT
 from app.services.awg2_noc import awg2_client_to_peer
 
@@ -24,7 +25,7 @@ def peers_from_awg3_monitoring(payload: dict) -> list[WireGuardPeer]:
             continue
         # split -> "antizapret3", full -> "vpn3": the collector routes on the "antizapret" substring.
         label = "antizapret3" if client.get("mode", "split") == "split" else "vpn3"
-        peers.append(awg2_client_to_peer({**client, "iface": label}))
+        peers.append(awg2_client_to_peer({**client, "iface": label, "name": base_name(client.get("name") or "")}))
     return peers
 
 
@@ -42,6 +43,7 @@ def awg3_monitoring_view(raw: dict) -> dict:
         split = c.get("mode", "split") == "split"
         clients.append({
             **c,
+            "name": base_name(c.get("name") or ""),
             "iface": "antizapret3" if split else "vpn3",
             "online": bool(c.get("online")),
         })

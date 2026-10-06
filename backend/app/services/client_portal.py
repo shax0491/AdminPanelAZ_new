@@ -645,17 +645,28 @@ AWG3_PORTAL_PATH_PREFIX = "awg3:"
 
 
 def _awg3_portal_entries(adapter, client_name: str) -> list[dict]:
-    """One portal file per AWG 3.1 client; the content comes from the node registry (virtual path)."""
-    record = next((c for c in adapter.awg3_list_clients() if c.get("name") == client_name), None)
-    if record is None:
-        return []
-    split = record.get("mode", "split") == "split"
-    return [{
-        "path": f"{AWG3_PORTAL_PATH_PREFIX}{client_name}",
-        "name": "AmneziaWG 3.1 (антизапрет)" if split else "AmneziaWG 3.1 (полный VPN)",
-        "protocol": "amneziawg3",
-        "variant": "antizapret" if split else "vpn",
-    }]
+    """AmneziaWG 3.1 profile files for one client: antizapret and full VPN, content from the node registry.
+
+    Each entry points at a registry record through a virtual path; the record name carries the
+    internal _az/_vpn suffix, the portal shows only the client name.
+    """
+    from app.services.awg3_clients import profile_record
+
+    present = {c.get("name") for c in adapter.awg3_list_clients()}
+    entries: list[dict] = []
+    for mode, label, variant in (
+        ("split", "AmneziaWG 3.1 (антизапрет)", "antizapret"),
+        ("full", "AmneziaWG 3.1 (полный VPN)", "vpn"),
+    ):
+        record = profile_record(client_name, mode)
+        if record in present:
+            entries.append({
+                "path": f"{AWG3_PORTAL_PATH_PREFIX}{record}",
+                "name": label,
+                "protocol": "amneziawg3",
+                "variant": variant,
+            })
+    return entries
 
 
 def _list_files_for_configs(db: Session, configs: list[VpnConfig]) -> list[dict]:

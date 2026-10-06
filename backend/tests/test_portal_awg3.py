@@ -30,16 +30,12 @@ def test_awg3_download_names_by_mode():
     assert build_profile_download_filename("ivan", protocol="amneziawg3", variant="vpn") == "AWG3-VPN-ivan.conf"
 
 
-def test_awg3_portal_entries_come_from_registry_mode():
+def test_awg3_portal_entries_list_both_paired_profiles():
     adapter = MagicMock()
-    adapter.awg3_list_clients.return_value = [{"name": "ivan", "mode": "full"}, {"name": "anna", "mode": "split"}]
+    adapter.awg3_list_clients.return_value = [{"name": "ivan_az", "mode": "split"}, {"name": "ivan_vpn", "mode": "full"}]
     entries = portal._awg3_portal_entries(adapter, "ivan")
-    assert entries == [{
-        "path": "awg3:ivan",
-        "name": "AmneziaWG 3.1 (полный VPN)",
-        "protocol": "amneziawg3",
-        "variant": "vpn",
-    }]
+    assert [e["path"] for e in entries] == ["awg3:ivan_az", "awg3:ivan_vpn"]
+    assert [e["variant"] for e in entries] == ["antizapret", "vpn"]
     assert portal._awg3_portal_entries(adapter, "missing") == []
 
 

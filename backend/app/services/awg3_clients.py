@@ -101,6 +101,33 @@ def _mode_of(record: dict) -> str:
     return record.get("mode", DEFAULT_MODE)
 
 
+# One client = two registry records: "<name>_az" (antizapret, split) and "<name>_vpn" (full VPN).
+# The suffix is internal; the panel shows one client named <name>, like AmneziaWG 2.0.
+AZ_SUFFIX = "_az"
+VPN_SUFFIX = "_vpn"
+BASE_NAME_MAX = 32 - len(VPN_SUFFIX)
+
+
+def profile_record(name: str, mode: str) -> str:
+    return name + (AZ_SUFFIX if mode == "split" else VPN_SUFFIX)
+
+
+def base_name(record: str) -> str:
+    """Client name shown to users: strip the internal suffix from a registry record name."""
+    for suffix in (AZ_SUFFIX, VPN_SUFFIX):
+        if record.endswith(suffix) and len(record) > len(suffix):
+            return record[: -len(suffix)]
+    return record
+
+
+def records_for(name: str, store: "Awg3Store | None" = None) -> list[str]:
+    """Registry records that belong to a client: both paired records, or the name itself (legacy)."""
+    store = store or Awg3Store()
+    clients = store.load_clients()
+    paired = [r for r in (profile_record(name, "split"), profile_record(name, "full")) if r in clients]
+    return paired or [name]
+
+
 def _validate_name(name: str) -> None:
     if not NAME_RE.match(name):
         raise Awg3ClientError("name: 1-32 chars, letters, digits, '_' or '-'")
@@ -289,9 +316,14 @@ def list_clients(store: Awg3Store | None = None) -> list[dict]:
 
 
 def delete_client(name: str, *, store: Awg3Store | None = None, run: Runner | None = None) -> None:
+    """Delete one registry record, or both paired records when given a client name."""
     store = store or Awg3Store()
     run = run or _default_runner
     clients = store.load_clients()
+    if name not in clients and any(base_name(r) == name for r in clients):
+        for record in records_for(name, store):
+            delete_client(record, store=store, run=run)
+        return
     if name not in clients:
         raise Awg3ClientError(f"client '{name}' not found")
     public = clients[name]["public_key"]
@@ -314,7 +346,21 @@ def _drop_peer_block(store: "Awg3Store", public: str) -> None:
     store.server_conf.write_text("\n[Peer]\n".join(kept), encoding="utf-8")
 
 
+def _apply_to_records(name: str, fn, *, store: Awg3Store | None, run: Runner | None) -> bool:
+    changed = False
+    for record in records_for(name, store):
+        changed = fn(record, store=store, run=run) or changed
+    return changed
+
+
 def suspend_client(name: str, *, store: Awg3Store | None = None, run: Runner | None = None) -> bool:
+    """Suspend the client's records; a bare record name suspends just that record."""
+    if name not in (store or Awg3Store()).load_clients():
+        return _apply_to_records(name, _suspend_record, store=store, run=run)
+    return _suspend_record(name, store=store, run=run)
+
+
+def _suspend_record(name: str, *, store: Awg3Store | None = None, run: Runner | None = None) -> bool:
     """Remove the peer from awg1 (live and conf); the registry keeps the keys for unsuspend.
 
     Returns True when the peer was active and is now removed, False if it was already suspended.
@@ -335,6 +381,13 @@ def suspend_client(name: str, *, store: Awg3Store | None = None, run: Runner | N
 
 
 def unsuspend_client(name: str, *, store: Awg3Store | None = None, run: Runner | None = None) -> bool:
+    """Unsuspend the client's records; a bare record name unsuspends just that record."""
+    if name not in (store or Awg3Store()).load_clients():
+        return _apply_to_records(name, _unsuspend_record, store=store, run=run)
+    return _unsuspend_record(name, store=store, run=run)
+
+
+def _unsuspend_record(name: str, *, store: Awg3Store | None = None, run: Runner | None = None) -> bool:
     """Restore a suspended peer from the node registry (same key, PSK and address)."""
     store = store or Awg3Store()
     run = run or _default_runner
