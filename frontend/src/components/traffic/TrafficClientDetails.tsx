@@ -61,8 +61,8 @@ function getProtocolLabel(protocol: string) {
   const p = protocol.toLowerCase()
   if (p === 'wireguard') return 'WireGuard'
   if (p === 'openvpn') return 'OpenVPN'
-  if (p === 'amneziawg2') return 'AWG 2.0'
-  if (p === 'amneziawg3') return 'AWG 3.1'
+  if (p === 'amneziawg2') return 'AWG 2'
+  if (p === 'amneziawg3') return 'AWG 3'
   return protocol
 }
 
@@ -329,8 +329,8 @@ export default function TrafficClientDetails({
     antizapret: 'AntiZapret',
     openvpn: 'OpenVPN',
     wireguard: 'WireGuard',
-    amneziawg2: 'AWG 2.0',
-    amneziawg3: 'AWG 3.1',
+    amneziawg2: 'AWG 2',
+    amneziawg3: 'AWG 3',
   }
 
   const limitPercent =

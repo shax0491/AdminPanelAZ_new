@@ -1,6 +1,6 @@
-"""AmneziaWG 3.1 access policy: deadline, temporary and permanent blocks.
+"""AmneziaWG 3 access policy: deadline, temporary and permanent blocks.
 
-Same states and block reasons as AmneziaWG 2.0 (see access_policy.py), without traffic
+Same states and block reasons as AmneziaWG 2 (see access_policy.py), without traffic
 limits. A block is applied on the node: the peer is removed from awg1 on suspend and
 restored from the node registry on unsuspend (awg3_clients.suspend_client/unsuspend_client).
 """
@@ -77,7 +77,7 @@ def state_of(row: AmneziaWg3AccessPolicy, now: datetime | None = None) -> dict[s
 
 
 def policy_view(db: Session, node_id: int, client_name: str, now: datetime | None = None) -> dict[str, Any]:
-    """Block state for the client list (same keys the UI reads for AmneziaWG 2.0)."""
+    """Block state for the client list (same keys the UI reads for AmneziaWG 2)."""
     row = get_row(db, node_id, client_name)
     if row is None:
         return {

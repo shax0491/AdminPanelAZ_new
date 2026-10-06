@@ -53,9 +53,9 @@ const ACTION_LOG_LABELS: Record<string, string> = {
   wg_traffic_limit_set: 'Установка лимита трафика WireGuard',
   wg_traffic_limit_clear: 'Снятие лимита трафика WireGuard',
 
-  // AmneziaWG 2.0 — клиенты
-  awg2_traffic_limit_set: 'Установка лимита трафика AmneziaWG 2.0',
-  awg2_traffic_limit_clear: 'Снятие лимита трафика AmneziaWG 2.0',
+  // AmneziaWG 2 — клиенты
+  awg2_traffic_limit_set: 'Установка лимита трафика AmneziaWG 2',
+  awg2_traffic_limit_clear: 'Снятие лимита трафика AmneziaWG 2',
 
   // Уведомления (внутренние коды блокировок)
   temp_block: 'Временная блокировка',

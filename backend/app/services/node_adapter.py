@@ -641,12 +641,12 @@ class LocalNodeAdapter(NodeAdapter):
         return awg3_clients.restart_runtime()
 
     def awg2_add_client(self, client_name: str, ttl: str | None = None) -> str:
-        # Native AmneziaWG 2.0 (client.sh / setup.sh) has no ephemeral/TTL client concept —
+        # Native AmneziaWG 2 (client.sh / setup.sh) has no ephemeral/TTL client concept —
         # that was an az-awg2 overlay-only feature. Fail loudly instead of silently ignoring it.
         if ttl:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Временные клиенты (TTL) не поддерживаются нативным AmneziaWG 2.0",
+                detail="Временные клиенты (TTL) не поддерживаются нативным AmneziaWG 2",
             )
         return self._service.add_amneziawg2_client(client_name)
 
@@ -660,7 +660,7 @@ class LocalNodeAdapter(NodeAdapter):
         return self._service.list_amneziawg2_clients()
 
     def awg2_expire_check(self) -> str:
-        return "Нативный AmneziaWG 2.0 не использует TTL — проверка истечения не требуется"
+        return "Нативный AmneziaWG 2 не использует TTL — проверка истечения не требуется"
 
     def awg2_expiry_map(self) -> dict[str, datetime]:
         return {}
@@ -1522,10 +1522,10 @@ class RemoteNodeAdapter(NodeAdapter):
             data = self._request("POST", "/awg2/expire-check", timeout=120.0)
         except HTTPException as exc:
             if _is_legacy_awg2_not_installed(exc):
-                # Native AmneziaWG 2.0 (client.sh) has no TTL concept - same no-op
+                # Native AmneziaWG 2 (client.sh) has no TTL concept - same no-op
                 # LocalNodeAdapter returns. The legacy az-awg2 overlay this endpoint
                 # targets simply isn't present on native-only nodes.
-                return "Нативный AmneziaWG 2.0 не использует TTL — проверка истечения не требуется"
+                return "Нативный AmneziaWG 2 не использует TTL — проверка истечения не требуется"
             raise
         return data.get("detail") or data.get("message", "ok")
 

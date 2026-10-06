@@ -1,4 +1,4 @@
-"""AmneziaWG 3.1 failover: endpoint rewrite to the front, restore, and state sync from the primary."""
+"""AmneziaWG 3 failover: endpoint rewrite to the front, restore, and state sync from the primary."""
 
 from types import SimpleNamespace
 

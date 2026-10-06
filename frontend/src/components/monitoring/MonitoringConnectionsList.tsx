@@ -72,8 +72,8 @@ export type MonitoringConnectionRow = {
 
 function protocolLabel(protocol: MonitoringConnectionProtocol) {
   if (protocol === 'openvpn') return 'OpenVPN'
-  if (protocol === 'amneziawg2') return 'AWG 2.0'
-  if (protocol === 'amneziawg3') return 'AWG 3.1'
+  if (protocol === 'amneziawg2') return 'AWG 2'
+  if (protocol === 'amneziawg3') return 'AWG 3'
   return 'WireGuard'
 }
 

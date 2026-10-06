@@ -1,4 +1,4 @@
-"""Native AmneziaWG 2.0 runtime block/unblock (client.sh's *-am2.conf, real `awg` binary).
+"""Native AmneziaWG 2 runtime block/unblock (client.sh's *-am2.conf, real `awg` binary).
 
 Mirrors wg_runtime.py's block/unblock design exactly (same on-disk peer parsing, same
 runtime-only remove/restore via `awg set ... peer ... remove` / `awg set ... peer ...
@@ -396,7 +396,7 @@ def block_clients_runtime(client_names: list[str]) -> dict[str, dict]:
 
 
 def sync_all_native_awg2_interfaces(*, timeout: int = COMMAND_TIMEOUT_SECONDS) -> dict:
-    """Apply on-disk native AmneziaWG 2.0 server configs to running interfaces via awg syncconf."""
+    """Apply on-disk native AmneziaWG 2 server configs to running interfaces via awg syncconf."""
     synced: list[str] = []
     errors: list[dict] = []
     for interface_name in sorted(NATIVE_AWG2_CONFIG_FILES):

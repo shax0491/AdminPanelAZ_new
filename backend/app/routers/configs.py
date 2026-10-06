@@ -248,7 +248,7 @@ def _fetch_profile_files_map(
     except Exception:
         files_by_key = {}
 
-    # AWG 3.1 files come from the node registry, not from the generic batch.
+    # AWG 3 files come from the node registry, not from the generic batch.
     missing = [
         c
         for c in configs
@@ -571,7 +571,7 @@ def create_config(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
                     "message": (
-                        "Нативный AmneziaWG 2.0 не найден на узле (бинарь awg отсутствует). "
+                        "Нативный AmneziaWG 2 не найден на узле (бинарь awg отсутствует). "
                         "Пересоберите его через setup.sh (amneziawg-go + amneziawg-tools)."
                     ),
                 },
@@ -592,14 +592,14 @@ def create_config(
         if not health.get("tools_present") or not health.get("userspace_present"):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail={"message": "AmneziaWG 3.1 не установлен на узле (awg / amneziawg-go). Установите через setup.sh."},
+                detail={"message": "AmneziaWG 3 не установлен на узле (awg / amneziawg-go). Установите через setup.sh."},
             )
         from app.services.awg3_clients import BASE_NAME_MAX, profile_record
 
         if len(payload.client_name) > BASE_NAME_MAX:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Имя клиента AmneziaWG 3.1: не длиннее {BASE_NAME_MAX} символов",
+                detail=f"Имя клиента AmneziaWG 3: не длиннее {BASE_NAME_MAX} символов",
             )
         # One client, two profiles: antizapret and full VPN records are created together.
         try:

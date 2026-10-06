@@ -25,7 +25,7 @@ import type { TgMiniAwg2Status } from '@/types'
 
 function Awg2Skeleton() {
   return (
-    <div className="tg-mini-dashboard space-y-4" aria-busy="true" aria-label="Загрузка AmneziaWG 2.0">
+    <div className="tg-mini-dashboard space-y-4" aria-busy="true" aria-label="Загрузка AmneziaWG 2">
       <div className="tg-mini-skeleton" style={{ height: '2.5rem' }} />
       <div className="tg-mini-skeleton tg-mini-skeleton-summary" />
       <div className="tg-mini-cards">
@@ -122,8 +122,8 @@ export default function Awg2() {
   return (
     <div className="tg-mini-dashboard space-y-4">
       <MiniPageHeader
-        title="AmneziaWG 2.0"
-        subtitle="Нативный AmneziaWG 2.0 на активном узле (только просмотр)"
+        title="AmneziaWG 2"
+        subtitle="Нативный AmneziaWG 2 на активном узле (только просмотр)"
         onRefresh={() => void load({ silent: true })}
         refreshing={refreshing}
       />
@@ -243,9 +243,9 @@ export default function Awg2() {
           {!installed && (
             <div className="tg-mini-filter-empty">
               <ShieldOff size={24} className="text-muted-foreground" aria-hidden />
-              <p className="text-sm font-medium">AmneziaWG 2.0 не найден</p>
+              <p className="text-sm font-medium">AmneziaWG 2 не найден</p>
               <p className="max-w-sm text-xs text-muted-foreground">
-                На узле <strong>{data.node_name}</strong> нет нативного AmneziaWG 2.0 (бинарь awg отсутствует).
+                На узле <strong>{data.node_name}</strong> нет нативного AmneziaWG 2 (бинарь awg отсутствует).
                 {data.missing_components.length > 0 && (
                   <> Не хватает: {data.missing_components.join(', ')}.</>
                 )}

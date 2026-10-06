@@ -10,14 +10,14 @@ export default function Awg3HelpStub() {
         <div className="min-w-0 space-y-2 text-sm">
           <h2 className="text-base font-semibold tracking-tight">Справка</h2>
           <p className="text-muted-foreground">
-            AmneziaWG 3.1 — отдельный интерфейс <code className="text-xs">awg1</code> поверх AntiZapret
-            (userspace <code className="text-xs">amneziawg-go</code>, UDP 51821). Не влияет на AmneziaWG 2.0
+            AmneziaWG 3 — отдельный интерфейс <code className="text-xs">awg1</code> поверх AntiZapret
+            (userspace <code className="text-xs">amneziawg-go</code>, UDP 51821). Не влияет на AmneziaWG 2
             и 1.5. Штатные OpenVPN и WireGuard не затрагиваются.
           </p>
           <div className="space-y-1.5 text-muted-foreground">
             <p>
               <span className="font-medium text-foreground">Клиенты:</span> создание, скачивание и
-              блокировка — на странице <strong className="text-foreground">Клиенты</strong> (галочка «AmneziaWG 3.1»,
+              блокировка — на странице <strong className="text-foreground">Клиенты</strong> (галочка «AmneziaWG 3»,
               режим «антизапрет» или «полный VPN»). Здесь только статус и живой мониторинг пиров.
             </p>
             <p>
@@ -28,7 +28,7 @@ export default function Awg3HelpStub() {
               один раз при установке. Клиентский конфиг получает все четыре параметра с сервера.
             </p>
             <p>
-              <span className="font-medium text-foreground">MTU:</span> клиентские профили AmneziaWG 3.1 получают{' '}
+              <span className="font-medium text-foreground">MTU:</span> клиентские профили AmneziaWG 3 получают{' '}
               <code className="text-xs">MTU = 1280</code>. Пакеты с паддингом становятся больше, при большем MTU
               соединение фрагментируется и обрывается.
             </p>
@@ -40,8 +40,8 @@ export default function Awg3HelpStub() {
             <p>
               <span className="font-medium text-foreground">Статистика:</span> живые пиры читаются из{' '}
               <code className="text-xs">awg show awg1 dump</code>; накопленный RX/TX и лимиты — в{' '}
-              <strong className="text-foreground">Мониторинг трафика</strong> (протокол AmneziaWG 3.1). Лимит
-              трафика для AmneziaWG 3.1 пока не поддержан.
+              <strong className="text-foreground">Мониторинг трафика</strong> (протокол AmneziaWG 3). Лимит
+              трафика для AmneziaWG 3 пока не поддержан.
             </p>
             <p>
               <span className="font-medium text-foreground">HA и failover:</span> при репликации копируются слой{' '}

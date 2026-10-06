@@ -217,10 +217,10 @@ FEATURE_TOGGLES: tuple[FeatureToggleDefinition, ...] = (
     FeatureToggleDefinition(
         key="awg2",
         env_key="FEATURE_AWG2_ENABLED",
-        label="AmneziaWG 2.0",
-        description="Статус и живой мониторинг пиров нативного AmneziaWG 2.0 (client.sh/awg). Клиенты — на странице «Клиенты».",
+        label="AmneziaWG 2",
+        description="Статус и живой мониторинг пиров нативного AmneziaWG 2 (client.sh/awg). Клиенты — на странице «Клиенты».",
         icon="🧬",
-        disable_hint="Раздел AmneziaWG 2.0 и связанные API станут недоступны.",
+        disable_hint="Раздел AmneziaWG 2 и связанные API станут недоступны.",
         resource_impact_level="minimal",
         default=True,
         group="app_module",
@@ -230,10 +230,10 @@ FEATURE_TOGGLES: tuple[FeatureToggleDefinition, ...] = (
     FeatureToggleDefinition(
         key="awg3",
         env_key="FEATURE_AWG3_ENABLED",
-        label="AmneziaWG 3.1",
-        description="Статус и мониторинг пиров AmneziaWG 3.1 (отдельный интерфейс awg1, userspace amneziawg-go).",
+        label="AmneziaWG 3",
+        description="Статус и мониторинг пиров AmneziaWG 3 (отдельный интерфейс awg1, userspace amneziawg-go).",
         icon="🧬",
-        disable_hint="Раздел AmneziaWG 3.1 и связанные API станут недоступны.",
+        disable_hint="Раздел AmneziaWG 3 и связанные API станут недоступны.",
         resource_impact_level="minimal",
         default=False,
         group="app_module",
@@ -245,7 +245,7 @@ FEATURE_TOGGLES: tuple[FeatureToggleDefinition, ...] = (
         env_key="FEATURE_FAILOVER_POOLS_ENABLED",
         label="Автопереключение (пулы серверов)",
         description=(
-            "Группы серверов AmneziaWG 2.0 с переключением без смены клиентского конфига: "
+            "Группы серверов AmneziaWG 2 с переключением без смены клиентского конфига: "
             "переключение происходит на стороне сервера через proxy_agent (dnat_front), "
             "клиент ничего не переключает сам."
         ),

@@ -1,4 +1,4 @@
-"""Client portal shows AmneziaWG 3.1 profiles the same way as AmneziaWG 2.0."""
+"""Client portal shows AmneziaWG 3 profiles the same way as AmneziaWG 2."""
 
 from __future__ import annotations
 

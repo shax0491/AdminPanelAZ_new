@@ -475,12 +475,12 @@ AWG3_RULES_SCRIPT = Path("/usr/local/sbin/awg3-rules.sh")
 
 
 def _reapply_awg3_rules(antizapret_path: Path) -> str:
-    """Пересобрать правила AmneziaWG 3.1 (10.9.x) после up.sh с новыми ключами/адресом Proton.
+    """Пересобрать правила AmneziaWG 3 (10.9.x) после up.sh с новыми ключами/адресом Proton.
 
     up.sh на узле не обязан знать про 3.1: базовые скрипты ставятся при установке и не обновляются
     вместе с панелью. Поэтому панель сама запускает awg3-rules.sh up: он перечитывает setup
     (адрес Proton, режим WARP) и удаляет прежние правила подсети по интерфейсу, а не по адресу.
-    Если AWG 3.1 на узле нет или awg1 не поднят - ничего не делает.
+    Если AWG 3 на узле нет или awg1 не поднят - ничего не делает.
     """
     if antizapret_path != Path("/root/antizapret") or not AWG3_RULES_SCRIPT.is_file():
         return ""
@@ -494,11 +494,11 @@ def _reapply_awg3_rules(antizapret_path: Path) -> str:
             [str(AWG3_RULES_SCRIPT), "up"], capture_output=True, text=True, timeout=30
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
-        return f"\nAWG 3.1: правила не пересобраны ({exc})"
+        return f"\nAWG 3: правила не пересобраны ({exc})"
     if rules.returncode != 0:
         detail = (rules.stderr or rules.stdout or "").strip()[-300:]
-        return f"\nAWG 3.1: awg3-rules.sh up завершился с ошибкой: {detail}"
-    return "\nAWG 3.1: правила WARP пересобраны под новый адрес и режим"
+        return f"\nAWG 3: awg3-rules.sh up завершился с ошибкой: {detail}"
+    return "\nAWG 3: правила WARP пересобраны под новый адрес и режим"
 
 
 def _run_geo_checks(interface: str | None) -> dict:

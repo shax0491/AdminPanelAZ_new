@@ -1,4 +1,4 @@
-"""AWG 3.1 layer rides in the panel backup archive like AWG 2.0 does."""
+"""AWG 3 layer rides in the panel backup archive like AWG 2 does."""
 
 import sqlite3
 from pathlib import Path

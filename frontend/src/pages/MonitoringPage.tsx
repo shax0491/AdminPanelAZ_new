@@ -988,12 +988,12 @@ export default function MonitoringPage() {
                                 <TableHead className="h-9 w-[6%] whitespace-nowrap px-3 text-right">WG</TableHead>
                                 {awg2Enabled && (
                                   <TableHead className="h-9 w-[7%] whitespace-nowrap px-3 text-right">
-                                    AWG 2.0
+                                    AWG 2
                                   </TableHead>
                                 )}
                                 {awg3Enabled && (
                                   <TableHead className="h-9 w-[7%] whitespace-nowrap px-3 text-right">
-                                    AWG 3.1
+                                    AWG 3
                                   </TableHead>
                                 )}
                                 <TableHead className="h-9 w-[7%] whitespace-nowrap px-3 text-right">Службы</TableHead>
@@ -1199,7 +1199,7 @@ export default function MonitoringPage() {
               />
               {awg2Enabled && (
                 <SummaryCard
-                  label="AWG 2.0 онлайн"
+                  label="AWG 2 онлайн"
                   value={String(
                     isFederated ? data.total_connected_amneziawg2 ?? awg2Active : awg2Active,
                   )}
@@ -1210,7 +1210,7 @@ export default function MonitoringPage() {
               )}
               {awg3Enabled && (
                 <SummaryCard
-                  label="AWG 3.1 онлайн"
+                  label="AWG 3 онлайн"
                   value={String(
                     isFederated ? data.total_connected_amneziawg3 ?? awg3Active : awg3Active,
                   )}
@@ -1226,8 +1226,8 @@ export default function MonitoringPage() {
                 sub={[
                   `OVPN ${openvpnClients.length}`,
                   `WG ${wgActive}`,
-                  ...(awg2Enabled ? [`AWG 2.0 ${awg2Active}`] : []),
-                  ...(awg3Enabled ? [`AWG 3.1 ${awg3Active}`] : []),
+                  ...(awg2Enabled ? [`AWG 2 ${awg2Active}`] : []),
+                  ...(awg3Enabled ? [`AWG 3 ${awg3Active}`] : []),
                 ].join(' · ')}
               />
               <SummaryCard
@@ -1348,8 +1348,8 @@ export default function MonitoringPage() {
                           <SelectItem value="all">Все протоколы</SelectItem>
                           <SelectItem value="openvpn">OpenVPN</SelectItem>
                           <SelectItem value="wireguard">WireGuard</SelectItem>
-                          {awg2Enabled && <SelectItem value="amneziawg2">AWG 2.0</SelectItem>}
-                          {awg3Enabled && <SelectItem value="amneziawg3">AWG 3.1</SelectItem>}
+                          {awg2Enabled && <SelectItem value="amneziawg2">AWG 2</SelectItem>}
+                          {awg3Enabled && <SelectItem value="amneziawg3">AWG 3</SelectItem>}
                         </SelectContent>
                       </Select>
                       <div className="flex h-9 shrink-0 items-center gap-2">

@@ -224,7 +224,7 @@ def _amnezia_linux(client_name: str) -> str:
 
 def _awg2_ios(client_name: str) -> str:
     return (
-        f"<b>📱 Установка AWG 2.0 на iOS</b>\n"
+        f"<b>📱 Установка AWG 2 на iOS</b>\n"
         f"Профиль: <code>{client_name}</code>\n\n"
         "1. Установите <b>AmneziaWG</b> из App Store "
         "(в РФ обычно доступно; для <code>.conf</code> этого достаточно).\n"
@@ -239,7 +239,7 @@ def _awg2_ios(client_name: str) -> str:
 
 def _awg2_android(client_name: str) -> str:
     return (
-        f"<b>📱 Установка AWG 2.0 на Android</b>\n"
+        f"<b>📱 Установка AWG 2 на Android</b>\n"
         f"Профиль: <code>{client_name}</code>\n\n"
         "1. Установите <b>AmneziaWG</b> из Google Play / GitHub "
         "(для <code>.conf</code> этого достаточно).\n"
@@ -254,7 +254,7 @@ def _awg2_android(client_name: str) -> str:
 
 def _awg2_mac(client_name: str) -> str:
     return (
-        f"<b>💻 Установка AWG 2.0 на macOS</b>\n"
+        f"<b>💻 Установка AWG 2 на macOS</b>\n"
         f"Профиль: <code>{client_name}</code>\n\n"
         "1. Установите <b>AmneziaWG</b> "
         "(актуальная версия с поддержкой 2.0).\n"
@@ -268,7 +268,7 @@ def _awg2_mac(client_name: str) -> str:
 
 def _awg2_windows(client_name: str) -> str:
     return (
-        f"<b>🖥 Установка AWG 2.0 на Windows</b>\n"
+        f"<b>🖥 Установка AWG 2 на Windows</b>\n"
         f"Профиль: <code>{client_name}</code>\n\n"
         "1. Установите <b>AmneziaWG</b> для Windows "
         "(актуальная версия с поддержкой 2.0).\n"
@@ -282,7 +282,7 @@ def _awg2_windows(client_name: str) -> str:
 
 def _awg2_linux(client_name: str) -> str:
     return (
-        f"<b>🐧 Установка AWG 2.0 на Linux</b>\n"
+        f"<b>🐧 Установка AWG 2 на Linux</b>\n"
         f"Профиль: <code>{client_name}</code>\n\n"
         "1. Установите <b>AmneziaWG</b> / <b>amneziawg-tools</b> + userspace "
         "(для <code>.conf</code> этого достаточно).\n"
@@ -290,7 +290,7 @@ def _awg2_linux(client_name: str) -> str:
         "<code>sudo awg-quick up …</code>.\n"
         "3. Файл <code>.vpn</code> — импорт в <b>AmneziaVPN</b>.\n"
         "4. Подключитесь через GUI AmneziaWG или awg-quick.\n"
-        "5. Обычный <code>wg-quick</code> без AmneziaWG 2.0 не подойдёт."
+        "5. Обычный <code>wg-quick</code> без AmneziaWG 2 не подойдёт."
     )
 
 
@@ -310,7 +310,7 @@ def _awg_vpn_file_instruction(
     is_awg2: bool,
 ) -> str:
     """Instructions when the delivered file is AmneziaVPN .vpn / vpnuri."""
-    label = "AWG 2.0" if is_awg2 else "AmneziaWG"
+    label = "AWG 2" if is_awg2 else "AmneziaWG"
     heads = {
         "ios": f"<b>📱 Установка {label} на iOS</b>",
         "android": f"<b>📱 Установка {label} на Android</b>",
@@ -339,7 +339,7 @@ def _awg_vpn_file_instruction(
 
 
 def _profile_format_tip(*, protocol: str, filename: str | None, path: str | None) -> str | None:
-    """Hint which app matches .conf vs .vpn (mainly AWG / AWG 2.0)."""
+    """Hint which app matches .conf vs .vpn (mainly AWG / AWG 2)."""
     if protocol not in {"amneziawg2", "amneziawg"}:
         return None
     fmt = _detect_profile_format(filename, path)
@@ -357,7 +357,7 @@ def _profile_format_tip(*, protocol: str, filename: str | None, path: str | None
         )
     if protocol == "amneziawg2":
         return (
-            "📎 AWG 2.0: <b>.conf</b> — AmneziaWG / awg-quick; "
+            "📎 AWG 2: <b>.conf</b> — AmneziaWG / awg-quick; "
             "<b>.vpn</b> — только AmneziaVPN."
         )
     return (

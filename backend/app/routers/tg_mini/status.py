@@ -41,7 +41,7 @@ def mini_awg3_status(db: Session = Depends(get_db), _: User = Depends(require_tg
     from app.routers import tg_mini as root
 
     if not root.get_feature_service().is_enabled("awg3"):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Модуль AmneziaWG 3.1 отключён")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Модуль AmneziaWG 3 отключён")
     return build_awg3_status_payload(db)
 
 

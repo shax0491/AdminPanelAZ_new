@@ -1,4 +1,4 @@
-"""AZ-AWG2 (az-awg2 AmneziaWG 2.0 parallel layer) integration."""
+"""AZ-AWG2 (az-awg2 AmneziaWG 2 parallel layer) integration."""
 
 from __future__ import annotations
 

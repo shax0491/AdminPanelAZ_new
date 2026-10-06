@@ -75,7 +75,7 @@ export default function NodeSummaryCard({ node, isActive, onSelect }: NodeSummar
         </div>
         {showAwg2 && (
           <div>
-            <dt className="text-muted-foreground">AWG 2.0</dt>
+            <dt className="text-muted-foreground">AWG 2</dt>
             <dd className="mt-0.5 font-mono text-sm font-medium tabular-nums">
               {node.connected_amneziawg2 ?? 0}
             </dd>
@@ -83,7 +83,7 @@ export default function NodeSummaryCard({ node, isActive, onSelect }: NodeSummar
         )}
         {showAwg3 && (
           <div>
-            <dt className="text-muted-foreground">AWG 3.1</dt>
+            <dt className="text-muted-foreground">AWG 3</dt>
             <dd className="mt-0.5 font-mono text-sm font-medium tabular-nums">
               {node.connected_amneziawg3 ?? 0}
             </dd>

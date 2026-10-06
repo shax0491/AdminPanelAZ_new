@@ -37,7 +37,7 @@ _PROTOCOL_ALIASES = {
 _PROTOCOL_LABELS = {
     "openvpn": "OpenVPN",
     "wireguard": "WireGuard",
-    "amneziawg2": "AmneziaWG 2.0",
+    "amneziawg2": "AmneziaWG 2",
 }
 _MODE_BUTTONS = inline_keyboard(
     [

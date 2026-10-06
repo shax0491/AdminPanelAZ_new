@@ -63,7 +63,7 @@ def _wg_profile(profile: str | None) -> bool:
 
 
 def _awg_profile(profile: str | None) -> bool:
-    """AmneziaWG 2.0 / 3.1 session (antizapret-awg2, vpn-awg3, ...).
+    """AmneziaWG 2 / 3.1 session (antizapret-awg2, vpn-awg3, ...).
 
     Counted from connection samples in their own columns, so it must not fall into the OpenVPN bucket
     that holds every profile without "-wg".

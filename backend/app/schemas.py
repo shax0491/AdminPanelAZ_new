@@ -1500,7 +1500,7 @@ class FailoverPoolUpdate(BaseModel):
 class FailoverPoolFrontUpdate(BaseModel):
     front_node_id: int
     front_port: int = Field(ge=1, le=65535)
-    # Real AmneziaWG 2.0 port on the pool's own members, if different from
+    # Real AmneziaWG 2 port on the pool's own members, if different from
     # front_port - only needed when this front already serves another pool on
     # a different client-facing port. Defaults to front_port when omitted.
     backend_port: int | None = Field(None, ge=1, le=65535)

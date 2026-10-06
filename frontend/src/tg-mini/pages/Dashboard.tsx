@@ -249,7 +249,7 @@ export default function Dashboard() {
           accent="green"
         />
         <MetricCard
-          label="AWG 2.0 онлайн"
+          label="AWG 2 онлайн"
           value={String(data.connected_amneziawg2)}
           sub={`из ${totalAmneziawg2Peers} пиров`}
           icon={Shield}
@@ -376,7 +376,7 @@ export default function Dashboard() {
                 <Card>
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between gap-2">
-                      <CardTitle className="text-base">AWG 2.0</CardTitle>
+                      <CardTitle className="text-base">AWG 2</CardTitle>
                       <Badge variant={filteredAmneziawg2.length > 0 ? 'success' : 'secondary'}>
                         {filteredAmneziawg2.length}
                       </Badge>
@@ -384,7 +384,7 @@ export default function Dashboard() {
                   </CardHeader>
                   <CardContent className="space-y-2">
                     {filteredAmneziawg2.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Нет совпадений в AWG 2.0</p>
+                      <p className="text-sm text-muted-foreground">Нет совпадений в AWG 2</p>
                     ) : (
                       filteredAmneziawg2.map((peer) => (
                         <div key={peer.public_key} className="tg-mini-list-item tg-mini-list-item-stack">

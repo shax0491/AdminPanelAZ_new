@@ -10,7 +10,7 @@ export default function Awg2HelpStub() {
         <div className="min-w-0 space-y-2 text-sm">
           <h2 className="text-base font-semibold tracking-tight">Справка</h2>
           <p className="text-muted-foreground">
-            Нативный AmneziaWG 2.0 — второй туннель поверх AntiZapret, встроенный прямо в{' '}
+            Нативный AmneziaWG 2 — второй туннель поверх AntiZapret, встроенный прямо в{' '}
             <code className="text-xs">setup.sh</code> (собирается вместе с остальным VPN, отдельно
             ничего ставить не нужно). Штатные OpenVPN и WireGuard/AmneziaWG 1.5 не затрагиваются.
           </p>
@@ -18,7 +18,7 @@ export default function Awg2HelpStub() {
             <p>
               <span className="font-medium text-foreground">Клиенты:</span> создание, скачивание и
               блокировка — на странице{' '}
-              <strong className="text-foreground">Клиенты</strong> (галочка «AmneziaWG 2.0»).
+              <strong className="text-foreground">Клиенты</strong> (галочка «AmneziaWG 2»).
               Отдельной вкладки клиентов на <code className="text-xs">/awg2</code> нет — здесь только
               статус и живой мониторинг пиров.
             </p>
@@ -30,7 +30,7 @@ export default function Awg2HelpStub() {
               клиентов.
             </p>
             <p>
-              <span className="font-medium text-foreground">MTU:</span> клиентские профили AmneziaWG 2.0
+              <span className="font-medium text-foreground">MTU:</span> клиентские профили AmneziaWG 2
               всегда получают <code className="text-xs">MTU = 1280</code> — минимум, гарантированно
               проходящий через мобильные сети и CGNAT.
             </p>
@@ -38,7 +38,7 @@ export default function Awg2HelpStub() {
               <span className="font-medium text-foreground">Статистика:</span> живые пиры (эта
               страница, «Мониторинг») читаются напрямую из{' '}
               <code className="text-xs">awg show &lt;iface&gt; dump</code>; накопленный RX/TX и лимиты
-              — в <strong className="text-foreground">Мониторинг трафика</strong> (протокол AmneziaWG 2.0).
+              — в <strong className="text-foreground">Мониторинг трафика</strong> (протокол AmneziaWG 2).
             </p>
             <p>
               <span className="font-medium text-foreground">HA:</span> при репликации на replica-узел

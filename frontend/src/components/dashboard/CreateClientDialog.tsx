@@ -30,15 +30,15 @@ const PROTOCOL_ORDER: VpnType[] = ['openvpn', 'wireguard', 'amneziawg2', 'amnezi
 function vpnLabel(type: VpnType): string {
   if (type === 'openvpn') return 'OpenVPN'
   if (type === 'wireguard') return 'WireGuard / AmneziaWG'
-  if (type === 'amneziawg3') return 'AmneziaWG 3.1'
-  return 'AmneziaWG 2.0'
+  if (type === 'amneziawg3') return 'AmneziaWG 3'
+  return 'AmneziaWG 2'
 }
 
 function vpnHint(type: VpnType): string {
   if (type === 'openvpn') return 'Сертификат + .ovpn'
   if (type === 'wireguard') return 'WG / AWG профиль'
-  if (type === 'amneziawg3') return 'AWG 3.1 peer'
-  return 'AWG 2.0 peer'
+  if (type === 'amneziawg3') return 'AWG 3 peer'
+  return 'AWG 2 peer'
 }
 
 function dateInputToIso(value: string): string | null {

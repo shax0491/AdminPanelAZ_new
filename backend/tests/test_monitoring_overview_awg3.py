@@ -1,4 +1,4 @@
-"""AmneziaWG 3.1 peers wired into the monitoring overview next to AmneziaWG 2.0."""
+"""AmneziaWG 3 peers wired into the monitoring overview next to AmneziaWG 2."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from app.schemas import MonitoringOverview, WireGuardPeer
 from app.services import monitoring_overview as mo
 
 
-def _peer(name: str, *, online: bool, interface: str = "antizapret3", rx: int = 0, tx: int = 0, endpoint="203.0.113.7:51900"):
+def _peer(name: str, *, online: bool, interface: str = "antizapret", rx: int = 0, tx: int = 0, endpoint="203.0.113.7:51900"):
     seen = datetime.utcnow() - timedelta(seconds=10 if online else 900)
     return WireGuardPeer(
         interface=interface,
@@ -45,7 +45,7 @@ def test_node_summary_counts_awg3_online_separately_from_awg2():
         "ovpn_clients": [],
         "wireguard_peers": [],
         "amneziawg2_peers": [_peer("old", online=True, interface="antizapret2")],
-        "amneziawg3_peers": [_peer("a", online=True), _peer("b", online=True, interface="vpn3"), _peer("c", online=False)],
+        "amneziawg3_peers": [_peer("a", online=True), _peer("b", online=True, interface="vpn"), _peer("c", online=False)],
         "services": [],
         "error": None,
         "cpu_percent": None,
@@ -158,7 +158,7 @@ def test_federated_overview_collects_awg3_across_nodes(monkeypatch):
 
 
 def _ha_lookup(node_ids, name="alice"):
-    """HA lookup for one AWG 3.1 client that lives on several nodes of one sync group."""
+    """HA lookup for one AWG 3 client that lives on several nodes of one sync group."""
     from app.schemas import VpnConfigHaInfo
 
     info = VpnConfigHaInfo(
@@ -173,12 +173,12 @@ def test_ha_aggregation_merges_awg3_peer_present_on_two_nodes():
     on_b = _peer("alice", online=True, rx=999).model_copy(update={"node_id": 2, "node_name": "nl1"})
     merged = mo._aggregate_ha_amneziawg3_peers([on_a, on_b], _ha_lookup([1, 2]))
     assert len(merged) == 1
-    assert merged[0].node_name == "nl1"  # the node with more traffic wins, like for AWG 2.0
+    assert merged[0].node_name == "nl1"  # the node with more traffic wins, like for AWG 2
     assert merged[0].ha is not None and {n.node_name for n in merged[0].ha_nodes} == {"de1", "nl1"}
 
 
 def test_ha_aggregation_keeps_awg3_peers_of_different_protocol_apart():
-    """An HA record for AWG 2.0 must not merge AWG 3.1 peers with the same client name."""
+    """An HA record for AWG 2 must not merge AWG 3 peers with the same client name."""
     on_a = _peer("alice", online=True).model_copy(update={"node_id": 1, "node_name": "de1"})
     on_b = _peer("alice", online=True).model_copy(update={"node_id": 2, "node_name": "nl1"})
     awg2_only = {

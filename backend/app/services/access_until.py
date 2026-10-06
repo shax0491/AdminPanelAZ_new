@@ -222,7 +222,7 @@ def _set_awg3_access_until(
     commit: bool,
     require_deadline_lte: datetime | None,
 ) -> dict | None:
-    """AWG 3.1 deadline: same claim/reconcile contract as the other protocols, runtime via the node."""
+    """AWG 3 deadline: same claim/reconcile contract as the other protocols, runtime via the node."""
     model = AmneziaWg3AccessPolicy
     if require_deadline_lte is not None:
         cutoff = _to_db_datetime(require_deadline_lte)

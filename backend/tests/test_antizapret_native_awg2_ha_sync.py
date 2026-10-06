@@ -1,4 +1,4 @@
-"""Native AmneziaWG 2.0 HA-sync building blocks on AntiZapretService: server config/key
+"""Native AmneziaWG 2 HA-sync building blocks on AntiZapretService: server config/key
 read-write and client profile archive export/import, mirroring the existing WireGuard
 equivalents (read_wireguard_server_config, export_wireguard_client_profiles_archive, ...).
 """

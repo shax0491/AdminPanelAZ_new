@@ -598,7 +598,7 @@ export default function BackupTab() {
                     <OptionCard
                       icon={Shield}
                       label="Добавить слой AZ-AWG2"
-                      description="Узкий overlay AmneziaWG 2.0 в тот же архив AdminPanel, если слой установлен на VPN-узле"
+                      description="Узкий overlay AmneziaWG 2 в тот же архив AdminPanel, если слой установлен на VPN-узле"
                       checked={includeAwg2Backup}
                       onChange={setIncludeAwg2Backup}
                     />
@@ -607,7 +607,7 @@ export default function BackupTab() {
                     <OptionCard
                       icon={Shield}
                       label="Добавить слой AZ-AWG3"
-                      description="Узкий слой AmneziaWG 3.1 (ключи, awg1.conf, клиенты, список маршрутов) в тот же архив AdminPanel, если слой установлен на VPN-узле"
+                      description="Узкий слой AmneziaWG 3 (ключи, awg1.conf, клиенты, список маршрутов) в тот же архив AdminPanel, если слой установлен на VPN-узле"
                       checked={includeAwg3Backup}
                       onChange={setIncludeAwg3Backup}
                     />
@@ -928,7 +928,7 @@ export default function BackupTab() {
               <ToggleRow
                 id="backup-awg3"
                 label="Плюс слой AZ-AWG3"
-                description="Если слой установлен — узкий архив AmneziaWG 3.1 попадает в adminpanelaz_*.tar.gz, как слой AZ-AWG2"
+                description="Если слой установлен — узкий архив AmneziaWG 3 попадает в adminpanelaz_*.tar.gz, как слой AZ-AWG2"
                 checked={settingsDraft.backup_awg3_enabled}
                 onCheckedChange={(checked) => patchDraft({ backup_awg3_enabled: checked })}
               />

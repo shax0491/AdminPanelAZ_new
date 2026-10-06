@@ -28,7 +28,7 @@ const PROTOCOL_ORDER: VpnType[] = ['openvpn', 'wireguard', 'amneziawg2']
 function vpnLabel(type: VpnType): string {
   if (type === 'openvpn') return 'OpenVPN'
   if (type === 'wireguard') return 'WG/AWG 1.5'
-  return 'AWG 2.0'
+  return 'AWG 2'
 }
 
 async function setTrafficLimitForProtocol(

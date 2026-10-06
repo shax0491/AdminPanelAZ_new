@@ -547,7 +547,7 @@ class TrafficMaintenanceService:
             "all": "вся статистика",
             "openvpn": "OpenVPN",
             "wireguard": "WireGuard/AWG",
-            "amneziawg2": "AmneziaWG 2.0",
+            "amneziawg2": "AmneziaWG 2",
         }
 
         try:

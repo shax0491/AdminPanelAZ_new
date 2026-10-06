@@ -135,7 +135,7 @@ footer{
 
 <div class="wrap">
   <p class="kicker">AdminPanelAZ · Автопереключение</p>
-  <h1>Failover-пулы AmneziaWG 2.0</h1>
+  <h1>Failover-пулы AmneziaWG 2</h1>
   <p class="sub">Порядок установки, что и в каком порядке добавлять, что проверять на каждом шаге. Собрано по итогам живого теста на PL2 + LV1 + реальном Android-эмуляторе — 15.09.2026.</p>
 
   <div class="toc">
@@ -152,7 +152,7 @@ footer{
   </div>
 
   <h2 id="idea"><span class="num">01</span> Идея в двух словах</h2>
-  <p>Пул из нескольких VPN-серверов с нативным AmneziaWG 2.0. Один падает — клиент продолжает работать через другой, без ручных действий. Работает <strong>только для AmneziaWG 2.0</strong> — OpenVPN и WireGuard/AmneziaWG 1.5 эта система не касается вообще.</p>
+  <p>Пул из нескольких VPN-серверов с нативным AmneziaWG 2. Один падает — клиент продолжает работать через другой, без ручных действий. Работает <strong>только для AmneziaWG 2</strong> — OpenVPN и WireGuard/AmneziaWG 1.5 эта система не касается вообще.</p>
 
   <h2 id="modes"><span class="num">02</span> Два режима — какой выбрать</h2>
 
@@ -173,8 +173,8 @@ footer{
 
   <div class="steps">
     <div class="step"><div class="n">1</div><div class="body">
-      <strong>Минимум 2 узла типа «VPN»</strong> с установленным нативным AmneziaWG 2.0 (через <code>client.sh</code> на самих серверах — панель это не ставит).
-      <br><em>Проверить:</em> страница «AmneziaWG 2.0» → статус «Готов» на каждом.
+      <strong>Минимум 2 узла типа «VPN»</strong> с установленным нативным AmneziaWG 2 (через <code>client.sh</code> на самих серверах — панель это не ставит).
+      <br><em>Проверить:</em> страница «AmneziaWG 2» → статус «Готов» на каждом.
     </div></div>
 
     <div class="step"><div class="n">2</div><div class="body">
@@ -239,7 +239,7 @@ sudo ./install.sh --proxy-only --with-systemd -y</code></pre>
   <div class="tablewrap">
   <table>
     <tr><th>Шаг</th><th>Как проверить</th></tr>
-    <tr><td>AWG2 на узле</td><td>«AmneziaWG 2.0» → статус «Готов»</td></tr>
+    <tr><td>AWG2 на узле</td><td>«AmneziaWG 2» → статус «Готов»</td></tr>
     <tr><td>Узел «в сети»</td><td>«Узлы» → статус, столбец «Службы»</td></tr>
     <tr><td>Identity склонирована</td><td>Карточка пула → бейдж у узла</td></tr>
     <tr><td>DNAT реально стоит</td><td><code>iptables -t nat -L PREROUTING -n -v</code> на фронте, тег <code>az-failover:pool&lt;N&gt;</code></td></tr>
@@ -250,7 +250,7 @@ sudo ./install.sh --proxy-only --with-systemd -y</code></pre>
 
   <h2 id="limits"><span class="num">06</span> Известные ограничения</h2>
   <ul>
-    <li><strong>Только AmneziaWG 2.0</strong> — OpenVPN и WG/AWG 1.5 не покрываются вообще.</li>
+    <li><strong>Только AmneziaWG 2</strong> — OpenVPN и WG/AWG 1.5 не покрываются вообще.</li>
     <li><strong>Health-check не по расписанию</strong> — «Проверить и переключить» это кнопка, не фоновая задача. Автоматический failover без нажатия пока не запущен по крону.</li>
     <li><strong>Health-check с одной точки зрения</strong> — панель видит здоровье со стороны узла, не конкретного клиента. Сервер, заблокированный только для одного региона, но живой сам по себе, панель не отличит.</li>
     <li><strong>Локальный узел не проверяется по сети</strong> — если фронт совпадает с локальным узлом панели, «упасть» и быть обнаруженным по health-check он не может: панель ходит к себе в процессе.</li>

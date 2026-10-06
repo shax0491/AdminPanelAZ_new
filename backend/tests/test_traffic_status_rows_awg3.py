@@ -1,4 +1,4 @@
-"""Every traffic collector builds its input through one helper, so AWG 3.1 is not collected by one path and skipped by another."""
+"""Every traffic collector builds its input through one helper, so AWG 3 is not collected by one path and skipped by another."""
 
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -47,7 +47,7 @@ def _profiles(rows):
 
 def test_helper_includes_awg3_rows_next_to_awg2(monkeypatch):
     adapter, awg2, awg3 = _adapter(
-        awg3_peers=[_peer("antizapret3", "alice"), _peer("vpn3", "bob")],
+        awg3_peers=[_peer("antizapret", "alice"), _peer("vpn", "bob")],
         awg2_peers=[_peer("antizapret2", "carol")],
     )
     _patch_fetch(monkeypatch, awg2, awg3)
@@ -59,7 +59,7 @@ def test_helper_includes_awg3_rows_next_to_awg2(monkeypatch):
 
 
 def test_disabled_toggle_removes_only_that_protocol(monkeypatch):
-    adapter, awg2, awg3 = _adapter(awg3_peers=[_peer("antizapret3", "alice")], awg2_peers=[_peer("antizapret2", "carol")])
+    adapter, awg2, awg3 = _adapter(awg3_peers=[_peer("antizapret", "alice")], awg2_peers=[_peer("antizapret2", "carol")])
     _patch_fetch(monkeypatch, awg2, awg3)
     only2 = col.build_status_rows_for_adapter(MagicMock(), adapter, awg2_enabled=True, awg3_enabled=False)
     only3 = col.build_status_rows_for_adapter(MagicMock(), adapter, awg2_enabled=False, awg3_enabled=True)
@@ -68,7 +68,7 @@ def test_disabled_toggle_removes_only_that_protocol(monkeypatch):
 
 
 def test_helper_reads_toggles_when_flags_are_not_given(monkeypatch):
-    adapter, awg2, awg3 = _adapter(awg3_peers=[_peer("antizapret3", "alice")])
+    adapter, awg2, awg3 = _adapter(awg3_peers=[_peer("antizapret", "alice")])
     _patch_fetch(monkeypatch, awg2, awg3)
     import app.services.feature_toggles as toggles
 
@@ -79,17 +79,17 @@ def test_helper_reads_toggles_when_flags_are_not_given(monkeypatch):
 
 
 def test_stale_awg3_peer_is_not_reported_online(monkeypatch):
-    adapter, awg2, awg3 = _adapter(awg3_peers=[_peer("antizapret3", "alice", fresh=False)])
+    adapter, awg2, awg3 = _adapter(awg3_peers=[_peer("antizapret", "alice", fresh=False)])
     _patch_fetch(monkeypatch, awg2, awg3)
     assert col.build_status_rows_for_adapter(MagicMock(), adapter, awg2_enabled=True, awg3_enabled=True) == []
 
 
 def test_background_worker_persists_awg3_rows(monkeypatch):
-    """The reported symptom: AWG 3.1 clients had no traffic because the worker never passed their peers on."""
+    """The reported symptom: AWG 3 clients had no traffic because the worker never passed their peers on."""
     node = SimpleNamespace(id=1, name="n1")
     db = MagicMock()
     db.query.return_value.all.return_value = [node]
-    adapter, awg2, awg3 = _adapter(awg3_peers=[_peer("antizapret3", "alice")])
+    adapter, awg2, awg3 = _adapter(awg3_peers=[_peer("antizapret", "alice")])
     _patch_fetch(monkeypatch, awg2, awg3)
 
     persisted = {}
@@ -119,7 +119,7 @@ def test_background_worker_persists_awg3_rows(monkeypatch):
 
 
 def test_maintenance_snapshot_uses_the_same_helper(monkeypatch):
-    adapter, awg2, awg3 = _adapter(awg3_peers=[_peer("vpn3", "bob")])
+    adapter, awg2, awg3 = _adapter(awg3_peers=[_peer("vpn", "bob")])
     _patch_fetch(monkeypatch, awg2, awg3)
     import app.services.feature_toggles as toggles
 

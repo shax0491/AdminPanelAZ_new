@@ -1,4 +1,4 @@
-"""One AmneziaWG 3.1 client = two registry records (<name>_az, <name>_vpn), handled as one client."""
+"""One AmneziaWG 3 client = two registry records (<name>_az, <name>_vpn), handled as one client."""
 
 import pytest
 
@@ -79,4 +79,4 @@ def test_noc_peers_carry_the_client_name_not_the_record(store):
     ]}
     peers = peers_from_awg3_monitoring(payload)
     assert {p.client_name for p in peers} == {"ivan"}
-    assert {p.interface for p in peers} == {"antizapret3", "vpn3"}
+    assert {p.interface for p in peers} == {"antizapret", "vpn"}

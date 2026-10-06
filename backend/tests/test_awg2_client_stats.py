@@ -206,7 +206,7 @@ def test_node_agent_client_stats_route(monkeypatch):
         "geo": None,
     }
 
-    # /awg2/clients/{name}/stats now serves native AmneziaWG 2.0 stats (AntiZapretService),
+    # /awg2/clients/{name}/stats now serves native AmneziaWG 2 stats (AntiZapretService),
     # not the retired az-awg2 overlay's Awg2Service.
     with patch.object(agent_main.service, "get_amneziawg2_client_stats", return_value=payload):
         client = TestClient(agent_main.app)

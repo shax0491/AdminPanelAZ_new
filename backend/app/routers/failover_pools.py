@@ -112,7 +112,7 @@ def list_pools(db: Session = Depends(get_db), _: User = Depends(require_admin)):
 @router.post("", response_model=FailoverPoolResponse, status_code=status.HTTP_201_CREATED)
 def create_pool(payload: FailoverPoolCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     if payload.vpn_type not in ("amneziawg2", "amneziawg3"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Поддерживаются AmneziaWG 2.0 и AmneziaWG 3.1")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Поддерживаются AmneziaWG 2 и AmneziaWG 3")
     pool = FailoverPool(
         name=payload.name,
         vpn_type=VpnType(payload.vpn_type),
@@ -233,7 +233,7 @@ def unset_front(pool_id: int, db: Session = Depends(get_db), _: User = Depends(r
 def mirror_identity(
     pool_id: int, member_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)
 ):
-    """Clone the pool's primary member AmneziaWG 2.0 server identity (key +
+    """Clone the pool's primary member AmneziaWG 2 server identity (key +
     obfuscation) + ALL its client profiles onto this member. Required once per
     member before it can ever be switched to — invasive by design (overwrites
     the member's own AWG2 server config), only use on nodes dedicated to this
@@ -377,7 +377,7 @@ def link_client(
     if config is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"У клиента '{payload.client_name}' нет конфигурации AmneziaWG 2.0 ни на одном узле",
+            detail=f"У клиента '{payload.client_name}' нет конфигурации AmneziaWG 2 ни на одном узле",
         )
 
     link = FailoverClientLink(

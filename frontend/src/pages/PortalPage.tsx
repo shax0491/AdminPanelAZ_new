@@ -93,8 +93,8 @@ function protocolTitle(vpnType: string): string {
   if (vpnType === 'openvpn') return 'OpenVPN'
   if (vpnType === 'wireguard') return 'WireGuard'
   if (vpnType === 'amneziawg') return 'AmneziaWG'
-  if (vpnType === 'amneziawg2') return 'AmneziaWG 2.0'
-  if (vpnType === 'amneziawg3') return 'AmneziaWG 3.1'
+  if (vpnType === 'amneziawg2') return 'AmneziaWG 2'
+  if (vpnType === 'amneziawg3') return 'AmneziaWG 3'
   return vpnType
 }
 
@@ -517,9 +517,9 @@ export default function PortalPage() {
             : protocol === 'wireguard'
               ? 'WireGuard'
               : protocol === 'amneziawg2'
-                ? 'AmneziaWG 2.0'
+                ? 'AmneziaWG 2'
                 : protocol === 'amneziawg3'
-                  ? 'AmneziaWG 3.1'
+                  ? 'AmneziaWG 3'
                   : protocol,
         )
         .join(', ')

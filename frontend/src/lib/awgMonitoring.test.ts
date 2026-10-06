@@ -17,7 +17,7 @@ import { totalTraffic } from './trafficFormat'
 
 function peer(name: string, over: Partial<WireGuardPeer> = {}): WireGuardPeer {
   return {
-    interface: 'antizapret3',
+    interface: 'antizapret',
     public_key: `pk-${name}`,
     client_name: name,
     transfer_rx: 100,
@@ -28,10 +28,10 @@ function peer(name: string, over: Partial<WireGuardPeer> = {}): WireGuardPeer {
 
 const online = (p: WireGuardPeer) => p.latest_handshake === 'fresh'
 
-describe('AWG 3.1 rows in the monitoring table', () => {
+describe('AWG 3 rows in the monitoring table', () => {
   const base = { showOpenVpn: false, showWireGuard: false, isWireGuardOnline: online }
 
-  it('adds one row per AWG 3.1 peer with the AWG 3.1 protocol and its own online state', () => {
+  it('adds one row per AWG 3 peer with the AWG 3 protocol and its own online state', () => {
     const rows = buildMonitoringConnectionRows([], [], {
       ...base,
       amneziawg3Peers: [peer('alice', { latest_handshake: 'fresh' }), peer('bob')],
@@ -44,7 +44,7 @@ describe('AWG 3.1 rows in the monitoring table', () => {
     expect(rows[0].key.startsWith('awg3-')).toBe(true)
   })
 
-  it('keeps AWG 2.0 and 3.1 rows of the same client name apart (different keys and protocols)', () => {
+  it('keeps AWG 2 and 3.1 rows of the same client name apart (different keys and protocols)', () => {
     const rows = buildMonitoringConnectionRows([], [], {
       ...base,
       amneziawg2Peers: [peer('alice', { interface: 'antizapret2' })],
@@ -73,7 +73,7 @@ describe('AWG 3.1 rows in the monitoring table', () => {
   })
 })
 
-describe('AWG 3.1 in geo, counters and traffic', () => {
+describe('AWG 3 in geo, counters and traffic', () => {
   it('geo summary counts 3.1 peers and respects online-only', () => {
     const fresh = peer('a', { latest_handshake: 'fresh', city: 'Riga', isp: 'X' })
     const stale = peer('b', { city: 'Riga', isp: 'X' })
@@ -91,7 +91,7 @@ describe('AWG 3.1 in geo, counters and traffic', () => {
     expect(awgTransferTotal({}, 'transfer_rx')).toBe(0)
   })
 
-  it('total session traffic includes AWG 3.1', () => {
+  it('total session traffic includes AWG 3', () => {
     const data = {
       openvpn_clients: [],
       wireguard_peers: [],
@@ -102,19 +102,19 @@ describe('AWG 3.1 in geo, counters and traffic', () => {
     expect(totalTraffic({ ...data, amneziawg3_peers: undefined })).toBe(2)
   })
 
-  it('has a bar color for AWG 3.1 distinct from AWG 2.0 and the default', () => {
-    expect(getProtocolBarColor('AWG 3.1')).toBe(MONITORING_PROTOCOL_COLORS.amneziawg3)
-    expect(getProtocolBarColor('AWG 3.1')).not.toBe(getProtocolBarColor('AWG 2.0'))
-    expect(getProtocolBarColor('AWG 3.1')).not.toBe(MONITORING_PROTOCOL_COLORS.total)
+  it('has a bar color for AWG 3 distinct from AWG 2 and the default', () => {
+    expect(getProtocolBarColor('AWG 3')).toBe(MONITORING_PROTOCOL_COLORS.amneziawg3)
+    expect(getProtocolBarColor('AWG 3')).not.toBe(getProtocolBarColor('AWG 2'))
+    expect(getProtocolBarColor('AWG 3')).not.toBe(MONITORING_PROTOCOL_COLORS.total)
   })
 })
 
 describe('labels that list only the enabled protocols', () => {
   it('names the online metric by enabled protocols', () => {
     expect(onlineMetricLabel(false, false)).toBe('Online OVPN / WG')
-    expect(onlineMetricLabel(true, false)).toBe('Online OVPN / WG / AWG 2.0')
-    expect(onlineMetricLabel(false, true)).toBe('Online OVPN / WG / AWG 3.1')
-    expect(onlineMetricLabel(true, true)).toBe('Online OVPN / WG / AWG 2.0 / AWG 3.1')
+    expect(onlineMetricLabel(true, false)).toBe('Online OVPN / WG / AWG 2')
+    expect(onlineMetricLabel(false, true)).toBe('Online OVPN / WG / AWG 3')
+    expect(onlineMetricLabel(true, true)).toBe('Online OVPN / WG / AWG 2 / AWG 3')
   })
 
   it('keeps the old page description when AWG is off and extends it otherwise', () => {
@@ -122,10 +122,10 @@ describe('labels that list only the enabled protocols', () => {
       'Активные VPN-подключения OpenVPN и WireGuard в реальном времени',
     )
     expect(liveConnectionsDescription(true, false)).toBe(
-      'Активные VPN-подключения OpenVPN, WireGuard и AWG 2.0 в реальном времени',
+      'Активные VPN-подключения OpenVPN, WireGuard и AWG 2 в реальном времени',
     )
     expect(liveConnectionsDescription(true, true)).toBe(
-      'Активные VPN-подключения OpenVPN, WireGuard, AWG 2.0 и AWG 3.1 в реальном времени',
+      'Активные VPN-подключения OpenVPN, WireGuard, AWG 2 и AWG 3 в реальном времени',
     )
   })
 

@@ -405,7 +405,7 @@ class AmneziaWg2AccessPolicy(Base):
 
 
 class AmneziaWg3AccessPolicy(Base):
-    """AmneziaWG 3.1 deadline and blocks (same states as AWG 2.0, no traffic limit)."""
+    """AmneziaWG 3 deadline and blocks (same states as AWG 2, no traffic limit)."""
 
     __tablename__ = "amneziawg3_access_policies"
     __table_args__ = (UniqueConstraint("node_id", "client_name", name="uq_awg3_access_node_client"),)
@@ -858,7 +858,7 @@ class FailoverPoolStrategy(str, enum.Enum):
     # Client holds ONE static config pointing at a dedicated front node; the panel
     # flips a DNAT rule on the front (proxy_agent) to change which pool member
     # actually receives the traffic — client never reconfigures. Requires pool
-    # members to share an identical AmneziaWG 2.0 server identity (see
+    # members to share an identical AmneziaWG 2 server identity (see
     # failover_front.py) so the client's handshake succeeds against whichever
     # member is currently live.
     #
@@ -898,7 +898,7 @@ class FailoverPool(Base):
     # dnat_front only, all nullable:
     front_node_id: Mapped[int | None] = mapped_column(ForeignKey("nodes.id"), nullable=True, default=None)
     front_port: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
-    # Real AmneziaWG 2.0 listen port on the pool's own members (usually 53443 same
+    # Real AmneziaWG 2 listen port on the pool's own members (usually 53443 same
     # as front_port). Only differs when one front hosts several pools and needs a
     # distinct client-facing port per pool while every member still listens on the
     # same real port - see failover_front.py's DNAT/MASQUERADE port translation.
@@ -940,7 +940,7 @@ class FailoverPoolMember(Base):
     priority: Mapped[int] = mapped_column(Integer, default=100)
     label: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    # dnat_front only: when this member's AmneziaWG 2.0 server identity (key +
+    # dnat_front only: when this member's AmneziaWG 2 server identity (key +
     # obfuscation + client profiles) was last mirrored from the pool's primary
     # member. None = never mirrored — not yet safe to switch DESTINATION here,
     # the client's handshake would fail against a different server key.

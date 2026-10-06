@@ -1,8 +1,8 @@
 import type { WireGuardPeer } from '@/types'
 
 /** Подписи протоколов AmneziaWG в мониторинге: одна точка правды для таблиц, карточек и графиков. */
-export const AWG2_LABEL = 'AWG 2.0'
-export const AWG3_LABEL = 'AWG 3.1'
+export const AWG2_LABEL = 'AWG 2'
+export const AWG3_LABEL = 'AWG 3'
 
 type PeerLists = {
   amneziawg2?: WireGuardPeer[]
@@ -13,7 +13,7 @@ export function countOnline(peers: readonly WireGuardPeer[], isOnline: (peer: Wi
   return peers.filter(isOnline).length
 }
 
-/** Подпись «Online OVPN / WG / AWG 2.0 / AWG 3.1» по включённым протоколам. */
+/** Подпись «Online OVPN / WG / AWG 2 / AWG 3» по включённым протоколам. */
 export function onlineMetricLabel(awg2Enabled: boolean, awg3Enabled: boolean): string {
   const parts = ['OVPN', 'WG']
   if (awg2Enabled) parts.push(AWG2_LABEL)
@@ -30,7 +30,7 @@ export function liveConnectionsDescription(awg2Enabled: boolean, awg3Enabled: bo
   return `Активные VPN-подключения ${head} и ${names[names.length - 1]} в реальном времени`
 }
 
-/** Значения для строки «OVPN a / WG b / AWG 2.0 c / AWG 3.1 d» в сводке узла. */
+/** Значения для строки «OVPN a / WG b / AWG 2 c / AWG 3 d» в сводке узла. */
 export function nodeOnlineSummary(
   node: { connected_openvpn: number; connected_wireguard: number; connected_amneziawg2?: number; connected_amneziawg3?: number },
   awg2Enabled: boolean,

@@ -318,7 +318,7 @@ def test_evaluate_and_switch_refuses_unmirrored_replica_even_if_only_healthy_one
 
 
 def test_evaluate_and_switch_excludes_node_whose_awg2_interface_is_down(monkeypatch):
-    # Node.status can say "online" (node_agent answered) while AmneziaWG 2.0
+    # Node.status can say "online" (node_agent answered) while AmneziaWG 2
     # itself is not actually up on that box — found for real on LV1. The
     # primary here is control-plane "online" but its AWG2 interface reports
     # down, so the auto picker must skip it in favor of the mirrored replica.

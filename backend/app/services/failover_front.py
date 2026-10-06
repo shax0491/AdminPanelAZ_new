@@ -95,7 +95,7 @@ def require_front(pool: FailoverPool) -> tuple[Node, int]:
     if pool.strategy != FailoverPoolStrategy.dnat_front:
         raise FailoverFrontError("Пул не в режиме dnat_front")
     is_awg3 = pool.vpn_type == VpnType.amneziawg3
-    # AmneziaWG 3.1 fronts forward a fixed client range (51900-51999), so the pool has no port of its own.
+    # AmneziaWG 3 fronts forward a fixed client range (51900-51999), so the pool has no port of its own.
     if pool.front_node_id is None or (pool.front_port is None and not is_awg3):
         raise FailoverFrontError("У пула не задан фронт-узел и/или порт")
     front = pool.front_node
@@ -105,7 +105,7 @@ def require_front(pool: FailoverPool) -> tuple[Node, int]:
 
 
 def backend_port(pool: FailoverPool) -> int | None:
-    """Real AmneziaWG 2.0 port the pool's own members listen on. Usually the
+    """Real AmneziaWG 2 port the pool's own members listen on. Usually the
     same as ``front_port`` - only differs when one front hosts several pools
     and each needs its own client-facing port while every member still
     listens on the fleet's normal port (see ``FailoverPool.backend_port``)."""
@@ -121,14 +121,14 @@ def front_endpoint(pool: FailoverPool) -> str | None:
 
 
 def awg3_front_host(pool: FailoverPool) -> str | None:
-    """AmneziaWG 3.1 clients connect to the front's host; the random client port is forwarded by the front."""
+    """AmneziaWG 3 clients connect to the front's host; the random client port is forwarded by the front."""
     if pool.front_node_id is None or pool.front_node is None:
         return None
     return pool.front_node.host
 
 
 def rewrite_member_awg3_client_endpoints(pool: FailoverPool, member: FailoverPoolMember) -> int:
-    """Point AmneziaWG 3.1 client profiles on ``member`` at the pool's front host (best-effort)."""
+    """Point AmneziaWG 3 client profiles on ``member`` at the pool's front host (best-effort)."""
     host = awg3_front_host(pool)
     if host is None:
         return 0
@@ -141,7 +141,7 @@ def rewrite_member_awg3_client_endpoints(pool: FailoverPool, member: FailoverPoo
 
 
 def rewrite_member_client_endpoints(pool: FailoverPool, member: FailoverPoolMember) -> int:
-    """Point every AmneziaWG 2.0 client profile on ``member`` at the pool's
+    """Point every AmneziaWG 2 client profile on ``member`` at the pool's
     front instead of wherever client.sh normally wrote (that member's own
     address) - best-effort, never raises, since a stale Endpoint in an
     existing file is a correctness footgun for the *next* download, not a
@@ -194,13 +194,13 @@ def primary_member(pool: FailoverPool) -> FailoverPoolMember | None:
 
 
 def mirror_member_identity(db: Session, pool: FailoverPool, member: FailoverPoolMember) -> None:
-    """Clone the primary member's AmneziaWG 2.0 server identity + ALL client
+    """Clone the primary member's AmneziaWG 2 server identity + ALL client
     profiles onto ``member``.
 
     Required before ``member`` can ever receive DESTINATION traffic — without
     an identical server key + obfuscation, every client's handshake against it
     fails outright (wrong server, from WireGuard's point of view). Invasive on
-    purpose: this OVERWRITES member's own AmneziaWG 2.0 server config and
+    purpose: this OVERWRITES member's own AmneziaWG 2 server config and
     client list to match the primary byte-for-byte — only ever run this
     against nodes dedicated to this pool, never a node serving its own
     independent client base under its own identity.
@@ -218,7 +218,7 @@ def mirror_member_identity(db: Session, pool: FailoverPool, member: FailoverPool
             sync_amneziawg3_state_from_primary(primary_adapter, member_adapter)
         except Exception as exc:
             raise FailoverFrontError(
-                f"Клонирование AmneziaWG 3.1 на {member.node.name} не удалось: {exc}"
+                f"Клонирование AmneziaWG 3 на {member.node.name} не удалось: {exc}"
             ) from exc
         rewrite_member_awg3_client_endpoints(pool, member)
         member.identity_mirrored_at = datetime.utcnow()
@@ -269,7 +269,7 @@ def _node_healthy(node: Node) -> bool:
     pool actually forwards to is confirmed live right now.
 
     ``Node.status`` alone is not enough — it only means node_agent answered,
-    which says nothing about AmneziaWG 2.0 specifically on that box. Found
+    which says nothing about AmneziaWG 2 specifically on that box. Found
     for real on LV1: node_agent stayed reachable ("online") while its AWG2
     interface had drifted out of sync with its own config file (see
     ``mirror_member_identity``'s runtime-apply check) — the client would
@@ -372,7 +372,7 @@ def _apply_switch_to_target(db: Session, pool: FailoverPool, target: FailoverPoo
 
 
 def _apply_awg3_switch_to_target(db: Session, pool: FailoverPool, target: FailoverPoolMember, adapter, label: str, result: dict) -> dict:
-    """AmneziaWG 3.1 pool: the whole client range 51900-51999 follows the active member."""
+    """AmneziaWG 3 pool: the whole client range 51900-51999 follows the active member."""
     try:
         target_ip = _resolve_destination_ip(target.node)
         status_now = adapter.failover_awg3_status(label)
@@ -391,7 +391,7 @@ def _apply_awg3_switch_to_target(db: Session, pool: FailoverPool, target: Failov
     try:
         adapter.failover_awg3_set_destination(label, target_ip)
     except Exception as exc:
-        pool.last_switch_error = f"Не удалось переключить фронт AmneziaWG 3.1: {exc}"
+        pool.last_switch_error = f"Не удалось переключить фронт AmneziaWG 3: {exc}"
         db.commit()
         result["errors"].append(pool.last_switch_error)
         return result

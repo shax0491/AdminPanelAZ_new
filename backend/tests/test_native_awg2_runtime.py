@@ -1,4 +1,4 @@
-"""Native AmneziaWG 2.0 runtime: block/unblock peer sync and `awg show dump` monitoring.
+"""Native AmneziaWG 2 runtime: block/unblock peer sync and `awg show dump` monitoring.
 
 Covers app/services/native_awg2_runtime.py, added to replace the retired az-awg2 overlay's
 block/unblock and monitoring for the *-am2.conf clients that client.sh generates natively.

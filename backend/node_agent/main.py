@@ -98,14 +98,14 @@ async def _node_agent_lifespan(_: FastAPI):
     except Exception:
         pass
     try:
-        # AmneziaWG 3.1 transport keys: runs on every agent start, so the update button alone is enough.
+        # AmneziaWG 3 transport keys: runs on every agent start, so the update button alone is enough.
         from app.services import awg3_clients
 
         awg3_clients.ensure_transport31()
     except Exception:
         pass
     try:
-        # AmneziaWG 3.1 rules (WARP, DNS interception): scripts and unit come from the panel copy at every start.
+        # AmneziaWG 3 rules (WARP, DNS interception): scripts and unit come from the panel copy at every start.
         from app.services import awg3_clients
 
         awg3_clients.ensure_awg3_runtime()
@@ -475,7 +475,7 @@ def delete_openvpn(client_name: str, _: None = Depends(verify_api_key)):
     return {"message": f"Клиент '{client_name}' удалён", "detail": output}
 
 
-# --- AmneziaWG 3.0 (node-local awg1, split mode) -------------------------------
+# --- AmneziaWG 3 (node-local awg1, split mode) -------------------------------
 from app.services import awg3_clients as _awg3
 from app.services.native_awg3_runtime import get_awg3_health as _awg3_health, get_awg3_monitoring as _awg3_monitoring
 
@@ -516,7 +516,7 @@ def awg3_create_client_endpoint(payload: Awg3ClientRequest, _: None = Depends(ve
         endpoint_host=_awg3_call(_awg3.endpoint_from_env),
         split_allowed_ips=_awg3_call(_awg3.split_allowed_from_file),
     )
-    return {"message": "AmneziaWG 3.0 клиент создан", "name": res["name"], "mode": res["mode"], "ip": res["ip"], "port": res["port"], "public_key": res["public_key"], "profile": res["profile"]}
+    return {"message": "AmneziaWG 3 клиент создан", "name": res["name"], "mode": res["mode"], "ip": res["ip"], "port": res["port"], "public_key": res["public_key"], "profile": res["profile"]}
 
 
 @app.get("/awg3/clients/{client_name}/config")
@@ -608,7 +608,7 @@ def add_awg2_client(payload: Awg2ClientRequest, _: None = Depends(verify_api_key
     if payload.ttl:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Временные клиенты (TTL) не поддерживаются нативным AmneziaWG 2.0",
+            detail="Временные клиенты (TTL) не поддерживаются нативным AmneziaWG 2",
         )
     output = service.add_amneziawg2_client(payload.client_name)
     return {"message": "AmneziaWG2 клиент создан", "detail": output}
@@ -693,7 +693,7 @@ def write_amneziawg2_server_config(
     _: None = Depends(verify_api_key),
 ):
     service.write_amneziawg2_server_config(interface, payload.content)
-    return {"message": f"AmneziaWG 2.0 config {interface} сохранён"}
+    return {"message": f"AmneziaWG 2 config {interface} сохранён"}
 
 
 @app.post("/amneziawg2/apply-runtime")
@@ -709,7 +709,7 @@ def list_amneziawg2_server_config_files(_: None = Depends(verify_api_key)):
 @app.delete("/amneziawg2/server-config-file/{filename}")
 def delete_amneziawg2_server_config_file(filename: str, _: None = Depends(verify_api_key)):
     service.delete_amneziawg2_server_config_file(filename)
-    return {"message": f"AmneziaWG 2.0 config {filename} удалён"}
+    return {"message": f"AmneziaWG 2 config {filename} удалён"}
 
 
 @app.get("/amneziawg2/server-key")
@@ -720,7 +720,7 @@ def read_amneziawg2_server_key(_: None = Depends(verify_api_key)):
 @app.put("/amneziawg2/server-key")
 def write_amneziawg2_server_key(payload: ConfigContent, _: None = Depends(verify_api_key)):
     service.write_amneziawg2_server_key(payload.content)
-    return {"message": "AmneziaWG 2.0 server key сохранён"}
+    return {"message": "AmneziaWG 2 server key сохранён"}
 
 
 @app.get("/openvpn/easyrsa3/export")
@@ -913,7 +913,7 @@ async def import_amneziawg2_profiles(
 ):
     content = await archive.read()
     service.import_amneziawg2_client_profiles_archive(content)
-    return {"message": "Профили AmneziaWG 2.0 импортированы"}
+    return {"message": "Профили AmneziaWG 2 импортированы"}
 
 
 class RewriteAwg2EndpointBody(BaseModel):

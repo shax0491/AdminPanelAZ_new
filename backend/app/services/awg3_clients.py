@@ -1,4 +1,4 @@
-"""AmneziaWG 3.1 client lifecycle for interface awg1.
+"""AmneziaWG 3 client lifecycle for interface awg1.
 
 Two modes on the same interface, each with its own subnet and DNS:
 - split: antizapret, subnet 10.9.0.0/24, DNS 10.9.0.1, AllowedIPs = list of blocked
@@ -102,7 +102,7 @@ def _mode_of(record: dict) -> str:
 
 
 # One client = two registry records: "<name>_az" (antizapret, split) and "<name>_vpn" (full VPN).
-# The suffix is internal; the panel shows one client named <name>, like AmneziaWG 2.0.
+# The suffix is internal; the panel shows one client named <name>, like AmneziaWG 2.
 AZ_SUFFIX = "_az"
 VPN_SUFFIX = "_vpn"
 BASE_NAME_MAX = 32 - len(VPN_SUFFIX)
@@ -136,7 +136,7 @@ def _validate_name(name: str) -> None:
 def _random_port(used: set[int]) -> int:
     free = [p for p in range(PORT_RANGE[0], PORT_RANGE[1] + 1) if p not in used]
     if not free:
-        raise Awg3ClientError("no free client ports left in the AWG 3.1 range")
+        raise Awg3ClientError("no free client ports left in the AWG 3 range")
     return secrets.choice(free)
 
 
@@ -410,7 +410,7 @@ def _unsuspend_record(name: str, *, store: Awg3Store | None = None, run: Runner 
 
 # Written by setup.sh: the address clients connect to (WIREGUARD_HOST, else the public IP).
 SERVER_HOST_FILE = AWG3_CONF_DIR / "server_host"
-# Antizapret route list shared with AWG 2.0, rebuilt by parse.sh: ", ip, ip, ...".
+# Antizapret route list shared with AWG 2, rebuilt by parse.sh: ", ip, ip, ...".
 ANTIZAPRET_IPS_FILE = Path("/etc/wireguard/ips")
 
 
@@ -454,7 +454,7 @@ def split_allowed_from_file(path: str | None = None) -> list[str]:
         raise Awg3ClientError("split allowed-ips list is empty")
     return items
 
-# Scripts and unit that run AWG 3.1 rules (WARP, DNS interception, NAT). The base AntiZapret setup copies them
+# Scripts and unit that run AWG 3 rules (WARP, DNS interception, NAT). The base AntiZapret setup copies them
 # once at install time; the panel keeps its own copy in node_agent/awg3_runtime and installs it at agent start,
 # so "Update node" alone delivers fixes. Keep these files identical to setup/root/antizapret/awg3 of the base repo.
 AWG3_RUNTIME_SRC = Path(__file__).resolve().parents[2] / "node_agent" / "awg3_runtime"
@@ -474,7 +474,7 @@ def ensure_awg3_runtime(
 ) -> dict:
     """Install awg3-rules.sh, awg3-up.sh and awg3@.service from the panel copy when they differ. Idempotent.
 
-    Skipped when the AWG 3.1 layer is not installed (no awg1.conf). daemon-reload runs when the unit changed;
+    Skipped when the AWG 3 layer is not installed (no awg1.conf). daemon-reload runs when the unit changed;
     awg3@awg1 is restarted only when something changed, so repeated agent starts do nothing.
     """
     store = store or Awg3Store()
@@ -499,7 +499,7 @@ def ensure_awg3_runtime(
         changed.append(name)
     if not changed:
         return {"skipped": False, "changed": [], "restarted": False, "error": None}
-    logger.info("AWG 3.1 runtime files updated from the panel copy: %s", ", ".join(changed))
+    logger.info("AWG 3 runtime files updated from the panel copy: %s", ", ".join(changed))
     error = None
     if "awg3@.service" in changed:
         res = run(["systemctl", "daemon-reload"], capture_output=True, text=True, timeout=60, check=False)
@@ -510,18 +510,18 @@ def ensure_awg3_runtime(
         if res.returncode != 0:
             error = res.stderr.strip() or f"systemctl restart {UNIT} failed"
     if error:
-        logger.error("AWG 3.1 runtime files updated, but applying them failed: %s", error)
+        logger.error("AWG 3 runtime files updated, but applying them failed: %s", error)
     return {"skipped": False, "changed": changed, "restarted": error is None, "error": error}
 
 
-# Files that make up the AWG 3.1 layer; the backup archive carries nothing else.
+# Files that make up the AWG 3 layer; the backup archive carries nothing else.
 STATE_FILES = ("awg1.conf", "clients.json", "server.key", "server.pub", "split-allowed.txt", "mtu")
 STATE_BACKUP_KIND = "awg3-state"
 UNIT = f"awg3@{IFACE}"
 
 
 def export_state_archive(conf_dir: Path = AWG3_CONF_DIR) -> bytes:
-    """tar.gz of the AWG 3.1 layer (server keys, awg1.conf, client registry, split list)."""
+    """tar.gz of the AWG 3 layer (server keys, awg1.conf, client registry, split list)."""
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
         for name in STATE_FILES:
@@ -536,9 +536,9 @@ def export_state_archive(conf_dir: Path = AWG3_CONF_DIR) -> bytes:
 
 
 def import_state_archive(data: bytes, conf_dir: Path = AWG3_CONF_DIR) -> None:
-    """Replace the AWG 3.1 layer with an archive made by export_state_archive."""
+    """Replace the AWG 3 layer with an archive made by export_state_archive."""
     if not data:
-        raise Awg3ClientError("empty AWG 3.1 backup")
+        raise Awg3ClientError("empty AWG 3 backup")
     with tempfile.TemporaryDirectory(prefix="awg3-restore-") as temp_dir:
         temp_root = Path(temp_dir)
         try:
@@ -546,16 +546,16 @@ def import_state_archive(data: bytes, conf_dir: Path = AWG3_CONF_DIR) -> None:
                 members = archive.getmembers()
                 for member in members:
                     if not member.isfile() or member.name not in (*STATE_FILES, "MANIFEST"):
-                        raise Awg3ClientError(f"unexpected member in AWG 3.1 backup: {member.name}")
+                        raise Awg3ClientError(f"unexpected member in AWG 3 backup: {member.name}")
                 archive.extractall(path=temp_root, members=members, filter="data")
         except tarfile.TarError as exc:
-            raise Awg3ClientError(f"invalid AWG 3.1 backup: {exc}") from exc
+            raise Awg3ClientError(f"invalid AWG 3 backup: {exc}") from exc
 
         manifest = temp_root / "MANIFEST"
         if not manifest.is_file() or manifest.read_text(encoding="utf-8").strip() != STATE_BACKUP_KIND:
-            raise Awg3ClientError(f"AWG 3.1 backup MANIFEST kind must be {STATE_BACKUP_KIND}")
+            raise Awg3ClientError(f"AWG 3 backup MANIFEST kind must be {STATE_BACKUP_KIND}")
         if not (temp_root / "awg1.conf").is_file():
-            raise Awg3ClientError("AWG 3.1 backup has no awg1.conf")
+            raise Awg3ClientError("AWG 3 backup has no awg1.conf")
 
         conf_dir.mkdir(parents=True, exist_ok=True)
         for name in STATE_FILES:
@@ -577,7 +577,7 @@ def restart_runtime() -> dict:
     return {"success": True, "errors": []}
 
 
-# AmneziaWG 3.1 transport protection. Booleans are written as on/off: the awg tool rejects "true".
+# AmneziaWG 3 transport protection. Booleans are written as on/off: the awg tool rejects "true".
 TRANSPORT31_LINES = (("ContentPaddingAddition", "2"), ("RandomTrailers", "on"), ("DisableCookies", "on"))
 
 
@@ -603,23 +603,23 @@ def migrate_transport31(store: "Awg3Store | None" = None) -> bool:
 
 
 def ensure_transport31(store: "Awg3Store | None" = None) -> dict:
-    """Unconditional AmneziaWG 3.1 migration of this node's awg1.conf; run at agent start.
+    """Unconditional AmneziaWG 3 migration of this node's awg1.conf; run at agent start.
 
-    Skipped when the AWG 3.0 layer is not installed on the node (no awg1.conf). Restarts
+    Skipped when the AWG 3 layer is not installed on the node (no awg1.conf). Restarts
     awg3@awg1 only when the file actually changed, so repeated starts are harmless.
     """
     store = store or Awg3Store()
     if not store.server_conf.is_file():
-        logger.info("AWG 3.1 transport migration skipped: no awg1.conf on this node")
+        logger.info("AWG 3 transport migration skipped: no awg1.conf on this node")
         return {"skipped": True, "changed": False, "restarted": False, "error": None}
     if not migrate_transport31(store):
-        logger.info("AWG 3.1 transport parameters verified in awg1.conf, no change")
+        logger.info("AWG 3 transport parameters verified in awg1.conf, no change")
         return {"skipped": False, "changed": False, "restarted": False, "error": None}
-    logger.info("AWG 3.1 transport parameters migrated into awg1.conf, restarting %s", UNIT)
+    logger.info("AWG 3 transport parameters migrated into awg1.conf, restarting %s", UNIT)
     res = subprocess.run(["systemctl", "restart", UNIT], capture_output=True, text=True, timeout=60, check=False)
     error = None if res.returncode == 0 else (res.stderr.strip() or f"systemctl restart {UNIT} failed")
     if error is None:
-        logger.info("AWG 3.1 transport parameters migrated successfully, %s restarted", UNIT)
+        logger.info("AWG 3 transport parameters migrated successfully, %s restarted", UNIT)
     else:
-        logger.error("AWG 3.1 transport migration done, but %s restart failed: %s", UNIT, error)
+        logger.error("AWG 3 transport migration done, but %s restart failed: %s", UNIT, error)
     return {"skipped": False, "changed": True, "restarted": error is None, "error": error}

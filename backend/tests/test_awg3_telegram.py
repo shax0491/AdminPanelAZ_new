@@ -50,7 +50,7 @@ def test_payload_counts_online_and_sums_both_profiles_of_a_client():
     top = payload["top_traffic"]
     assert [row["name"] for row in top] == ["bob", "alice", "carol"]
     assert top[1] == {"name": "alice", "rx": 1500, "tx": 2100}
-    assert "antizapret3" in payload["ifaces_summary"] and "vpn3" in payload["ifaces_summary"]
+    assert "antizapret" in payload["ifaces_summary"] and "vpn" in payload["ifaces_summary"]
     assert payload["node_name"] == "nl1"
 
 
@@ -78,12 +78,12 @@ def test_text_shows_online_ratio_interfaces_and_readable_traffic():
             "installed": True,
             "online_count": 2,
             "peer_count": 4,
-            "ifaces_summary": "antizapret3:3, vpn3:1",
+            "ifaces_summary": "antizapret:3, vpn:1",
             "top_traffic": [{"name": "bob", "rx": 5 * 1024 * 1024, "tx": 2048}],
         }
     )
     assert "Онлайн: 2 из 4" in text
-    assert "antizapret3:3, vpn3:1" in text
+    assert "antizapret:3, vpn:1" in text
     assert "<code>bob</code>" in text
     assert "↓5.0 MB" in text and "↑2.0 KB" in text
 
@@ -134,7 +134,7 @@ def test_handler_sends_the_new_status_text():
     sent = AsyncMock()
     payload = {
         "node_name": "nl1", "node_host": "h", "installed": True, "online_count": 1,
-        "peer_count": 2, "ifaces_summary": "antizapret3:2", "top_traffic": [],
+        "peer_count": 2, "ifaces_summary": "antizapret:2", "top_traffic": [],
     }
     with (
         patch.object(awg3_handler, "get_feature_service", return_value=feature),
@@ -159,7 +159,7 @@ def test_mini_awg3_status_404_when_toggle_off():
             tg_mini_router.mini_awg3_status(db=MagicMock(), _=SimpleNamespace())
             raise AssertionError("expected HTTPException")
         except HTTPException as exc:
-            assert exc.status_code == 404 and "3.1" in str(exc.detail)
+            assert exc.status_code == 404 and "AmneziaWG 3" in str(exc.detail)
     feature.is_enabled.assert_called_with("awg3")
 
 
@@ -198,7 +198,7 @@ def _dashboard_env(monkeypatch, *, awg3_enabled, peers):
     now = datetime.utcnow()
     peers[:] = [
         WireGuardPeer(
-            interface="antizapret3", public_key=f"pk{i}", client_name=name, transfer_rx=10 * i, transfer_tx=20 * i,
+            interface="antizapret", public_key=f"pk{i}", client_name=name, transfer_rx=10 * i, transfer_tx=20 * i,
             latest_handshake=(now - timedelta(seconds=5 if online else 900)).isoformat(),
         )
         for i, (name, online) in enumerate(peers, start=1)

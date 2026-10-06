@@ -13,7 +13,7 @@ import type { Awg3HealthResponse, Awg3MonitoringAllResponse, Awg3MonitoringRespo
 
 type ViewMode = 'current' | 'all'
 
-/** AmneziaWG 3.1 page: same structure, cards, table and filters as the AmneziaWG 2.0 page. */
+/** AmneziaWG 3 page: same structure, cards, table and filters as the AmneziaWG 2 page. */
 export default function Awg3Page() {
   const { activeNode, loading: nodeLoading } = useNode()
   const [health, setHealth] = useState<Awg3HealthResponse | null>(null)
@@ -38,7 +38,7 @@ export default function Awg3Page() {
     } catch (err) {
       setHealth(null)
       setMonitoring(null)
-      setLoadError(err instanceof Error ? err.message : 'Не удалось загрузить AmneziaWG 3.1')
+      setLoadError(err instanceof Error ? err.message : 'Не удалось загрузить AmneziaWG 3')
     } finally {
       setLoading(false)
     }
@@ -140,7 +140,7 @@ export default function Awg3Page() {
         <div className="rounded-xl border bg-card/50 p-6">
           <EmptyState
             icon={CloudOff}
-            title="AmneziaWG 3.1 не установлен на узле"
+            title="AmneziaWG 3 не установлен на узле"
             description={`На узле ${nodeLabel} не найдены awg и amneziawg-go. Установка и переустановка — через setup.sh по SSH на сервере.`}
           />
         </div>

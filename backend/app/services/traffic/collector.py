@@ -673,7 +673,7 @@ def build_status_rows_for_adapter(
     awg2_enabled: bool | None = None,
     awg3_enabled: bool | None = None,
 ) -> list[dict]:
-    """Live status rows of one node: OpenVPN, WireGuard, AmneziaWG 2.0 and AmneziaWG 3.1.
+    """Live status rows of one node: OpenVPN, WireGuard, AmneziaWG 2 and AmneziaWG 3.
 
     The single place where every traffic collector (background worker, manual snapshot, maintenance) builds
     its input, so a protocol cannot be collected by one path and forgotten by another. The enabled flags

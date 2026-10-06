@@ -20,7 +20,7 @@ def test_awg2_windows_conf_prefers_amneziawg():
         filename="AWG2-VPN-terst1.conf",
     )
     assert msg is not None
-    assert "AWG 2.0" in msg
+    assert "AWG 2" in msg
     assert "terst1" in msg
     assert "Установите <b>AmneziaWG</b>" in msg
     assert "AmneziaVPN не обязателен" in msg

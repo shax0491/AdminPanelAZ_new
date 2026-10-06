@@ -23,10 +23,10 @@ const ROUTER_META: Record<
   keenetic_wg: { label: 'Keenetic', initial: 'K', hint: 'WireGuard-маршруты' },
   mikrotik_wg: { label: 'MikroTik', initial: 'M', hint: 'WireGuard-маршруты' },
   tplink_ovpn: { label: 'TP-Link', initial: 'T', hint: 'OpenVPN-маршруты' },
-  keenetic_awg2: { label: 'Keenetic (AmneziaWG 2.0)', initial: 'K2', hint: 'AmneziaWG 2.0-маршруты' },
-  mikrotik_awg2: { label: 'MikroTik (AmneziaWG 2.0)', initial: 'M2', hint: 'AmneziaWG 2.0-маршруты' },
-  keenetic_awg3: { label: 'Keenetic (AmneziaWG 3.1)', initial: 'K3', hint: 'AmneziaWG 3.1-маршруты' },
-  mikrotik_awg3: { label: 'MikroTik (AmneziaWG 3.1)', initial: 'M3', hint: 'AmneziaWG 3.1-маршруты' },
+  keenetic_awg2: { label: 'Keenetic (AmneziaWG 2)', initial: 'K2', hint: 'AmneziaWG 2-маршруты' },
+  mikrotik_awg2: { label: 'MikroTik (AmneziaWG 2)', initial: 'M2', hint: 'AmneziaWG 2-маршруты' },
+  keenetic_awg3: { label: 'Keenetic (AmneziaWG 3)', initial: 'K3', hint: 'AmneziaWG 3-маршруты' },
+  mikrotik_awg3: { label: 'MikroTik (AmneziaWG 3)', initial: 'M3', hint: 'AmneziaWG 3-маршруты' },
 }
 
 const PUBLIC_SLUGS: Record<string, string> = {

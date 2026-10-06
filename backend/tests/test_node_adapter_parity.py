@@ -39,7 +39,7 @@ def test_local_node_adapter_awg2_methods_delegate():
 
 
 def test_local_node_adapter_awg2_add_client_rejects_ttl():
-    # Native AmneziaWG 2.0 has no ephemeral/TTL client concept — that was overlay-only.
+    # Native AmneziaWG 2 has no ephemeral/TTL client concept — that was overlay-only.
     adapter, service, _awg2 = _local_adapter()
 
     with pytest.raises(HTTPException) as exc:
@@ -123,7 +123,7 @@ def test_local_node_adapter_awg2_install_stream_delegate():
 
 
 def test_local_node_adapter_awg2_expiry_map_is_empty_for_native():
-    # Native AmneziaWG 2.0 clients never expire on a TTL, so there is nothing to read from
+    # Native AmneziaWG 2 clients never expire on a TTL, so there is nothing to read from
     # the (overlay-only) expiry.tsv anymore.
     adapter, _service, awg2 = _local_adapter()
 

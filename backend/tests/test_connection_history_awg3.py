@@ -1,4 +1,4 @@
-"""AWG 3.1 connection accounting follows the AWG 2.0 path."""
+"""AWG 3 connection accounting follows the AWG 2 path."""
 
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -42,9 +42,9 @@ def test_collect_samples_counts_online_awg3_peers(monkeypatch):
     monkeypatch.setattr(adapter, "get_openvpn_status_snapshot", lambda: ([], "status_log"))
     monkeypatch.setattr(adapter, "parse_wireguard_status", lambda: [])
     now = datetime.utcnow()
-    fresh = WireGuardPeer(interface="antizapret3", public_key="a", client_name="alice",
+    fresh = WireGuardPeer(interface="antizapret", public_key="a", client_name="alice",
                           latest_handshake=(now - timedelta(seconds=5)).isoformat())
-    stale = WireGuardPeer(interface="vpn3", public_key="b", client_name="bob",
+    stale = WireGuardPeer(interface="vpn", public_key="b", client_name="bob",
                           latest_handshake=(now - timedelta(seconds=900)).isoformat())
     monkeypatch.setattr(ch, "fetch_awg3_peers_for_adapter", lambda _a: [fresh, stale])
     persisted = {}
@@ -77,7 +77,7 @@ def test_collect_samples_awg3_zero_when_toggle_off(monkeypatch):
 
 
 def test_history_api_point_keeps_the_awg3_count_instead_of_dropping_it():
-    """ConnectionHistoryPoint(**point) used to discard `amneziawg3`: the chart never saw AWG 3.1."""
+    """ConnectionHistoryPoint(**point) used to discard `amneziawg3`: the chart never saw AWG 3."""
     from app.schemas import ConnectionHistoryPoint
 
     sample = SimpleNamespace(

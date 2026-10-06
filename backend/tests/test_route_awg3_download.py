@@ -1,4 +1,4 @@
-"""AWG 3.1 route lists are listed and served like AWG 1.5 / 2.0 ones."""
+"""AWG 3 route lists are listed and served like AWG 1.5 / 2.0 ones."""
 
 from __future__ import annotations
 

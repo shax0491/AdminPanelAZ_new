@@ -214,7 +214,7 @@ function FrontPanel({
       {pool.front_node_id && (
         <p className="rounded-md border border-sky-500/25 bg-sky-500/5 p-2.5 text-xs leading-relaxed">
           <strong className="text-foreground">Какой конфиг раздавать клиенту:</strong> обычный
-          AmneziaWG 2.0 конфиг любого участника этого пула со страницы «Клиенты», но с полем{' '}
+          AmneziaWG 2 конфиг любого участника этого пула со страницы «Клиенты», но с полем{' '}
           <code className="rounded bg-muted px-1 py-0.5 font-mono">Endpoint</code> заменённым на{' '}
           <code className="rounded bg-muted px-1 py-0.5 font-mono">
             {nodes.find((n) => n.id === pool.front_node_id)?.host ?? '?'}:{pool.front_port}
@@ -762,7 +762,7 @@ function PoolCard({
           </p>
           {linkedClients.length === 0 && (
             <p className="mb-2 text-xs text-muted-foreground">
-              Привяжите клиента по имени (у него уже должен быть конфиг AmneziaWG 2.0 на одном из узлов) —
+              Привяжите клиента по имени (у него уже должен быть конфиг AmneziaWG 2 на одном из узлов) —
               пир сразу синхронизируется на остальные узлы пула.
             </p>
           )}
@@ -859,8 +859,8 @@ export default function FailoverPoolsPage() {
           </a>
         </div>
         <p className="text-sm text-muted-foreground">
-          Пулы серверов AmneziaWG 2.0 — при отказе одного узла клиент продолжает работать через
-          другой без ручных действий. Только для нативного AmneziaWG 2.0 — OpenVPN и WireGuard 1.5
+          Пулы серверов AmneziaWG 2 — при отказе одного узла клиент продолжает работать через
+          другой без ручных действий. Только для нативного AmneziaWG 2 — OpenVPN и WireGuard 1.5
           сюда не входят.
         </p>
         <p className="mt-1.5 text-sm text-muted-foreground">
@@ -896,7 +896,7 @@ export default function FailoverPoolsPage() {
           <Label className="text-xs">Новый пул</Label>
           <Input
             className="h-9 w-64 text-sm"
-            placeholder="например «AmneziaWG 2.0 — основной»"
+            placeholder="например «AmneziaWG 2 — основной»"
             value={newPoolName}
             onChange={(e) => setNewPoolName(e.target.value)}
           />

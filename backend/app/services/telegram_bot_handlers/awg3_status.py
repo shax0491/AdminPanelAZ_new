@@ -1,4 +1,4 @@
-"""Telegram bot /awg3 — AmneziaWG 3.1 status (admin, if awg3 enabled): online, interfaces, top traffic."""
+"""Telegram bot /awg3 — AmneziaWG 3 status (admin, if awg3 enabled): online, interfaces, top traffic."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from app.services.traffic_limit import human_bytes
 
 def _format_awg3_text(payload: dict) -> str:
     lines = [
-        "<b>AmneziaWG 3.1</b>",
+        "<b>AmneziaWG 3</b>",
         f"Узел: <code>{payload.get('node_name') or '—'}</code> ({payload.get('node_host') or '—'})",
     ]
     if payload.get("health_error"):
@@ -47,11 +47,11 @@ async def handle_awg3_status(ctx: BotContext, *, message_id: int | None = None) 
         await send_message(ctx.bot_token, ctx.chat_id, i18n.ADMIN_ONLY)
         return
     if not get_feature_service().is_enabled("awg3"):
-        await send_message(ctx.bot_token, ctx.chat_id, "AmneziaWG 3.1 выключен в настройках панели.")
+        await send_message(ctx.bot_token, ctx.chat_id, "AmneziaWG 3 выключен в настройках панели.")
         return
     try:
         text = _format_awg3_text(build_awg3_status_payload(ctx.db))
     except Exception as exc:  # noqa: BLE001
-        await send_message(ctx.bot_token, ctx.chat_id, f"AmneziaWG 3.1: ошибка — {exc}")
+        await send_message(ctx.bot_token, ctx.chat_id, f"AmneziaWG 3: ошибка — {exc}")
         return
     await send_or_edit(ctx, text, markup=nav_footer_keyboard(refresh=None), message_id=message_id)

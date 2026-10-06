@@ -192,7 +192,7 @@ describe('MonitoringPage incidents', () => {
   })
 })
 
-describe('MonitoringPage AmneziaWG 3.1', () => {
+describe('MonitoringPage AmneziaWG 3', () => {
   const fresh = new Date().toISOString()
   const stale = new Date(Date.now() - 3_600_000).toISOString()
   const awgPeer = (name: string, iface: string, handshake: string, rx: number, tx: number) => ({
@@ -210,8 +210,8 @@ describe('MonitoringPage AmneziaWG 3.1', () => {
     wireguard_peers: [],
     amneziawg2_peers: [awgPeer('old-user', 'antizapret2', fresh, 1000, 2000)],
     amneziawg3_peers: [
-      awgPeer('alice31', 'antizapret3', fresh, 5000, 6000),
-      awgPeer('bob31', 'vpn3', stale, 10, 20),
+      awgPeer('alice31', 'antizapret', fresh, 5000, 6000),
+      awgPeer('bob31', 'vpn', stale, 10, 20),
     ],
     total_connected_amneziawg3: 1,
     timestamp: fresh,
@@ -256,32 +256,32 @@ describe('MonitoringPage AmneziaWG 3.1', () => {
     vi.unstubAllGlobals()
   })
 
-  it('shows AWG 3.1 clients, their protocol badge and an online card', async () => {
+  it('shows AWG 3 clients, their protocol badge and an online card', async () => {
     await mountWhileActiveNodeResolves(page, { nodes: [testNode] })
 
     expect(await screen.findByText('alice31')).toBeTruthy()
-    expect(screen.getAllByText('AWG 3.1').length).toBeGreaterThan(0)
-    expect(screen.getByText('AWG 3.1 онлайн')).toBeTruthy()
-    const card = screen.getByText('AWG 3.1 онлайн').closest('div')!.parentElement!
+    expect(screen.getAllByText('AWG 3').length).toBeGreaterThan(0)
+    expect(screen.getByText('AWG 3 онлайн')).toBeTruthy()
+    const card = screen.getByText('AWG 3 онлайн').closest('div')!.parentElement!
     expect(card.textContent).toContain('из 2 пиров')
-    // AWG 2.0 is still there next to it
+    // AWG 2 is still there next to it
     expect(screen.getByText('old-user')).toBeTruthy()
   })
 
-  it('counts only fresh AWG 3.1 handshakes as online and includes them in the total', async () => {
+  it('counts only fresh AWG 3 handshakes as online and includes them in the total', async () => {
     await mountWhileActiveNodeResolves(page, { nodes: [testNode] })
     await screen.findByText('alice31')
 
-    expect(screen.getByText(/AWG 3\.1 1/)).toBeTruthy()
-    // total = 1 online AWG 2.0 + 1 online AWG 3.1 (the stale bob31 is not counted)
-    expect(screen.getByText(/OVPN 0 · WG 0 · AWG 2\.0 1 · AWG 3\.1 1/)).toBeTruthy()
+    expect(screen.getByText(/AWG 3 1/)).toBeTruthy()
+    // total = 1 online AWG 2 + 1 online AWG 3 (the stale bob31 is not counted)
+    expect(screen.getByText(/OVPN 0 · WG 0 · AWG 2 1 · AWG 3 1/)).toBeTruthy()
   })
 
-  it('does not break on a server response without the AWG 3.1 block', async () => {
+  it('does not break on a server response without the AWG 3 block', async () => {
     api.getMonitoring.mockResolvedValue({ services: [], openvpn_clients: [], wireguard_peers: [], timestamp: fresh })
     await mountWhileActiveNodeResolves(page, { nodes: [testNode] })
-    expect(await screen.findByText('AWG 3.1 онлайн')).toBeTruthy()
-    const card = screen.getByText('AWG 3.1 онлайн').closest('div')!.parentElement!
+    expect(await screen.findByText('AWG 3 онлайн')).toBeTruthy()
+    const card = screen.getByText('AWG 3 онлайн').closest('div')!.parentElement!
     expect(card.textContent).toContain('из 0 пиров')
   })
 })

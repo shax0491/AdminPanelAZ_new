@@ -1,6 +1,6 @@
-"""AmneziaWG 3.1 endpoints, separate from /awg2.
+"""AmneziaWG 3 endpoints, separate from /awg2.
 
-Everything goes through the active node's adapter: the AWG 3.1 interface lives
+Everything goes through the active node's adapter: the AWG 3 interface lives
 on the node (DE2, NL1, ...), not on the panel host.
 """
 
@@ -38,7 +38,7 @@ def awg3_monitoring(db: Session = Depends(get_db), _: User = Depends(require_adm
 
 @router.get("/monitoring/all")
 def awg3_monitoring_all(db: Session = Depends(get_db), _: User = Depends(require_admin)):
-    """All VPN nodes in one call (same contract as AWG 2.0): one node failing never breaks the rest."""
+    """All VPN nodes in one call (same contract as AWG 2): one node failing never breaks the rest."""
     out: list[dict] = []
     for node in list_vpn_nodes(db):
         entry: dict = {"node_id": node.id, "node_name": node.name, "node_host": node.host, "clients": [], "error": None}

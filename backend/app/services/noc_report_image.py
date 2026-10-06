@@ -320,7 +320,7 @@ class NocWeeklyImageRenderer:
         if bool(summary.get("awg3_enabled")):
             cards.append(
                 {
-                    "label": "AmneziaWG 3.1 сессии",
+                    "label": "AmneziaWG 3 сессии",
                     "value": (
                         f"{summary.get('total_amneziawg3', 0)} / "
                         f"{summary.get('total_amneziawg3_peak', 0)}"

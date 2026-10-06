@@ -827,7 +827,7 @@ export default function SubscriptionPage() {
               Unlock-ключи
             </CardTitle>
             <CardDescription>
-              Включите хотя бы один VPN-протокол (OpenVPN, WireGuard / AmneziaWG или AmneziaWG 2.0),
+              Включите хотя бы один VPN-протокол (OpenVPN, WireGuard / AmneziaWG или AmneziaWG 2),
               чтобы создавать unlock-ключи.
             </CardDescription>
           </CardHeader>

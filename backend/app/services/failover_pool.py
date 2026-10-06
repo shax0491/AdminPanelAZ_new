@@ -1,16 +1,16 @@
 """Failover pool: peer-sync + device-facing config generation for client-side
-AmneziaWG 2.0 failover (AZ AutoSwitch on Android, the OpenWrt/Linux router watchdog —
+AmneziaWG 2 failover (AZ AutoSwitch on Android, the OpenWrt/Linux router watchdog —
 see the separate `panel_auto_reverce` repo for those clients).
 
 Deliberately NOT built on the HA Sync Group machinery (`node_sync/*`) — that does
 byte-identical wipe-and-replace of a whole node's crypto state, tied to a "group"
 whose disbanding drops all state. This module only ever *appends* one client's peer
-to another node's already-independent AmneziaWG 2.0 config, allocating a fresh IP in
+to another node's already-independent AmneziaWG 2 config, allocating a fresh IP in
 that node's own subnet (never assumes two nodes' address pools line up) — reuses the
 same read/write/apply-runtime primitives HA sync uses, but skips its lifecycle
 entirely. A pool (`FailoverPool`) can be deleted without touching any node's config.
 
-Only the "vpn" (full-tunnel) AmneziaWG 2.0 interface is supported for now — that's
+Only the "vpn" (full-tunnel) AmneziaWG 2 interface is supported for now — that's
 the natural fit for "give me a complete, working failover VPN". The narrower
 "antizapret" (blocked-domains-only) interface can be added later the same way.
 """
@@ -83,7 +83,7 @@ def _allocate_ip(conf_text: str) -> str:
         candidate = f"{base}.{i}"
         if candidate not in conf_text:
             return candidate
-    raise FailoverPoolError("Подсеть AmneziaWG 2.0 на этом узле исчерпана (253 клиента)")
+    raise FailoverPoolError("Подсеть AmneziaWG 2 на этом узле исчерпана (253 клиента)")
 
 
 def _append_peer_block(conf_text: str, spec: PeerSpec, ip: str) -> str:
@@ -122,8 +122,8 @@ def sync_client_peer_to_pool(db: Session, pool: FailoverPool, client_name: str) 
     spec = _extract_peer_spec(source_conf, client_name)
     if spec is None:
         raise FailoverPoolError(
-            f"У клиента '{client_name}' нет пира AmneziaWG 2.0 (vpn) на основном узле — "
-            "сначала создайте клиента с протоколом AmneziaWG 2.0"
+            f"У клиента '{client_name}' нет пира AmneziaWG 2 (vpn) на основном узле — "
+            "сначала создайте клиента с протоколом AmneziaWG 2"
         )
 
     members = (
@@ -173,7 +173,7 @@ def _read_obfuscation(conf_text: str) -> dict[str, str]:
 
 
 def build_member_client_conf(db: Session, pool: FailoverPool, client_name: str, member: FailoverPoolMember) -> str:
-    """Render a complete, ready-to-import AmneziaWG 2.0 client .conf for one pool
+    """Render a complete, ready-to-import AmneziaWG 2 client .conf for one pool
     member — same client identity (private/preshared key) as on every other member,
     that member's own server public key / endpoint / obfuscation / allocated IP."""
     link = (

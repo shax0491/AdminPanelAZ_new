@@ -1,4 +1,4 @@
-"""Native AmneziaWG 2.0 router handlers (mocked adapter)."""
+"""Native AmneziaWG 2 router handlers (mocked adapter)."""
 
 from pathlib import Path
 from types import SimpleNamespace

@@ -1,4 +1,4 @@
-"""Map AmneziaWG 2.0 monitoring clients into WireGuardPeer for NOC surfaces."""
+"""Map AmneziaWG 2 monitoring clients into WireGuardPeer for NOC surfaces."""
 
 from __future__ import annotations
 

@@ -91,8 +91,8 @@ describe('buildClientConnectionMap / isConfigConnected', () => {
     expect(map.bob?.localIp).toBe('10.8.0.5')
   })
 
-  it('keeps native AmneziaWG 2.0 IP/status separate from WireGuard 1.5 for the same client name', () => {
-    // Regression: a client created with both WireGuard 1.5 and AmneziaWG 2.0 has two peers
+  it('keeps native AmneziaWG 2 IP/status separate from WireGuard 1.5 for the same client name', () => {
+    // Regression: a client created with both WireGuard 1.5 and AmneziaWG 2 has two peers
     // under the same name, on different subnets — the AWG2 card must not show the WG 1.5 IP
     // (or vice versa), and its online status must reflect the AWG2 peer, not the WG one.
     const wgPeers: WireGuardPeer[] = [

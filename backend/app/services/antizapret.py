@@ -32,7 +32,7 @@ PROFILE_FILE_SUFFIXES = frozenset({".ovpn", ".conf"})
 EASYRSA3_ROOT = Path("/etc/openvpn/easyrsa3")
 EASYRSA_INDEX_PATH = EASYRSA3_ROOT / "pki" / "index.txt"
 
-# Native AmneziaWG 2.0 (compiled by setup.sh from amneziawg-go/amneziawg-tools, files *-am2.conf).
+# Native AmneziaWG 2 (compiled by setup.sh from amneziawg-go/amneziawg-tools, files *-am2.conf).
 # Deliberately separate from the third-party az-awg2 overlay (app.services.awg2 / /etc/amnezia/amneziawg) —
 # that overlay is no longer wired into the panel and its binaries are not expected to be installed.
 NATIVE_AWG2_SERVER_DIR = Path("/etc/amneziawg")
@@ -49,7 +49,7 @@ def _parse_client_names_section(output: str, header: str) -> list[str]:
     """Extract client names listed under `header` in unified `client.sh 3` output.
 
     client.sh's option 3 prints three sections back to back (OpenVPN, then
-    WireGuard/AmneziaWG 1.5, then AmneziaWG 2.0), each starting with its own header line and
+    WireGuard/AmneziaWG 1.5, then AmneziaWG 2), each starting with its own header line and
     ending at the next blank line — so section-aware parsing is required instead of a flat
     line filter.
     """
@@ -150,7 +150,7 @@ class AntiZapretService:
         name under ANY protocol.
 
         client.sh has no per-protocol "add" anymore — option 1 always creates OpenVPN +
-        WireGuard + AmneziaWG 1.5 + native AmneziaWG 2.0 together. The WG/AWG2 halves of
+        WireGuard + AmneziaWG 1.5 + native AmneziaWG 2 together. The WG/AWG2 halves of
         that are idempotent (they detect an existing `# Client = name` block and just
         reuse it), but `addOpenVPN()` is NOT: calling it again for a name whose cert
         already exists drops into its "already exists" branch, which — since the panel
@@ -191,7 +191,7 @@ class AntiZapretService:
 
     def delete_openvpn_client(self, client_name: str) -> str:
         # Option 7 = OpenVPN-only delete (revokes cert, removes profile files) — does not
-        # touch this client's WireGuard/AmneziaWG 1.5/AmneziaWG 2.0 peers, unlike unified
+        # touch this client's WireGuard/AmneziaWG 1.5/AmneziaWG 2 peers, unlike unified
         # option 2. Added specifically so the panel can delete one protocol at a time.
         self.validate_client_name(client_name)
         return self._run_client_script("7", client_name)
@@ -202,7 +202,7 @@ class AntiZapretService:
 
     def add_wireguard_client(self, client_name: str) -> str:
         # client.sh no longer has a protocol-specific "add wireguard" option: option 1 is a
-        # single unified add that creates OpenVPN + WireGuard + AmneziaWG 1.5 + AmneziaWG 2.0
+        # single unified add that creates OpenVPN + WireGuard + AmneziaWG 1.5 + AmneziaWG 2
         # profiles together. See _client_already_provisioned for why a second call for the
         # same name must not reach client.sh again.
         #
@@ -226,7 +226,7 @@ class AntiZapretService:
         return _parse_client_names_section(output, "WireGuard/AmneziaWG 1.5 client names:")
 
     def add_amneziawg2_client(self, client_name: str) -> str:
-        """Add/refresh a client's native AmneziaWG 2.0 (*-am2.conf) profiles via client.sh.
+        """Add/refresh a client's native AmneziaWG 2 (*-am2.conf) profiles via client.sh.
 
         client.sh generates keys with the native `awg` binary and appends a [Peer] block via
         `awg syncconf` (diff-only peer sync — never rewrites the interface's Address/PostUp or
@@ -237,7 +237,7 @@ class AntiZapretService:
         if self._awg2_client_provisioned(client_name):
             # Already has an AWG2 peer - just (re)sync obfuscation/MTU, nothing to add.
             self._apply_native_awg2_overrides(client_name)
-            return f"Клиент '{client_name}' уже существует на сервере — профиль AmneziaWG 2.0 уже создан"
+            return f"Клиент '{client_name}' уже существует на сервере — профиль AmneziaWG 2 уже создан"
         if self._client_already_provisioned(client_name):
             # Regression: a client created BEFORE native AWG2 shipped in client.sh (or before
             # this specific client ever went through the unified add) has OpenVPN/WireGuard
@@ -256,13 +256,13 @@ class AntiZapretService:
         return output
 
     def delete_amneziawg2_client(self, client_name: str) -> str:
-        # Option 9 = AmneziaWG 2.0-only delete — see delete_openvpn_client.
+        # Option 9 = AmneziaWG 2-only delete — see delete_openvpn_client.
         self.validate_client_name(client_name)
         return self._run_client_script("9", client_name)
 
     def list_amneziawg2_clients(self) -> list[str]:
         output = self._run_client_script("3")
-        return _parse_client_names_section(output, "AmneziaWG 2.0 client names:")
+        return _parse_client_names_section(output, "AmneziaWG 2 client names:")
 
     def get_amneziawg2_monitoring(self) -> dict[str, object]:
         from app.services.native_awg2_runtime import get_monitoring
@@ -275,7 +275,7 @@ class AntiZapretService:
         return get_client_stats(client_name)
 
     def get_amneziawg2_health(self) -> dict[str, object]:
-        """Native readiness check — the `awg` binary is what client.sh's AmneziaWG 2.0
+        """Native readiness check — the `awg` binary is what client.sh's AmneziaWG 2
         functions shell out to (`awg genkey`/`awg pubkey`/`awg genpsk`/`awg syncconf`)."""
         awg_bin = shutil.which("awg")
         missing: list[str] = []
@@ -456,7 +456,7 @@ class AntiZapretService:
         if normalized not in NATIVE_AWG2_SERVER_INTERFACES:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Недопустимый AmneziaWG 2.0 interface: {interface}",
+                detail=f"Недопустимый AmneziaWG 2 interface: {interface}",
             )
         return NATIVE_AWG2_SERVER_DIR / f"{normalized}.conf"
 
@@ -484,7 +484,7 @@ class AntiZapretService:
         if not filename.endswith(".conf") or "/" in filename or ".." in filename:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Недопустимое имя AmneziaWG 2.0 config: {filename}",
+                detail=f"Недопустимое имя AmneziaWG 2 config: {filename}",
             )
         path = NATIVE_AWG2_SERVER_DIR / filename
         if path.is_file():
@@ -513,7 +513,7 @@ class AntiZapretService:
         return sync_all_native_awg2_interfaces()
 
     def rewrite_amneziawg2_client_endpoint(self, endpoint: str) -> int:
-        """Rewrite the ``Endpoint = `` line in every AmneziaWG 2.0 client
+        """Rewrite the ``Endpoint = `` line in every AmneziaWG 2 client
         profile on this node to ``endpoint`` (``host:port``).
 
         Used by failover pools (dnat_front): a client profile generated the
@@ -557,7 +557,7 @@ class AntiZapretService:
         if not data:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Пустой архив профилей AmneziaWG 2.0",
+                detail="Пустой архив профилей AmneziaWG 2",
             )
         temp_path = None
         try:
@@ -572,7 +572,7 @@ class AntiZapretService:
                 if not has_profile_file:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Архив профилей AmneziaWG 2.0 не содержит файлов client/amneziawg2",
+                        detail="Архив профилей AmneziaWG 2 не содержит файлов client/amneziawg2",
                     )
             root = self.client_dir / "amneziawg2"
             if root.is_dir():

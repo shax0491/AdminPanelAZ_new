@@ -388,7 +388,7 @@ NATIVE_AWG2_INTERFACES = ("antizapret2", "vpn2")
 
 
 def _mirror_amneziawg2_server_configs(primary_adapter, replica_adapter) -> None:
-    """Copy native AmneziaWG 2.0 server .conf + key from primary, remove extras on replica.
+    """Copy native AmneziaWG 2 server .conf + key from primary, remove extras on replica.
 
     The key file must travel with the .conf files: client.sh sources it (`source
     "$AWG2/key"`) when rendering new client profiles, so a replica missing it (or holding a
@@ -411,14 +411,14 @@ def _mirror_amneziawg2_server_configs(primary_adapter, replica_adapter) -> None:
 
 
 def sync_amneziawg3_state_from_primary(primary_adapter, replica_adapter) -> dict:
-    """Copy the AmneziaWG 3.1 layer (awg1.conf, keys, client registry incl. suspended flags) to the replica.
+    """Copy the AmneziaWG 3 layer (awg1.conf, keys, client registry incl. suspended flags) to the replica.
 
     The layer is the same archive the panel backup uses, so suspended peers stay suspended on the
     replica and the replica restarts awg3@awg1 with the primary's peers and keys.
     """
     archive = primary_adapter.export_awg3_backup()
     if not archive:
-        raise RuntimeError("Пустой архив AmneziaWG 3.1 с primary")
+        raise RuntimeError("Пустой архив AmneziaWG 3 с primary")
     result = replica_adapter.restore_awg3_backup(archive)
     if result.get("success") is False:
         errors = result.get("errors") or []
@@ -434,7 +434,7 @@ def sync_amneziawg2_state_from_primary(
     db: Session | None = None,
     replica_node: Node | None = None,
 ) -> None:
-    """Copy native AmneziaWG 2.0 server configs + client profiles from primary to replica."""
+    """Copy native AmneziaWG 2 server configs + client profiles from primary to replica."""
     health = replica_adapter.get_awg2_health()
     if not health.get("installed"):
         cmd = health.get("install_command")
@@ -444,12 +444,12 @@ def sync_amneziawg2_state_from_primary(
             else "Пересоберите его через setup.sh (amneziawg-go + amneziawg-tools)."
         )
         raise Awg2NotInstalledError(
-            f"Нативный AmneziaWG 2.0 не найден на replica (бинарь awg отсутствует). {detail}"
+            f"Нативный AmneziaWG 2 не найден на replica (бинарь awg отсутствует). {detail}"
         )
 
     archive = primary_adapter.export_amneziawg2_client_profiles_archive()
     if not archive:
-        raise RuntimeError("Пустой архив профилей AmneziaWG 2.0 с primary")
+        raise RuntimeError("Пустой архив профилей AmneziaWG 2 с primary")
 
     reblock = db is not None and replica_node is not None
     try:
@@ -464,7 +464,7 @@ def sync_amneziawg2_state_from_primary(
         errors = runtime.get("errors") or []
         detail = "; ".join(
             str(entry.get("stderr") or entry.get("error") or entry) for entry in errors
-        ) or "AmneziaWG 2.0 syncconf failed"
+        ) or "AmneziaWG 2 syncconf failed"
         logger.warning(
             "HA AWG2 runtime apply partial (configs copied): %s",
             detail,

@@ -1,4 +1,4 @@
-"""AWG 3.1 panel layer: router -> active node adapter -> awg3 service.
+"""AWG 3 panel layer: router -> active node adapter -> awg3 service.
 
 The node is faked at the adapter boundary; the local adapter path runs the real
 awg3_clients logic against a temporary conf dir with a fake awg binary.

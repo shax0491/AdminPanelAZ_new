@@ -1,6 +1,6 @@
-"""Native AmneziaWG 2.0 client generation: obfuscation sync, MTU=1280, client.sh option mapping.
+"""Native AmneziaWG 2 client generation: obfuscation sync, MTU=1280, client.sh option mapping.
 
-Covers the panel-side logic added to integrate with the *native* AmneziaWG 2.0 that setup.sh
+Covers the panel-side logic added to integrate with the *native* AmneziaWG 2 that setup.sh
 compiles (amneziawg-go/amneziawg-tools, files *-am2.conf) instead of the third-party az-awg2
 overlay. client.sh itself is bash and cannot run on this platform, so `_run_client_script` is
 monkeypatched to fake what it would have written to disk, and the panel-side post-processing
@@ -159,7 +159,7 @@ def test_add_amneziawg2_client_applies_overrides_to_generated_files(tmp_path, mo
         calls.append(list(args))
         # Simulate what client.sh's `render()` would have written for this client.
         fake_profile.write_text(CLIENT_CONF_NO_MTU, encoding="utf-8")
-        return "AmneziaWG 2.0 profile files (re)created for client 'testclient'"
+        return "AmneziaWG 2 profile files (re)created for client 'testclient'"
 
     monkeypatch.setattr(AntiZapretService, "_run_client_script", fake_run_client_script)
 
@@ -212,7 +212,7 @@ def test_parse_client_names_section_splits_unified_list_output():
             "WireGuard/AmneziaWG 1.5 client names:",
             "alice",
             "",
-            "AmneziaWG 2.0 client names:",
+            "AmneziaWG 2 client names:",
             "alice",
             "carol",
         ]
@@ -220,7 +220,7 @@ def test_parse_client_names_section_splits_unified_list_output():
 
     assert _parse_client_names_section(output, "OpenVPN client names:") == ["alice", "bob"]
     assert _parse_client_names_section(output, "WireGuard/AmneziaWG 1.5 client names:") == ["alice"]
-    assert _parse_client_names_section(output, "AmneziaWG 2.0 client names:") == ["alice", "carol"]
+    assert _parse_client_names_section(output, "AmneziaWG 2 client names:") == ["alice", "carol"]
 
 
 def test_get_profile_files_reads_native_am2_conf(tmp_path):

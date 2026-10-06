@@ -1,4 +1,4 @@
-"""Native AmneziaWG 2.0 status/monitoring API (client management is under /configs)."""
+"""Native AmneziaWG 2 status/monitoring API (client management is under /configs)."""
 
 from __future__ import annotations
 

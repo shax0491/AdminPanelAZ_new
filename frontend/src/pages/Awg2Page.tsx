@@ -38,7 +38,7 @@ export default function Awg2Page() {
     } catch (err) {
       setHealth(null)
       setMonitoring(null)
-      setLoadError(err instanceof Error ? err.message : 'Не удалось загрузить AmneziaWG 2.0')
+      setLoadError(err instanceof Error ? err.message : 'Не удалось загрузить AmneziaWG 2')
     } finally {
       setLoading(false)
     }
@@ -134,7 +134,7 @@ export default function Awg2Page() {
         <div className="rounded-xl border bg-card/50 p-6">
           <EmptyState
             icon={CloudOff}
-            title="Нативный AmneziaWG 2.0 не найден"
+            title="Нативный AmneziaWG 2 не найден"
             description={`На узле ${nodeLabel} не найден бинарь awg. Пересоберите его через setup.sh (amneziawg-go + amneziawg-tools) по SSH — из панели это недоступно, поскольку это часть базового VPN-стека.`}
           />
         </div>

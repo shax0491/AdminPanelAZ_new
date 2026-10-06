@@ -1,4 +1,4 @@
-"""Failover front for AmneziaWG 3.1: the whole client UDP range 51900-51999 follows the active member."""
+"""Failover front for AmneziaWG 3: the whole client UDP range 51900-51999 follows the active member."""
 
 import pytest
 
@@ -97,10 +97,10 @@ def test_awg3_monitoring_view_matches_awg2_page_shape():
     }
     view = awg3_monitoring_view(raw)
     names = {i["name"]: i for i in view["ifaces"]}
-    assert set(names) == {"antizapret3", "vpn3"}
-    assert names["antizapret3"]["peer_count"] == 1 and names["vpn3"]["peer_count"] == 1
-    assert names["antizapret3"]["port"] == "51821"
+    assert set(names) == {"antizapret", "vpn"}
+    assert names["antizapret"]["peer_count"] == 1 and names["vpn"]["peer_count"] == 1
+    assert names["antizapret"]["port"] == "51821"
     by_name = {c["name"]: c for c in view["clients"]}
-    assert by_name["alice"]["iface"] == "antizapret3" and by_name["alice"]["online"] is True
-    assert by_name["bob"]["iface"] == "vpn3" and by_name["bob"]["online"] is False
+    assert by_name["alice"]["iface"] == "antizapret" and by_name["alice"]["online"] is True
+    assert by_name["bob"]["iface"] == "vpn" and by_name["bob"]["online"] is False
     assert view["stats_available"] is False

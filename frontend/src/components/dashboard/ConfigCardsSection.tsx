@@ -540,7 +540,7 @@ export default function ConfigCardsSection({
                 )}
                 {visibleTabs.includes('amneziawg2') && (
                   <TabsTrigger value="amneziawg2" className="gap-1.5 data-[state=active]:shadow-sm">
-                    AmneziaWG 2.0
+                    AmneziaWG 2
                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
                       {tabCounts.amneziawg2}
                     </Badge>
@@ -548,7 +548,7 @@ export default function ConfigCardsSection({
                 )}
                 {visibleTabs.includes('amneziawg3') && (
                   <TabsTrigger value="amneziawg3" className="gap-1.5 data-[state=active]:shadow-sm">
-                    AmneziaWG 3.1
+                    AmneziaWG 3
                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
                       {tabCounts.amneziawg3}
                     </Badge>

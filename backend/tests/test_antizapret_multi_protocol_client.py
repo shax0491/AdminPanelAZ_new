@@ -1,7 +1,7 @@
 """Regression tests for a real production bug: the panel's "create client" dialog calls
 add_openvpn_client/add_wireguard_client/add_amneziawg2_client separately, once per selected
 protocol checkbox. client.sh has no per-protocol "add" anymore (option 1 creates OpenVPN +
-WireGuard + AmneziaWG 1.5 + native AmneziaWG 2.0 together), so the second call for the same
+WireGuard + AmneziaWG 1.5 + native AmneziaWG 2 together), so the second call for the same
 client name used to re-hit client.sh's addOpenVPN() "already exists" branch, which — with no
 cert-expire-days carried over — falls into an interactive `read` that dies on closed stdin
 under `set -e`, surfacing as "Client with that name already exists!" and a hard failure.

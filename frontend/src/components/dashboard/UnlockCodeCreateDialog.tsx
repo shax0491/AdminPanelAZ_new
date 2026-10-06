@@ -30,7 +30,7 @@ function protocolLabel(protocol: UnlockCodeProtocol) {
   if (protocol === 'openvpn') return 'OpenVPN'
   // One WG access policy covers both portal tabs WireGuard and AmneziaWG (vpn_type=wireguard).
   if (protocol === 'wireguard') return 'WireGuard / AmneziaWG'
-  return 'AmneziaWG 2.0'
+  return 'AmneziaWG 2'
 }
 
 function shortProtocolLabel(protocol: UnlockCodeProtocol) {

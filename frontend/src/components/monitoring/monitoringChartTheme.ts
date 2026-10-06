@@ -9,7 +9,7 @@ export const MONITORING_PROTOCOL_COLORS = {
 } as const
 
 // Keep order aligned with .monitoring-slice-dot-* in styles/index.css (geo legends).
-// AWG 2.0 chart bars use MONITORING_PROTOCOL_COLORS.amneziawg2 via getProtocolBarColor — not this palette.
+// AWG 2 chart bars use MONITORING_PROTOCOL_COLORS.amneziawg2 via getProtocolBarColor — not this palette.
 const MONITORING_SLICE_COLORS = [
   MONITORING_PROTOCOL_COLORS.openvpn,
   MONITORING_PROTOCOL_COLORS.wireguard,
@@ -34,7 +34,7 @@ export function getMonitoringSliceDotClass(index: number) {
 export function getProtocolBarColor(name: string) {
   if (name === 'OpenVPN') return MONITORING_PROTOCOL_COLORS.openvpn
   if (name === 'WireGuard') return MONITORING_PROTOCOL_COLORS.wireguard
-  if (name === 'AWG 2.0') return MONITORING_PROTOCOL_COLORS.amneziawg2
-  if (name === 'AWG 3.1') return MONITORING_PROTOCOL_COLORS.amneziawg3
+  if (name === 'AWG 2') return MONITORING_PROTOCOL_COLORS.amneziawg2
+  if (name === 'AWG 3') return MONITORING_PROTOCOL_COLORS.amneziawg3
   return MONITORING_PROTOCOL_COLORS.total
 }

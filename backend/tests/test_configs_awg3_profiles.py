@@ -1,4 +1,4 @@
-"""AWG 3.1 client cards list both profiles (antizapret and full VPN) and download them by record path."""
+"""AWG 3 client cards list both profiles (antizapret and full VPN) and download them by record path."""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch

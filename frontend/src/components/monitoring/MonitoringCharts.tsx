@@ -105,10 +105,10 @@ export default function MonitoringCharts({
       { name: 'WireGuard', count: wgActive },
     ]
     if (showAwg2) {
-      bars.push({ name: 'AWG 2.0', count: awg2Active })
+      bars.push({ name: 'AWG 2', count: awg2Active })
     }
     if (showAwg3) {
-      bars.push({ name: 'AWG 3.1', count: awg3Active })
+      bars.push({ name: 'AWG 3', count: awg3Active })
     }
     return bars
   }, [data, showAwg2, showAwg3])
@@ -174,7 +174,7 @@ export default function MonitoringCharts({
                   <Line
                     type="monotone"
                     dataKey="awg2"
-                    name="AWG 2.0"
+                    name="AWG 2"
                     stroke={MONITORING_PROTOCOL_COLORS.amneziawg2}
                     strokeWidth={2}
                     dot={false}
@@ -184,7 +184,7 @@ export default function MonitoringCharts({
                   <Line
                     type="monotone"
                     dataKey="awg3"
-                    name="AWG 3.1"
+                    name="AWG 3"
                     stroke={MONITORING_PROTOCOL_COLORS.amneziawg3}
                     strokeWidth={2}
                     dot={false}

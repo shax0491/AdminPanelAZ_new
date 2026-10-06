@@ -2519,7 +2519,7 @@ export interface Awg3IfaceMonitoring {
   peers: Awg3Peer[]
 }
 
-/** Same shape as AmneziaWG 2.0 monitoring, so the shared AWG page components render it unchanged. */
+/** Same shape as AmneziaWG 2 monitoring, so the shared AWG page components render it unchanged. */
 export interface Awg3MonitoringResponse extends Awg2MonitoringResponse {
   node_id?: number
   node_name?: string

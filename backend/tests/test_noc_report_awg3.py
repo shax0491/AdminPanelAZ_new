@@ -1,4 +1,4 @@
-"""AmneziaWG 3.1 in the NOC report, and AmneziaWG sessions kept out of the OpenVPN/WireGuard buckets."""
+"""AmneziaWG 3 in the NOC report, and AmneziaWG sessions kept out of the OpenVPN/WireGuard buckets."""
 
 from __future__ import annotations
 
@@ -99,7 +99,7 @@ def test_summary_reads_latest_awg3_count_per_node(db, monkeypatch):
     assert summary["awg3_enabled"] is True
     assert summary["total_amneziawg3"] == 5 + 3
     assert {n["name"]: n["amneziawg3"] for n in summary["nodes"]} == {"de1": 5, "nl1": 3}
-    assert summary["total_amneziawg2"] == 1  # untouched AWG 2.0 numbers
+    assert summary["total_amneziawg2"] == 1  # untouched AWG 2 numbers
 
 
 def test_summary_zeroes_awg3_when_toggle_off(db, monkeypatch):
@@ -124,7 +124,7 @@ def test_period_stats_for_awg3_use_their_own_column():
     )
     assert by_node[1]["amneziawg3"] == 2.5 and by_node[1]["amneziawg3_peak"] == 4
     assert fleet == {"amneziawg3_peak": 6}
-    # the AWG 2.0 wrapper still reads its own column
+    # the AWG 2 wrapper still reads its own column
     by2, fleet2 = nr._awg2_stats_from_connection_samples(samples, since=now - timedelta(hours=3), until=now)
     assert by2[1]["amneziawg2"] == 9 and fleet2["amneziawg2_peak"] == 18
 

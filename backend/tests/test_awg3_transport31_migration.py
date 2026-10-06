@@ -1,4 +1,4 @@
-"""AmneziaWG 3.1 transport keys migrate into existing awg1.conf only when the admin opted in."""
+"""AmneziaWG 3 transport keys migrate into existing awg1.conf only when the admin opted in."""
 
 from types import SimpleNamespace
 

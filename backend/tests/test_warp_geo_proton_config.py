@@ -429,10 +429,10 @@ def test_reapply_awg3_noop_without_script_or_other_path(tmp_path, monkeypatch):
 def test_apply_warp_changes_reports_awg3_error_but_stays_successful(tmp_path, monkeypatch):
     from app.services import warp_geo
 
-    monkeypatch.setattr(warp_geo, "_reapply_awg3_rules", lambda path: "\nAWG 3.1: ошибка")
+    monkeypatch.setattr(warp_geo, "_reapply_awg3_rules", lambda path: "\nAWG 3: ошибка")
     up_sh = tmp_path / "up.sh"
     up_sh.write_text("#!/bin/bash\n", encoding="utf-8")
     fake = SimpleNamespace(returncode=0, stdout="ok", stderr="")
     with patch("app.services.warp_geo.subprocess.run", return_value=fake):
         result = warp_geo.apply_warp_changes(tmp_path)
-    assert result["success"] is True and "AWG 3.1" in result["output"]
+    assert result["success"] is True and "AWG 3" in result["output"]

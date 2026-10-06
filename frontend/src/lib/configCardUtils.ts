@@ -72,8 +72,8 @@ export function pickVpnFile(config: VpnConfig, tab?: ProtocolTab): ProfileFile |
 export function protocolLabel(tab: ProtocolTab): string {
   if (tab === 'openvpn') return 'OpenVPN'
   if (tab === 'amneziawg') return 'AmneziaWG'
-  if (tab === 'amneziawg2') return 'AmneziaWG 2.0'
-  if (tab === 'amneziawg3') return 'AmneziaWG 3.1'
+  if (tab === 'amneziawg2') return 'AmneziaWG 2'
+  if (tab === 'amneziawg3') return 'AmneziaWG 3'
   return 'WireGuard'
 }
 
@@ -425,7 +425,7 @@ export type ClientConnectionEntry = {
   amneziawg2: boolean
   /** Issued/live tunnel IP (OpenVPN virtual_address / WireGuard 1.5 AllowedIPs). */
   localIp?: string | null
-  /** Native AmneziaWG 2.0 AllowedIPs — kept separate: a client can hold both a WireGuard
+  /** Native AmneziaWG 2 AllowedIPs — kept separate: a client can hold both a WireGuard
    * 1.5 peer and a native AWG2 peer at once, on different subnets, under the same name. */
   amneziawg2Ip?: string | null
 }

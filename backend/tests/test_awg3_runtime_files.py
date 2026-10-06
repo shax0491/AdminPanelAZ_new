@@ -1,4 +1,4 @@
-"""The node agent installs the AWG 3.1 rules scripts and unit from the panel copy, only when they differ."""
+"""The node agent installs the AWG 3 rules scripts and unit from the panel copy, only when they differ."""
 
 from pathlib import Path
 from types import SimpleNamespace

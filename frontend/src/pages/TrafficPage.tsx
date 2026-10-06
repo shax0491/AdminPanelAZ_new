@@ -130,7 +130,7 @@ function getProtocolLabel(protocol: string) {
   const p = protocol.toLowerCase()
   if (p === 'wireguard') return 'WireGuard'
   if (p === 'openvpn') return 'OpenVPN'
-  if (p === 'amneziawg2') return 'AWG 2.0'
+  if (p === 'amneziawg2') return 'AWG 2'
   return protocol
 }
 
@@ -1053,7 +1053,7 @@ export default function TrafficPage() {
                     <SelectItem value="all">Сброс: всё</SelectItem>
                     <SelectItem value="openvpn">Сброс: OpenVPN</SelectItem>
                     <SelectItem value="wireguard">Сброс: WG/AWG</SelectItem>
-                    {awg2Enabled && <SelectItem value="amneziawg2">Сброс: AWG 2.0</SelectItem>}
+                    {awg2Enabled && <SelectItem value="amneziawg2">Сброс: AWG 2</SelectItem>}
                   </SelectContent>
                 </Select>
                 <Button variant="outline" size="sm" onClick={handleReset} disabled={resetting}>

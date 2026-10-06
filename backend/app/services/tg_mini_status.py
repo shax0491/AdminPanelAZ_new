@@ -120,7 +120,7 @@ def _awg3_top_traffic(clients: list[Any], *, limit: int = 3) -> list[dict[str, A
 
 
 def build_awg3_status_payload(db: Session) -> dict:
-    """Health + short monitoring overview of AmneziaWG 3.1 for the bot `/awg3`: online, interfaces, top traffic."""
+    """Health + short monitoring overview of AmneziaWG 3 for the bot `/awg3`: online, interfaces, top traffic."""
     from app.services.awg3_noc import awg3_monitoring_view
 
     node = get_active_node(db)

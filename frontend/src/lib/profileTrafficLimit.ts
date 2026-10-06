@@ -24,7 +24,7 @@ const DEFAULT_SETTERS: Record<VpnType, TrafficLimitSetter> = {
   wireguard: wgSetTrafficLimit,
   amneziawg2: awg2SetTrafficLimit,
   amneziawg3: async () => {
-    throw new Error('Лимит трафика для AmneziaWG 3.1 пока не поддержан')
+    throw new Error('Лимит трафика для AmneziaWG 3 пока не поддержан')
   },
 }
 
@@ -33,7 +33,7 @@ const DEFAULT_CLEARERS: Record<VpnType, TrafficLimitClearer> = {
   wireguard: wgClearTrafficLimit,
   amneziawg2: awg2ClearTrafficLimit,
   amneziawg3: async () => {
-    throw new Error('Лимит трафика для AmneziaWG 3.1 пока не поддержан')
+    throw new Error('Лимит трафика для AmneziaWG 3 пока не поддержан')
   },
 }
 
@@ -93,8 +93,8 @@ export function formatProfileProtocols(protocols: Iterable<VpnType>): string {
   const labels: Record<VpnType, string> = {
     openvpn: 'OpenVPN',
     wireguard: 'WireGuard',
-    amneziawg2: 'AmneziaWG 2.0',
-    amneziawg3: 'AmneziaWG 3.1',
+    amneziawg2: 'AmneziaWG 2',
+    amneziawg3: 'AmneziaWG 3',
   }
   return orderedProfileProtocols(protocols)
     .map((protocol) => labels[protocol])
