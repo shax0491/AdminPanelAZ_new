@@ -5,6 +5,7 @@ import {
   getVpnNetworkSettings,
   updateAntizapretSettings,
 } from '@/api/client'
+import { applyWarpChanges } from '@/api/warpGeo'
 import HaReplicaBanner from '@/components/dashboard/HaReplicaBanner'
 import { firstNonEmptyRemoteHost } from '@/components/proxy/RemoteHostsCard'
 import OpenVpnPanelTab from '@/components/routing/OpenVpnPanelTab'
@@ -12,6 +13,7 @@ import SettingsAlert from '@/components/settings/SettingsAlert'
 import ConfirmDialog, { ConfirmDialogHost } from '@/components/shared/ConfirmDialog'
 import DocsLink from '@/components/shared/DocsLink'
 import { DOCS } from '@/lib/docsUrls'
+import { touchesWarpSettings } from '@/lib/warpSettings'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -886,6 +888,41 @@ export default function AntizapretConfigTab() {
     [schema, draft],
   )
 
+  const offerWarpApply = (changedKeys: string[]) => {
+    if (!activeNode || !touchesWarpSettings(changedKeys)) return
+    const nodeId = activeNode.id
+    confirm({
+      title: 'Применить режим WARP на узле?',
+      description: (
+        <>
+          Настройки WARP записаны в setup узла <strong>{activeNode.name}</strong>, но пока не применены: узел
+          читает их только при запуске <code className="text-xs">up.sh</code>. После применения правила AmneziaWG 1.5,
+          2.0 и 3.1 пересоберутся под новый режим и адрес Proton.
+        </>
+      ),
+      alert: {
+        variant: 'warning',
+        title: 'Туннели узла прервутся на несколько секунд',
+        children: 'Применение перезапускает антизапрет: все активные подключения (OpenVPN, WireGuard, AmneziaWG) переподключатся.',
+      },
+      confirmLabel: 'Применить сейчас',
+      cancelLabel: 'Позже',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          const result = await applyWarpChanges(nodeId)
+          if (result.success) {
+            success('Режим WARP применён на узле')
+          } else {
+            notifyError(result.output || 'Не удалось применить режим WARP')
+          }
+        } catch (err) {
+          notifyError(err instanceof ApiError ? err.message : 'Ошибка применения режима WARP')
+        }
+      },
+    })
+  }
+
   const save = async () => {
     if (!dirty) return
     setSaving(true)
@@ -900,6 +937,7 @@ export default function AntizapretConfigTab() {
       for (const w of result.warnings ?? []) {
         notifyWarning(w)
       }
+      offerWarpApply(Object.keys(updates))
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : 'Ошибка сохранения настроек')
     } finally {
