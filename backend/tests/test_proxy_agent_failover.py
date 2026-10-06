@@ -145,3 +145,23 @@ def test_plan_failover_teardown_removes_only_that_label():
 
 def test_plan_failover_teardown_noop_when_absent():
     assert plan_failover_teardown(FIXTURE_EMPTY, "pool3", 39001) == []
+
+
+def test_awg3_front_heals_docker_forward_for_the_whole_port_range(monkeypatch):
+    monkeypatch.setenv("PROXY_AGENT_MODE", "dev")
+    """A front that also runs Docker would drop the relayed 51900-51999 range via FORWARD DROP."""
+    from types import SimpleNamespace
+
+    from proxy_agent import main as agent
+
+    calls: list[list[str]] = []
+
+    def fake_run(argv, **_kw):
+        calls.append(list(argv))
+        code = 1 if argv[:2] == ["iptables", "-C"] else 0
+        return SimpleNamespace(returncode=code, stdout="", stderr="")
+
+    monkeypatch.setattr(agent.subprocess, "run", fake_run)
+    assert agent._ensure_docker_forward_allows(agent.AWG3_PORT_SPAN) is True
+    inserted = [c for c in calls if c[:2] == ["iptables", "-I"]]
+    assert any("51900:51999" in c and "udp" in c for c in inserted)

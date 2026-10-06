@@ -22,6 +22,7 @@ from proxy_agent.conntrack_maps import parse_conntrack_mappings
 from proxy_agent.iptables_dest import (
     AWG3_PORT_FIRST,
     AWG3_PORT_LAST,
+    AWG3_PORT_SPAN,
     IptablesApplyError,
     apply_iptables_plan,
     detect_proxy_destination,
@@ -162,7 +163,7 @@ def _apply_iptables_plan(plan: list[list[str]]) -> None:
         raise HTTPException(status_code=code, detail=detail) from exc
 
 
-def _ensure_docker_forward_allows(*ports: int) -> bool:
+def _ensure_docker_forward_allows(*ports: int | str) -> bool:
     """Best-effort self-heal for the Docker-on-a-front-node footgun.
 
     Docker installs its own DOCKER-USER chain and, via its default
@@ -173,6 +174,7 @@ def _ensure_docker_forward_allows(*ports: int) -> bool:
     separately, the return leg unless ESTABLISHED,RELATED is allowed too)
     just vanishes with no error anywhere. Idempotent — safe to call on every
     switch; no-ops entirely if Docker/DOCKER-USER isn't present on this host.
+    A port may be a ``"first:last"`` range string (AWG 3 front: 51900:51999).
     Returns True if any rule was actually inserted (caller may want to persist).
     """
     try:
@@ -399,12 +401,15 @@ def failover_awg3_set_destination(label: str, payload: AwgFailoverDestinationBod
         new_ip = validate_destination_ip(payload.destination_ip)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    docker_healed = _ensure_docker_forward_allows(AWG3_PORT_SPAN)
     plan = plan_awg3_switch(_run_iptables_save_nat(), label, new_ip)
     if plan:
         _apply_iptables_plan(plan)
         _persist_iptables()
         for port in range(AWG3_PORT_FIRST, AWG3_PORT_LAST + 1):
             _flush_conntrack_for_port(port)
+    elif docker_healed:
+        _persist_iptables()
     return awg3_status_from_rules(_run_iptables_save_nat(), label)
 
 
