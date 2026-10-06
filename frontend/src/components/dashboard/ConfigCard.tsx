@@ -648,7 +648,7 @@ export default function ConfigCard({
               {hasBothProfiles ? (
                 <>
                   <DownloadButton
-                    label={tab === 'amneziawg3' ? 'AWG 3.1 Full VPN' : 'VPN'}
+                    label="VPN"
                     filename={getDownloadFilename(config, vpnFile!)}
                     disabled={actionBusy}
                     loading={loadingAction === 'download'}
@@ -657,7 +657,7 @@ export default function ConfigCard({
                     onClick={() => runFileAction(vpnFile, onDownload)}
                   />
                   <DownloadButton
-                    label={tab === 'amneziawg3' ? 'AWG 3.1 AntiZapret' : 'AntiZapret'}
+                    label="AntiZapret"
                     filename={getDownloadFilename(config, azFile!)}
                     disabled={actionBusy}
                     loading={loadingAction === 'download'}
