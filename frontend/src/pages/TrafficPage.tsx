@@ -131,6 +131,7 @@ function getProtocolLabel(protocol: string) {
   if (p === 'wireguard') return 'WireGuard'
   if (p === 'openvpn') return 'OpenVPN'
   if (p === 'amneziawg2') return 'AWG 2'
+  if (p === 'amneziawg3') return 'AWG 3'
   return protocol
 }
 
@@ -514,6 +515,8 @@ export default function TrafficPage() {
           setClientPolicy(entry.wireguard ?? null)
         } else if (proto === 'amneziawg2') {
           setClientPolicy(entry.amneziawg2 ?? null)
+        } else if (proto === 'amneziawg3') {
+          setClientPolicy(entry.amneziawg3 ?? null)
         } else {
           setClientPolicy(entry.openvpn ?? null)
         }
