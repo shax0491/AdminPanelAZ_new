@@ -371,28 +371,6 @@ def check_agent_updates(*, repo_root: Path | None = None) -> dict[str, Any]:
     }
 
 
-def _apply_transport31_if_enabled() -> dict[str, Any]:
-    """AmneziaWG 3.1 transport keys for an existing AWG 3.0 layer; only when the admin enabled it.
-
-    Adds the keys to awg1.conf and restarts awg3@awg1 when something changed. Clients created
-    before this must re-import their configs, which is why this never runs by default.
-    """
-    from app.services import awg3_clients
-
-    if not awg3_clients.transport31_enabled():
-        return {"enabled": False, "changed": False}
-    try:
-        changed = awg3_clients.migrate_transport31()
-    except Exception as exc:  # noqa: BLE001 - reported in the result, never aborts the agent update
-        return {"enabled": True, "changed": False, "error": str(exc)}
-    if not changed:
-        return {"enabled": True, "changed": False}
-    res = subprocess.run(["systemctl", "restart", awg3_clients.UNIT], capture_output=True, text=True, timeout=60, check=False)
-    if res.returncode != 0:
-        return {"enabled": True, "changed": True, "restarted": False, "error": res.stderr.strip() or "restart failed"}
-    return {"enabled": True, "changed": True, "restarted": True}
-
-
 def apply_node_update(
     *,
     agent_version: str | None = None,
@@ -426,9 +404,6 @@ def apply_node_update(
                     "Предупреждение systemd: "
                     + (systemd_refresh.get("error") or "не удалось обновить unit node")
                 )
-            detail["transport31"] = _apply_transport31_if_enabled()
-            if detail["transport31"].get("error"):
-                messages.append("AmneziaWG 3.1: " + detail["transport31"]["error"])
             messages.append("Node agent обновлён, перезапуск через несколько секунд")
             schedule_agent_restart(repo_root)
             restarting = True

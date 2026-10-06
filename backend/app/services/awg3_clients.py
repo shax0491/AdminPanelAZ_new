@@ -465,15 +465,6 @@ def restart_runtime() -> dict:
 TRANSPORT31_LINES = (("ContentPaddingAddition", "2"), ("RandomTrailers", "on"), ("DisableCookies", "on"))
 
 
-def transport31_flag_path(conf_dir: Path | None = None) -> Path:
-    """Admin opt-in: existing awg1.conf is migrated to 3.1 only when this file exists (clients must re-import)."""
-    return (conf_dir or AWG3_CONF_DIR) / "transport31.enable"
-
-
-def transport31_enabled(conf_dir: Path | None = None) -> bool:
-    return transport31_flag_path(conf_dir).is_file()
-
-
 def migrate_transport31(store: "Awg3Store | None" = None) -> bool:
     """Add the 3.1 transport keys to the [Interface] section of awg1.conf. Idempotent.
 
@@ -493,3 +484,19 @@ def migrate_transport31(store: "Awg3Store | None" = None) -> bool:
     new_text = head.rstrip(nl) + nl + add + sep + rest
     store.server_conf.write_text(new_text, encoding="utf-8")
     return True
+
+
+def ensure_transport31(store: "Awg3Store | None" = None) -> dict:
+    """Unconditional AmneziaWG 3.1 migration of this node's awg1.conf; run at agent start.
+
+    Skipped when the AWG 3.0 layer is not installed on the node (no awg1.conf). Restarts
+    awg3@awg1 only when the file actually changed, so repeated starts are harmless.
+    """
+    store = store or Awg3Store()
+    if not store.server_conf.is_file():
+        return {"skipped": True, "changed": False, "restarted": False, "error": None}
+    if not migrate_transport31(store):
+        return {"skipped": False, "changed": False, "restarted": False, "error": None}
+    res = subprocess.run(["systemctl", "restart", UNIT], capture_output=True, text=True, timeout=60, check=False)
+    error = None if res.returncode == 0 else (res.stderr.strip() or f"systemctl restart {UNIT} failed")
+    return {"skipped": False, "changed": True, "restarted": error is None, "error": error}

@@ -70,43 +70,28 @@ def test_migrated_keys_are_copied_into_client_configs(store, monkeypatch):
     assert "DisableCookies = on" in res["config"]
 
 
-def test_flag_is_off_by_default(tmp_path):
-    assert svc.transport31_enabled(tmp_path) is False
-    (tmp_path / "transport31.enable").write_text("", encoding="utf-8")
-    assert svc.transport31_enabled(tmp_path) is True
+def test_ensure_skips_node_without_awg3_layer(tmp_path):
+    empty = svc.Awg3Store(conf_dir=tmp_path, client_dir=tmp_path / "client")
+    assert svc.ensure_transport31(empty) == {"skipped": True, "changed": False, "restarted": False, "error": None}
 
 
-def test_node_update_does_nothing_without_flag(monkeypatch, tmp_path):
-    monkeypatch.setattr(svc, "AWG3_CONF_DIR", tmp_path)
-    called = []
-    monkeypatch.setattr(svc, "migrate_transport31", lambda *a, **k: called.append(1) or True)
-    assert node_update._apply_transport31_if_enabled() == {"enabled": False, "changed": False}
-    assert called == []
-
-
-def test_node_update_migrates_and_restarts_when_enabled(monkeypatch, tmp_path):
-    monkeypatch.setattr(svc, "AWG3_CONF_DIR", tmp_path)
-    (tmp_path / "transport31.enable").write_text("", encoding="utf-8")
-    monkeypatch.setattr(svc, "migrate_transport31", lambda *a, **k: True)
-    restarts = []
+def test_ensure_migrates_and_restarts_unit_once(store, monkeypatch):
+    calls = []
 
     def fake_run(args, **kwargs):
-        restarts.append(args)
+        calls.append(args)
         return SimpleNamespace(returncode=0, stderr="")
 
-    monkeypatch.setattr(node_update.subprocess, "run", fake_run)
-    result = node_update._apply_transport31_if_enabled()
-    assert result == {"enabled": True, "changed": True, "restarted": True}
-    assert restarts == [["systemctl", "restart", svc.UNIT]]
+    monkeypatch.setattr(svc.subprocess, "run", fake_run)
+    first = svc.ensure_transport31(store)
+    assert first == {"skipped": False, "changed": True, "restarted": True, "error": None}
+    assert calls == [["systemctl", "restart", svc.UNIT]]
+    second = svc.ensure_transport31(store)
+    assert second == {"skipped": False, "changed": False, "restarted": False, "error": None}
+    assert len(calls) == 1
 
 
-def test_node_update_reports_migration_error_without_raising(monkeypatch, tmp_path):
-    monkeypatch.setattr(svc, "AWG3_CONF_DIR", tmp_path)
-    (tmp_path / "transport31.enable").write_text("", encoding="utf-8")
-
-    def boom(*a, **k):
-        raise OSError("awg1.conf missing")
-
-    monkeypatch.setattr(svc, "migrate_transport31", boom)
-    result = node_update._apply_transport31_if_enabled()
-    assert result["enabled"] is True and "awg1.conf missing" in result["error"]
+def test_ensure_reports_restart_failure(store, monkeypatch):
+    monkeypatch.setattr(svc.subprocess, "run", lambda args, **kw: SimpleNamespace(returncode=1, stderr="unit failed"))
+    result = svc.ensure_transport31(store)
+    assert result["changed"] is True and result["restarted"] is False and "unit failed" in result["error"]

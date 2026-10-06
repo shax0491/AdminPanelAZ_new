@@ -97,6 +97,13 @@ async def _node_agent_lifespan(_: FastAPI):
         migrate_stale_systemd_units_on_startup(resolve_repo_root(), panel=False, node=True, proxy=True)
     except Exception:
         pass
+    try:
+        # AmneziaWG 3.1 transport keys: runs on every agent start, so the update button alone is enough.
+        from app.services import awg3_clients
+
+        awg3_clients.ensure_transport31()
+    except Exception:
+        pass
     yield
 
 
