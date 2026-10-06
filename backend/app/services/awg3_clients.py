@@ -459,3 +459,37 @@ def restart_runtime() -> dict:
     if res.returncode != 0:
         return {"success": False, "errors": [res.stderr.strip() or f"systemctl restart {UNIT} failed"]}
     return {"success": True, "errors": []}
+
+
+# AmneziaWG 3.1 transport protection. Booleans are written as on/off: the awg tool rejects "true".
+TRANSPORT31_LINES = (("ContentPaddingAddition", "2"), ("RandomTrailers", "on"), ("DisableCookies", "on"))
+
+
+def transport31_flag_path(conf_dir: Path | None = None) -> Path:
+    """Admin opt-in: existing awg1.conf is migrated to 3.1 only when this file exists (clients must re-import)."""
+    return (conf_dir or AWG3_CONF_DIR) / "transport31.enable"
+
+
+def transport31_enabled(conf_dir: Path | None = None) -> bool:
+    return transport31_flag_path(conf_dir).is_file()
+
+
+def migrate_transport31(store: "Awg3Store | None" = None) -> bool:
+    """Add the 3.1 transport keys to the [Interface] section of awg1.conf. Idempotent.
+
+    Keys go before the first [Peer] block: anything after it would belong to that peer.
+    Returns True when the file was changed.
+    """
+    nl = chr(10)
+    peer_marker = nl + "[Peer]" + nl
+    store = store or Awg3Store()
+    text = store.server_conf.read_text(encoding="utf-8")
+    present = _server_values(text)
+    missing = [(key, value) for key, value in TRANSPORT31_LINES if key not in present]
+    if not missing:
+        return False
+    add = "".join(key + " = " + value + nl for key, value in missing)
+    head, sep, rest = text.partition(peer_marker)
+    new_text = head.rstrip(nl) + nl + add + sep + rest
+    store.server_conf.write_text(new_text, encoding="utf-8")
+    return True

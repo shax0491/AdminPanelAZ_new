@@ -304,14 +304,14 @@ def test_suspend_unknown_client_fails_clearly(store):
 def test_client_config_copies_awg31_transport_keys_from_server(store):
     text = store.server_conf.read_text(encoding="utf-8")
     store.server_conf.write_text(
-        text + "ContentPaddingAddition = 2\nRandomTrailers = true\nDisableCookies = true\n",
+        text + "ContentPaddingAddition = 2\nRandomTrailers = on\nDisableCookies = on\n",
         encoding="utf-8",
     )
     cfg = svc.create_client("v31", endpoint_host="h", split_allowed_ips=SPLIT, store=store, run=FakeAwg())["config"]
     assert "HeaderProtectionKey = HPK=" in cfg
     assert "ContentPaddingAddition = 2" in cfg
-    assert "RandomTrailers = true" in cfg
-    assert "DisableCookies = true" in cfg
+    assert "RandomTrailers = on" in cfg
+    assert "DisableCookies = on" in cfg
     assert "MTU = 1280" in cfg
 
 
