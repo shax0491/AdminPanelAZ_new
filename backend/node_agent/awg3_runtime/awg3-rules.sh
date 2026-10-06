@@ -98,3 +98,7 @@ fi
 if [ "$VPN_WARP" = "3" ]; then
   iptables -w -C FORWARD -s $F -m mark --mark 0x2 ! -o warp-vpn -j DROP 2>/dev/null || iptables -w -I FORWARD 2 -s $F -m mark --mark 0x2 ! -o warp-vpn -j DROP
 fi
+# как у AWG 2 (up.sh): IP из antizapret-drop не отдаём ни одной подсети AWG 3
+for C in $S $F; do
+  iptables -w -C FORWARD -s $C -m set --match-set antizapret-drop dst -j DROP 2>/dev/null || iptables -w -I FORWARD 2 -s $C -m set --match-set antizapret-drop dst -j DROP
+done
