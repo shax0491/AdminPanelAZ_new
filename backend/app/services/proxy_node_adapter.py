@@ -150,6 +150,18 @@ class ProxyNodeAdapter:
             body["backend_port"] = backend_port
         return self._request("PUT", f"/failover/{label}/destination", json=body)
 
+    def failover_awg3_status(self, label: str) -> dict[str, Any]:
+        """GET /failover-awg3/{label}/status — диапазон клиентских портов AmneziaWG 3.0."""
+        return self._request("GET", f"/failover-awg3/{label}/status")
+
+    def failover_awg3_set_destination(self, label: str, ip: str) -> dict[str, Any]:
+        """PUT /failover-awg3/{label}/destination — весь диапазон 51900-51999 на узел ``ip``."""
+        return self._request("PUT", f"/failover-awg3/{label}/destination", json={"destination_ip": ip})
+
+    def failover_awg3_teardown(self, label: str) -> dict[str, Any]:
+        """DELETE /failover-awg3/{label} — снять правила диапазона AmneziaWG 3.0."""
+        return self._request("DELETE", f"/failover-awg3/{label}")
+
     def failover_teardown(self, label: str, port: int, *, backend_port: int | None = None) -> dict[str, Any]:
         """DELETE /failover/{label} — снять правила (пул удалён / фронт отвязан)."""
         params: dict[str, Any] = {"port": port}

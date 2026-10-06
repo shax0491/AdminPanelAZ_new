@@ -94,12 +94,14 @@ def front_label(pool: FailoverPool) -> str:
 def require_front(pool: FailoverPool) -> tuple[Node, int]:
     if pool.strategy != FailoverPoolStrategy.dnat_front:
         raise FailoverFrontError("Пул не в режиме dnat_front")
-    if pool.front_node_id is None or pool.front_port is None:
+    is_awg3 = pool.vpn_type == VpnType.amneziawg3
+    # AmneziaWG 3.0 fronts forward a fixed client range (51900-51999), so the pool has no port of its own.
+    if pool.front_node_id is None or (pool.front_port is None and not is_awg3):
         raise FailoverFrontError("У пула не задан фронт-узел и/или порт")
     front = pool.front_node
     if front is None:
         raise FailoverFrontError("Фронт-узел не найден")
-    return front, int(pool.front_port)
+    return front, int(pool.front_port or 51821)
 
 
 def backend_port(pool: FailoverPool) -> int | None:
@@ -321,6 +323,8 @@ def _apply_switch_to_target(db: Session, pool: FailoverPool, target: FailoverPoo
         db.commit()
         result["errors"].append(pool.last_switch_error)
         return result
+    if pool.vpn_type == VpnType.amneziawg3:
+        return _apply_awg3_switch_to_target(db, pool, target, adapter, label, result)
     real_port = backend_port(pool) or port
     real_port_kwarg = real_port if real_port != port else None
 
@@ -358,6 +362,39 @@ def _apply_switch_to_target(db: Session, pool: FailoverPool, target: FailoverPoo
         result["errors"].append(pool.last_switch_error)
         return result
 
+    pool.active_member_id = target.id
+    pool.last_switch_at = datetime.utcnow()
+    pool.last_switch_error = None
+    db.commit()
+    result["switched"] = True
+    result["active_member_id"] = target.id
+    return result
+
+
+def _apply_awg3_switch_to_target(db: Session, pool: FailoverPool, target: FailoverPoolMember, adapter, label: str, result: dict) -> dict:
+    """AmneziaWG 3.0 pool: the whole client range 51900-51999 follows the active member."""
+    try:
+        target_ip = _resolve_destination_ip(target.node)
+        status_now = adapter.failover_awg3_status(label)
+    except Exception as exc:
+        pool.last_switch_error = f"Фронт недоступен: {exc}"
+        db.commit()
+        result["errors"].append(pool.last_switch_error)
+        return result
+    if status_now.get("destination_ip") == target_ip:
+        if pool.active_member_id != target.id:
+            pool.active_member_id = target.id
+            pool.last_switch_error = None
+            db.commit()
+        result["active_member_id"] = target.id
+        return result
+    try:
+        adapter.failover_awg3_set_destination(label, target_ip)
+    except Exception as exc:
+        pool.last_switch_error = f"Не удалось переключить фронт AmneziaWG 3.0: {exc}"
+        db.commit()
+        result["errors"].append(pool.last_switch_error)
+        return result
     pool.active_member_id = target.id
     pool.last_switch_at = datetime.utcnow()
     pool.last_switch_error = None
@@ -431,6 +468,9 @@ def teardown_front_node(pool: FailoverPool, node: Node, port: int) -> None:
     """
     try:
         adapter = get_proxy_adapter(node)
+        if pool.vpn_type == VpnType.amneziawg3:
+            adapter.failover_awg3_teardown(front_label(pool))
+            return
         real_port = backend_port(pool)
         extra: dict = {"backend_port": real_port} if real_port and real_port != port else {}
         adapter.failover_teardown(front_label(pool), int(port), **extra)

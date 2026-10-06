@@ -117,10 +117,16 @@ jobs:
         # npm offers is a major tailwindcss v4 bump. braces here never runs
         # against untrusted input (local source files only, build-time), so
         # fail only if a *new*, non-allowlisted high/critical advisory shows up.
+        # Tailwind CSS 3.x pulls in braces/chokidar/fast-glob/micromatch (and postcss-nested,
+        # postcss-selector-parser via tailwind's nesting plugin). The only fix offered is the
+        # breaking tailwindcss 4.x migration, which is out of scope (layout would break), so
+        # these advisories are accepted explicitly:
+        #   GHSA-vfj7-8cjw-p6xm  braces (ReDoS, build-time glob only)
+        #   GHSA-rj75-hqrm-r3gf  postcss-selector-parser (via postcss-nested, build-time CSS only)
         run: |
           npm audit --audit-level=high --json > audit.json || true
           node -e '
-            const allow = new Set(["GHSA-vfj7-8cjw-p6xm"]);
+            const allow = new Set(["GHSA-vfj7-8cjw-p6xm", "GHSA-rj75-hqrm-r3gf"]);
             const data = JSON.parse(require("fs").readFileSync("audit.json", "utf8"));
             const bad = [];
             for (const [name, info] of Object.entries(data.vulnerabilities || {})) {

@@ -20,12 +20,17 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from proxy_agent import PROXY_AGENT_VERSION
 from proxy_agent.conntrack_maps import parse_conntrack_mappings
 from proxy_agent.iptables_dest import (
+    AWG3_PORT_FIRST,
+    AWG3_PORT_LAST,
     IptablesApplyError,
     apply_iptables_plan,
     detect_proxy_destination,
     failover_status_from_rules,
     is_proxy_installed,
     plan_destination_rewrite,
+    awg3_status_from_rules,
+    plan_awg3_switch,
+    plan_awg3_teardown,
     plan_failover_switch,
     plan_failover_teardown,
     validate_destination_ip,
@@ -372,6 +377,48 @@ def failover_teardown(label: str, port: int, backend_port: int | None = None, _:
         _apply_iptables_plan(plan)
         _persist_iptables()
     return {"label": label, "port": port, "installed": False, "destination_ip": None}
+
+
+class AwgFailoverDestinationBody(BaseModel):
+    destination_ip: str
+
+
+@app.get("/failover-awg3/{label}/status")
+def failover_awg3_status(label: str, _: None = Depends(verify_api_key)):
+    try:
+        label = validate_failover_label(label)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return awg3_status_from_rules(_run_iptables_save_nat(), label)
+
+
+@app.put("/failover-awg3/{label}/destination")
+def failover_awg3_set_destination(label: str, payload: AwgFailoverDestinationBody, _: None = Depends(verify_api_key)):
+    try:
+        label = validate_failover_label(label)
+        new_ip = validate_destination_ip(payload.destination_ip)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    plan = plan_awg3_switch(_run_iptables_save_nat(), label, new_ip)
+    if plan:
+        _apply_iptables_plan(plan)
+        _persist_iptables()
+        for port in range(AWG3_PORT_FIRST, AWG3_PORT_LAST + 1):
+            _flush_conntrack_for_port(port)
+    return awg3_status_from_rules(_run_iptables_save_nat(), label)
+
+
+@app.delete("/failover-awg3/{label}")
+def failover_awg3_teardown(label: str, _: None = Depends(verify_api_key)):
+    try:
+        label = validate_failover_label(label)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    plan = plan_awg3_teardown(_run_iptables_save_nat(), label)
+    if plan:
+        _apply_iptables_plan(plan)
+        _persist_iptables()
+    return {"label": label, "installed": False, "destination_ip": None}
 
 
 @app.get("/proxy/mappings")

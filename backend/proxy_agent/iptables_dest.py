@@ -390,3 +390,84 @@ def _rollback_applied(
             err = (getattr(proc, "stderr", None) or getattr(proc, "stdout", None) or "").strip()
             errors.append(f"{' '.join(inv)}: {err or proc.returncode}")
     return errors
+
+
+# --- AmneziaWG 3.0 failover front: client UDP port range 51900-51999 ---
+#
+# Клиенты AWG 3.0 получают случайный порт из диапазона (см. awg3_clients.py), а узел
+# переводит весь диапазон на ListenPort 51821 своим REDIRECT (awg3-rules.sh). Фронт
+# пула поэтому пробрасывает ВЕСЬ диапазон на выбранного члена с сохранением порта:
+# DNAT --to-destination ip:51900-51999 (одинаковые по длине диапазоны ложатся 1:1).
+# Метка правил отдельная: "az-failover-awg3:<label>", её не находит ни один awg2-правило.
+
+AWG3_PORT_FIRST = 51900
+AWG3_PORT_LAST = 51999
+AWG3_PORT_SPAN = f"{AWG3_PORT_FIRST}:{AWG3_PORT_LAST}"
+_AWG3_DNAT_TO_RE = re.compile(r"--to-destination\s+(\d{1,3}(?:\.\d{1,3}){3}):" + str(AWG3_PORT_FIRST) + r"-" + str(AWG3_PORT_LAST))
+
+
+def _awg3_comment(label: str) -> str:
+    return f"az-failover-awg3:{label}"
+
+
+def detect_awg3_destination(rules_text: str, label: str) -> str | None:
+    """Current destination IPv4 of this label's AWG 3.0 range DNAT, else None."""
+    comment = _awg3_comment(label)
+    quoted = f'"{comment}"'
+    for line in _iter_rule_lines(rules_text):
+        if "PREROUTING" not in line or "DNAT" not in line.upper():
+            continue
+        if quoted not in line and comment not in line:
+            continue
+        m = _AWG3_DNAT_TO_RE.search(line)
+        if m:
+            return m.group(1)
+    return None
+
+
+def awg3_status_from_rules(rules_text: str, label: str) -> dict:
+    ip = detect_awg3_destination(rules_text, label)
+    return {"label": label, "port_range": [AWG3_PORT_FIRST, AWG3_PORT_LAST], "destination_ip": ip, "installed": ip is not None}
+
+
+def _awg3_dnat_argv(action: str, label: str, ip: str) -> list[str]:
+    return [
+        "iptables", "-w", "-t", "nat", action, "PREROUTING",
+        "-p", "udp", "--dport", AWG3_PORT_SPAN,
+        "-m", "comment", "--comment", _awg3_comment(label),
+        "-j", "DNAT", "--to-destination", f"{ip}:{AWG3_PORT_FIRST}-{AWG3_PORT_LAST}",
+    ]
+
+
+def _awg3_masq_argv(action: str, label: str, ip: str) -> list[str]:
+    # After DNAT the packet's destination port is still in the range, so match the span.
+    return [
+        "iptables", "-w", "-t", "nat", action, "POSTROUTING",
+        "-p", "udp", "-d", ip, "--dport", AWG3_PORT_SPAN,
+        "-m", "comment", "--comment", _awg3_comment(label),
+        "-j", "MASQUERADE",
+    ]
+
+
+def plan_awg3_switch(rules_text: str, label: str, new_ip: str) -> list[list[str]]:
+    """Argv plan to point this label's AWG 3.0 range DNAT+MASQUERADE at new_ip (no-op if already there)."""
+    label = validate_failover_label(label)
+    new = _parse_ipv4(new_ip)
+    old_ip = detect_awg3_destination(rules_text, label)
+    if old_ip == new:
+        return []
+    plan: list[list[str]] = []
+    if old_ip:
+        plan.append(_awg3_dnat_argv("-D", label, old_ip))
+        plan.append(_awg3_masq_argv("-D", label, old_ip))
+    plan.append(_awg3_dnat_argv("-A", label, new))
+    plan.append(_awg3_masq_argv("-A", label, new))
+    return plan
+
+
+def plan_awg3_teardown(rules_text: str, label: str) -> list[list[str]]:
+    label = validate_failover_label(label)
+    old_ip = detect_awg3_destination(rules_text, label)
+    if not old_ip:
+        return []
+    return [_awg3_dnat_argv("-D", label, old_ip), _awg3_masq_argv("-D", label, old_ip)]
