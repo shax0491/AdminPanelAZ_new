@@ -30,6 +30,11 @@ class ProviderBody(BaseModel):
     provider: str
 
 
+class ModesBody(BaseModel):
+    antizapret: str | None = None
+    vpn: str | None = None
+
+
 def _get_vpn_node_or_404(node_id: int, db: Session) -> Node:
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
@@ -108,6 +113,18 @@ def warp_geo_set_provider(
     node = _get_vpn_node_or_404(node_id, db)
     adapter = get_adapter_for_node(node)
     return adapter.set_warp_provider(body.provider)
+
+
+@router.post("/{node_id}/modes")
+def warp_geo_set_modes(
+    node_id: int,
+    body: ModesBody,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    node = _get_vpn_node_or_404(node_id, db)
+    adapter = get_adapter_for_node(node)
+    return adapter.set_warp_modes(body.antizapret, body.vpn)
 
 
 @router.post("/{node_id}/apply")

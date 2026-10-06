@@ -326,6 +326,9 @@ class NodeAdapter(ABC):
     def set_warp_provider(self, provider: str) -> dict: ...
 
     @abstractmethod
+    def set_warp_modes(self, antizapret: str | None, vpn: str | None) -> dict: ...
+
+    @abstractmethod
     def apply_warp_changes(self) -> dict: ...
 
     @abstractmethod
@@ -857,6 +860,16 @@ class LocalNodeAdapter(NodeAdapter):
         from app.services.warp_geo import set_warp_provider as _set_warp_provider
 
         return _set_warp_provider(provider, self._service.base_path)
+
+    def set_warp_modes(self, antizapret: str | None, vpn: str | None) -> dict:
+        from app.services.warp_geo import WarpModeError, set_warp_modes as _set_warp_modes
+
+        try:
+            return _set_warp_modes(self._service.base_path, antizapret=antizapret, vpn=vpn)
+        except WarpModeError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Файл setup на узле не найден") from exc
 
     def apply_warp_changes(self) -> dict:
         from app.services.warp_geo import apply_warp_changes as _apply_warp_changes
@@ -2061,6 +2074,11 @@ class RemoteNodeAdapter(NodeAdapter):
 
     def set_warp_provider(self, provider: str) -> dict:
         return self._request("POST", "/warp-geo/provider", json={"provider": provider}, timeout=30.0)
+
+    def set_warp_modes(self, antizapret: str | None, vpn: str | None) -> dict:
+        return self._request(
+            "POST", "/warp-geo/modes", json={"antizapret": antizapret, "vpn": vpn}, timeout=30.0,
+        )
 
     def apply_warp_changes(self) -> dict:
         return self._request("POST", "/warp-geo/apply", timeout=70.0)

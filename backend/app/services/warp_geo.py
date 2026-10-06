@@ -350,6 +350,41 @@ def set_warp_provider(provider: Literal["proton", "cloudflare"], antizapret_path
     return {"success": True, "warp_provider": provider}
 
 
+# ANTIZAPRET_WARP: 1 нет, 2 весь трафик, 3 домены антизапрета + список WARP, 4 только список WARP.
+# VPN_WARP: 1 нет, 2 весь трафик (режимов 3 и 4 у полного VPN нет).
+ANTIZAPRET_WARP_MODES = ("1", "2", "3", "4")
+VPN_WARP_MODES = ("1", "2")
+
+
+class WarpModeError(ValueError):
+    """Недопустимый режим WARP."""
+
+
+def set_warp_modes(antizapret_path: Path, *, antizapret: str | None = None, vpn: str | None = None) -> dict:
+    """Записать режимы ANTIZAPRET_WARP и/или VPN_WARP в setup. up.sh не запускается: применяет apply_warp_changes.
+
+    Значение None оставляет режим как есть. Допустимые значения проверяются до записи, чтобы в setup
+    (его делает source и up.sh) не попала произвольная строка.
+    """
+    updates: dict[str, str] = {}
+    if antizapret is not None:
+        if str(antizapret) not in ANTIZAPRET_WARP_MODES:
+            raise WarpModeError("ANTIZAPRET_WARP должен быть 1, 2, 3 или 4")
+        updates["ANTIZAPRET_WARP"] = str(antizapret)
+    if vpn is not None:
+        if str(vpn) not in VPN_WARP_MODES:
+            raise WarpModeError("VPN_WARP должен быть 1 или 2")
+        updates["VPN_WARP"] = str(vpn)
+    if not updates:
+        raise WarpModeError("Не указан ни один режим WARP")
+    _write_setup_fields(antizapret_path, updates)
+    return {
+        "success": True,
+        "antizapret_warp": updates.get("ANTIZAPRET_WARP"),
+        "vpn_warp": updates.get("VPN_WARP"),
+    }
+
+
 def apply_warp_changes(antizapret_path: Path) -> dict:
     """Выполнить /root/antizapret/up.sh, чтобы применить смену провайдера/ключей.
 

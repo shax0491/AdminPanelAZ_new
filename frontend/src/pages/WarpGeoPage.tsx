@@ -6,6 +6,7 @@ import {
   getWarpGeoStatus,
   listWarpGeoNodes,
   saveWarpProtonFields,
+  setWarpModes,
   setWarpProvider,
   testCloudflareWarpPreview,
   type ProtonFields,
@@ -15,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ANTIZAPRET_WARP_OPTIONS, VPN_WARP_OPTIONS, warpModeLabel, warpModeUsesList } from '@/lib/warpModes'
 import type { WarpGeoCheckResponse, WarpGeoNodesResponse, WarpGeoStatusResponse } from '@/types'
 
 const EMPTY_PROTON_FIELDS: ProtonFields = {
@@ -29,13 +31,6 @@ const SCOPE_LABELS: Record<'antizapret' | 'vpn' | 'raw', string> = {
   antizapret: 'AntiZapret VPN (antizapret-*)',
   vpn: 'Полный VPN (vpn-*)',
   raw: 'Сырой IP хоста (без WARP)',
-}
-
-const WARP_LABELS: Record<string, string> = {
-  '1': 'Выключен',
-  '2': 'Весь трафик',
-  '3': 'Домены + IP из списков',
-  '4': 'Только домены из списков',
 }
 
 export default function WarpGeoPage() {
@@ -54,6 +49,7 @@ export default function WarpGeoPage() {
   const [manageError, setManageError] = useState<string | null>(null)
   const [manageMessage, setManageMessage] = useState<string | null>(null)
   const [switchingProvider, setSwitchingProvider] = useState(false)
+  const [switchingMode, setSwitchingMode] = useState<'antizapret' | 'vpn' | null>(null)
   const [applying, setApplying] = useState(false)
   const [expandedProtonScope, setExpandedProtonScope] = useState<'antizapret' | 'vpn' | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -167,6 +163,23 @@ export default function WarpGeoPage() {
       setManageError(err instanceof Error ? err.message : 'Не удалось сменить провайдера')
     } finally {
       setSwitchingProvider(false)
+    }
+  }
+
+  const handleSwitchMode = async (scope: 'antizapret' | 'vpn', value: string) => {
+    const current = scope === 'antizapret' ? status?.antizapret_warp : status?.vpn_warp
+    if (nodeId === null || current === value) return
+    setSwitchingMode(scope)
+    setManageError(null)
+    setManageMessage(null)
+    try {
+      await setWarpModes(nodeId, scope === 'antizapret' ? { antizapret: value } : { vpn: value })
+      setManageMessage('Режим сохранён в конфиг. Нажмите «Применить», чтобы правила AmneziaWG и OpenVPN подхватили его.')
+      loadStatus(nodeId)
+    } catch (err) {
+      setManageError(err instanceof Error ? err.message : 'Не удалось сменить режим WARP')
+    } finally {
+      setSwitchingMode(null)
     }
   }
 
@@ -319,11 +332,11 @@ export default function WarpGeoPage() {
               </div>
               <div className="rounded-md border p-3">
                 <div className="text-xs text-muted-foreground">WARP для AntiZapret VPN</div>
-                <div className="font-medium">{WARP_LABELS[status.antizapret_warp] ?? status.antizapret_warp}</div>
+                <div className="font-medium">{warpModeLabel(ANTIZAPRET_WARP_OPTIONS, status.antizapret_warp)}</div>
               </div>
               <div className="rounded-md border p-3">
                 <div className="text-xs text-muted-foreground">WARP для полного VPN</div>
-                <div className="font-medium">{WARP_LABELS[status.vpn_warp] ?? status.vpn_warp}</div>
+                <div className="font-medium">{warpModeLabel(VPN_WARP_OPTIONS, status.vpn_warp)}</div>
               </div>
             </div>
           )}
@@ -354,6 +367,44 @@ export default function WarpGeoPage() {
               Cloudflare WARP
             </Button>
             {switchingProvider && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-md border p-3">
+            <div className="text-sm font-medium">Режим WARP</div>
+            {(
+              [
+                { scope: 'antizapret' as const, title: 'AntiZapret VPN', options: ANTIZAPRET_WARP_OPTIONS, current: status?.antizapret_warp },
+                { scope: 'vpn' as const, title: 'Полный VPN', options: VPN_WARP_OPTIONS, current: status?.vpn_warp },
+              ]
+            ).map(({ scope, title, options, current }) => (
+              <div key={scope} className="flex flex-col gap-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="w-28 shrink-0 text-sm text-muted-foreground">{title}:</span>
+                  {options.map((option) => (
+                    <Button
+                      key={option.value}
+                      size="sm"
+                      variant={current === option.value ? 'default' : 'outline'}
+                      title={option.hint}
+                      disabled={nodeId === null || switchingMode !== null}
+                      onClick={() => handleSwitchMode(scope, option.value)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                  {switchingMode === scope && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                </div>
+                <p className="pl-0 text-xs text-muted-foreground sm:pl-[7.5rem]">
+                  {options.find((option) => option.value === current)?.hint ?? 'Режим не распознан.'}
+                </p>
+                {scope === 'antizapret' && warpModeUsesList(current) && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400 sm:pl-[7.5rem]">
+                    Режим использует список WARP: домены добавляются во вкладке «Редактор файлов → WARP» и должны быть
+                    также в «Включить домены», иначе они не получат fake-IP и в WARP не попадут.
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
 
           <div className="flex flex-col gap-2 rounded-md border p-3">
@@ -481,7 +532,7 @@ export default function WarpGeoPage() {
             <div className="flex items-start gap-2 text-sm">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <span>
-                Смена провайдера{status?.warp_provider === 'proton' ? ' и новые ключи' : ''} не
+                Смена провайдера, режима WARP{status?.warp_provider === 'proton' ? ' и новые ключи' : ''} не
                 действует, пока не нажата «Применить» — это выполняет{' '}
                 <code className="font-mono">up.sh</code> на узле, который кратко (на секунды)
                 обрывает ВСЕ активные туннели на этом сервере, не только WARP.

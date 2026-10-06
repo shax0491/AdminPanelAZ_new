@@ -42,6 +42,13 @@ export async function setWarpProvider(nodeId: number, provider: 'proton' | 'clou
   })
 }
 
+export async function setWarpModes(nodeId: number, modes: { antizapret?: string; vpn?: string }) {
+  return apiFetch<{ success: boolean; antizapret_warp: string | null; vpn_warp: string | null }>(
+    `/warp-geo/${nodeId}/modes`,
+    { method: 'POST', body: JSON.stringify({ antizapret: modes.antizapret ?? null, vpn: modes.vpn ?? null }) },
+  )
+}
+
 export async function applyWarpChanges(nodeId: number) {
   return apiFetch<{ success: boolean; output: string }>(`/warp-geo/${nodeId}/apply`, { method: 'POST' })
 }

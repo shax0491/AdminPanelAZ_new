@@ -398,6 +398,23 @@ def warp_geo_set_provider(payload: WarpProviderRequest, _: None = Depends(verify
     return set_warp_provider(payload.provider, ANTIZAPRET_PATH)
 
 
+class WarpModesRequest(BaseModel):
+    antizapret: str | None = None
+    vpn: str | None = None
+
+
+@app.post("/warp-geo/modes")
+def warp_geo_set_modes(payload: WarpModesRequest, _: None = Depends(verify_api_key)):
+    from app.services.warp_geo import WarpModeError, set_warp_modes
+
+    try:
+        return set_warp_modes(ANTIZAPRET_PATH, antizapret=payload.antizapret, vpn=payload.vpn)
+    except WarpModeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Файл setup на узле не найден") from exc
+
+
 @app.post("/warp-geo/apply")
 def warp_geo_apply(_: None = Depends(verify_api_key)):
     return apply_warp_changes(ANTIZAPRET_PATH)
