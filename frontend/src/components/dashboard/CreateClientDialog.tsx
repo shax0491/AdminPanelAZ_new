@@ -124,7 +124,6 @@ export default function CreateClientDialog({
   const [limitUnit, setLimitUnit] = useState('GB')
   const [limitPeriodDays, setLimitPeriodDays] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [awg3Mode, setAwg3Mode] = useState<'split' | 'full'>('split')
 
   useEffect(() => {
     if (!open) return
@@ -253,7 +252,7 @@ export default function CreateClientDialog({
             const result = await createConfig({
               client_name: trimmedName,
               vpn_type: vpnType,
-              awg3_mode: vpnType === 'amneziawg3' ? awg3Mode : undefined,
+              awg3_mode: vpnType === 'amneziawg3' ? 'split' : undefined,
               cert_expire_days: vpnType === 'openvpn' ? certDays : undefined,
               description: description || undefined,
               owner_id: isAdmin && ownerId ? ownerId : undefined,
@@ -399,20 +398,6 @@ export default function CreateClientDialog({
                   )
                 })}
               </div>
-              {selectedProtocols.includes('amneziawg3') && (
-                <div className="flex flex-col gap-1 text-sm">
-                  <Label className="lg:text-base">Режим AmneziaWG 3.1</Label>
-                  <select
-                    className="h-10 rounded-md border border-input bg-background px-3"
-                    value={awg3Mode}
-                    disabled={submitting}
-                    onChange={(e) => setAwg3Mode(e.target.value as 'split' | 'full')}
-                  >
-                    <option value="split">Антизапрет (только заблокированное)</option>
-                    <option value="full">Полный VPN (весь трафик)</option>
-                  </select>
-                </div>
-              )}
               {availableProtocols.length === 0 && (
                 <p className="text-xs text-destructive lg:text-sm">Нет доступных протоколов на этом узле.</p>
               )}
