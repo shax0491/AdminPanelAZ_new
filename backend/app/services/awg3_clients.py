@@ -13,6 +13,7 @@ awg1.conf so the interface keeps them after `awg3@awg1` restarts, and added live
 from __future__ import annotations
 
 import io
+import logging
 import ipaddress
 import json
 import os
@@ -26,6 +27,8 @@ from pathlib import Path
 from typing import Callable
 
 from app.services.native_awg3_runtime import AWG3_CONF_DIR, AWG3_OBFUSCATION_KEYS
+
+logger = logging.getLogger(__name__)
 
 IFACE = "awg1"
 PORT = 51821  # interface ListenPort; clients may use any port from PORT_RANGE, DNAT'd to PORT on the node
@@ -494,9 +497,16 @@ def ensure_transport31(store: "Awg3Store | None" = None) -> dict:
     """
     store = store or Awg3Store()
     if not store.server_conf.is_file():
+        logger.info("AWG 3.1 transport migration skipped: no awg1.conf on this node")
         return {"skipped": True, "changed": False, "restarted": False, "error": None}
     if not migrate_transport31(store):
+        logger.info("AWG 3.1 transport parameters verified in awg1.conf, no change")
         return {"skipped": False, "changed": False, "restarted": False, "error": None}
+    logger.info("AWG 3.1 transport parameters migrated into awg1.conf, restarting %s", UNIT)
     res = subprocess.run(["systemctl", "restart", UNIT], capture_output=True, text=True, timeout=60, check=False)
     error = None if res.returncode == 0 else (res.stderr.strip() or f"systemctl restart {UNIT} failed")
+    if error is None:
+        logger.info("AWG 3.1 transport parameters migrated successfully, %s restarted", UNIT)
+    else:
+        logger.error("AWG 3.1 transport migration done, but %s restart failed: %s", UNIT, error)
     return {"skipped": False, "changed": True, "restarted": error is None, "error": error}
