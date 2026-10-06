@@ -13,5 +13,6 @@ export function totalTraffic(data: MonitoringOverview) {
   const ovpn = data.openvpn_clients.reduce((s, c) => s + c.bytes_received + c.bytes_sent, 0)
   const wg = data.wireguard_peers.reduce((s, p) => s + p.transfer_rx + p.transfer_tx, 0)
   const awg2 = (data.amneziawg2_peers ?? []).reduce((s, p) => s + p.transfer_rx + p.transfer_tx, 0)
-  return ovpn + wg + awg2
+  const awg3 = (data.amneziawg3_peers ?? []).reduce((s, p) => s + p.transfer_rx + p.transfer_tx, 0)
+  return ovpn + wg + awg2 + awg3
 }

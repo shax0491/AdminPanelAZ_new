@@ -33,6 +33,7 @@ import MonitoringConnectionsList, {
 } from '@/components/monitoring/MonitoringConnectionsList'
 import MonitoringGeoSummary from '@/components/monitoring/MonitoringGeoSummary'
 import NodeSummaryCard from '@/components/monitoring/NodeSummaryCard'
+import { awgTransferTotal, liveConnectionsDescription, nodeOnlineSummary, onlineMetricLabel } from '@/lib/awgMonitoring'
 import {
   HealthScoreBadge,
   ResourceMetricInline,
@@ -107,8 +108,8 @@ const INCIDENTS_REFRESH_INTERVAL_MS = 60_000
 const STORAGE_PREFIX = 'noc-monitoring'
 
 type MonitoringScope = 'node' | 'all'
-type ProtocolFilter = 'all' | 'openvpn' | 'wireguard' | 'amneziawg2'
-const PROTOCOL_FILTER_VALUES = ['all', 'openvpn', 'wireguard', 'amneziawg2'] as const
+type ProtocolFilter = 'all' | 'openvpn' | 'wireguard' | 'amneziawg2' | 'amneziawg3'
+const PROTOCOL_FILTER_VALUES = ['all', 'openvpn', 'wireguard', 'amneziawg2', 'amneziawg3'] as const
 
 function readStored<T extends string>(key: string, allowed: readonly T[]): T | null {
   if (typeof window === 'undefined') return null
@@ -203,6 +204,7 @@ export default function MonitoringPage() {
   const { activeNode, nodes, loading: nodeLoading, nodesLoading, activate } = useNode()
   const { isEnabled } = useFeatureModules()
   const awg2Enabled = isEnabled('awg2')
+  const awg3Enabled = isEnabled('awg3')
   const isAdmin = user?.role === 'admin'
   const { success, error: notifyError } = useNotifications()
   const { confirm, dialogProps } = useConfirmDialog()
@@ -357,10 +359,13 @@ export default function MonitoringPage() {
   }, [protocolFilter])
 
   useEffect(() => {
-    if (!awg2Enabled && protocolFilter === 'amneziawg2') {
+    if (
+      (!awg2Enabled && protocolFilter === 'amneziawg2') ||
+      (!awg3Enabled && protocolFilter === 'amneziawg3')
+    ) {
       setProtocolFilter('all')
     }
-  }, [awg2Enabled, protocolFilter])
+  }, [awg2Enabled, awg3Enabled, protocolFilter])
 
   useEffect(() => {
     writeStored('haMode', haMode)
@@ -487,7 +492,12 @@ export default function MonitoringPage() {
   const amneziawg2Peers = awg2Enabled ? (data?.amneziawg2_peers ?? []) : []
   const wgActive = wireguardPeers.filter(isWireGuardOnline).length
   const awg2Active = amneziawg2Peers.filter(isWireGuardOnline).length
-  const totalConnections = openvpnClients.length + wgActive + awg2Active
+  const amneziawg3Peers = useMemo(
+    () => (awg3Enabled ? (data?.amneziawg3_peers ?? []) : []),
+    [awg3Enabled, data?.amneziawg3_peers],
+  )
+  const awg3Active = amneziawg3Peers.filter(isWireGuardOnline).length
+  const totalConnections = openvpnClients.length + wgActive + awg2Active + awg3Active
   const activeServices = data?.services.filter((s) => s.active).length ?? 0
   const totalServices = data?.services.length ?? 0
 
@@ -540,6 +550,11 @@ export default function MonitoringPage() {
     return amneziawg2Peers.filter(matchesWgPeerSearch)
   }, [amneziawg2Peers, searchQuery, matchesWgPeerSearch])
 
+  const filteredAmneziaWg3 = useMemo(() => {
+    if (!searchQuery) return amneziawg3Peers
+    return amneziawg3Peers.filter(matchesWgPeerSearch)
+  }, [amneziawg3Peers, searchQuery, matchesWgPeerSearch])
+
   const visibleWireGuard = useMemo(() => {
     if (!onlineOnly) return filteredWireGuard
     return filteredWireGuard.filter(isWireGuardOnline)
@@ -550,6 +565,11 @@ export default function MonitoringPage() {
     return filteredAmneziaWg2.filter(isWireGuardOnline)
   }, [filteredAmneziaWg2, onlineOnly])
 
+  const visibleAmneziaWg3 = useMemo(() => {
+    if (!onlineOnly) return filteredAmneziaWg3
+    return filteredAmneziaWg3.filter(isWireGuardOnline)
+  }, [filteredAmneziaWg3, onlineOnly])
+
   const showOpenVpn = protocolFilter === 'all' || protocolFilter === 'openvpn'
   const showWireGuard = protocolFilter === 'all' || protocolFilter === 'wireguard'
   const showAmneziaWg2 =
@@ -557,12 +577,22 @@ export default function MonitoringPage() {
   const visibleOpenVpn = showOpenVpn ? filteredOpenVpn : []
   const visibleWireGuardList = showWireGuard ? visibleWireGuard : []
   const visibleAmneziaWg2List = showAmneziaWg2 ? visibleAmneziaWg2 : []
+  const showAmneziaWg3 =
+    awg3Enabled && (protocolFilter === 'all' || protocolFilter === 'amneziawg3')
+  const visibleAmneziaWg3List = useMemo(
+    () => (showAmneziaWg3 ? visibleAmneziaWg3 : []),
+    [showAmneziaWg3, visibleAmneziaWg3],
+  )
   const visibleCount =
-    visibleOpenVpn.length + visibleWireGuardList.length + visibleAmneziaWg2List.length
+    visibleOpenVpn.length +
+    visibleWireGuardList.length +
+    visibleAmneziaWg2List.length +
+    visibleAmneziaWg3List.length
   const filteredTotalCount =
     (showOpenVpn ? filteredOpenVpn.length : 0) +
     (showWireGuard ? filteredWireGuard.length : 0) +
-    (showAmneziaWg2 ? filteredAmneziaWg2.length : 0)
+    (showAmneziaWg2 ? filteredAmneziaWg2.length : 0) +
+    (showAmneziaWg3 ? filteredAmneziaWg3.length : 0)
   const hasFilteredClients = visibleCount > 0
 
   const baseConnectionRows = useMemo(
@@ -574,14 +604,19 @@ export default function MonitoringPage() {
         amneziawg2Peers: visibleAmneziaWg2List,
         showAmneziaWg2,
         isAwg2Online: isWireGuardOnline,
+        amneziawg3Peers: visibleAmneziaWg3List,
+        showAmneziaWg3,
+        isAwg3Online: isWireGuardOnline,
       }),
     [
       visibleOpenVpn,
       visibleWireGuardList,
       visibleAmneziaWg2List,
+      visibleAmneziaWg3List,
       showOpenVpn,
       showWireGuard,
       showAmneziaWg2,
+      showAmneziaWg3,
     ],
   )
 
@@ -727,7 +762,7 @@ export default function MonitoringPage() {
       { key: 'status', label: 'Статус' },
       {
         key: 'vpn',
-        label: awg2Enabled ? 'Online OVPN / WG / AWG 2.0' : 'Online OVPN / WG',
+        label: onlineMetricLabel(awg2Enabled, awg3Enabled),
       },
       { key: 'services', label: 'Службы active/total' },
       { key: 'cpu', label: 'CPU' },
@@ -735,7 +770,7 @@ export default function MonitoringPage() {
       { key: 'traffic', label: 'Трафик (всего)' },
       { key: 'cidr', label: 'CIDR маршруты' },
     ],
-    [awg2Enabled],
+    [awg2Enabled, awg3Enabled],
   )
 
   if (!isAdmin) {
@@ -764,9 +799,7 @@ export default function MonitoringPage() {
             <div>
               {isFederated
                 ? 'Сводка активных VPN-подключений со всех узлов'
-                : awg2Enabled
-                  ? 'Активные VPN-подключения OpenVPN, WireGuard и AWG 2.0 в реальном времени'
-                  : 'Активные VPN-подключения OpenVPN и WireGuard в реальном времени'}
+                : liveConnectionsDescription(awg2Enabled, awg3Enabled)}
               {data?.timestamp && <> · обновлено {formatDateTime(data.timestamp)}</>}
             </div>
             <NocDataFreshness
@@ -958,6 +991,11 @@ export default function MonitoringPage() {
                                     AWG 2.0
                                   </TableHead>
                                 )}
+                                {awg3Enabled && (
+                                  <TableHead className="h-9 w-[7%] whitespace-nowrap px-3 text-right">
+                                    AWG 3.1
+                                  </TableHead>
+                                )}
                                 <TableHead className="h-9 w-[7%] whitespace-nowrap px-3 text-right">Службы</TableHead>
                                 <TableHead className="h-9 w-[15%] whitespace-nowrap px-3">CPU</TableHead>
                                 <TableHead className="h-9 w-[15%] whitespace-nowrap px-3">RAM</TableHead>
@@ -1019,6 +1057,11 @@ export default function MonitoringPage() {
                                     {awg2Enabled && (
                                       <TableCell className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
                                         {node.connected_amneziawg2 ?? 0}
+                                      </TableCell>
+                                    )}
+                                    {awg3Enabled && (
+                                      <TableCell className="px-3 py-2.5 text-right font-mono text-xs tabular-nums">
+                                        {node.connected_amneziawg3 ?? 0}
                                       </TableCell>
                                     )}
                                     <TableCell
@@ -1094,9 +1137,7 @@ export default function MonitoringPage() {
                                         <NodeStatusBadge status={node.status as NodeStatus} />
                                       ) : metric.key === 'vpn' ? (
                                         <span className="font-mono text-xs">
-                                          {awg2Enabled
-                                            ? `${node.connected_openvpn} / ${node.connected_wireguard} / ${node.connected_amneziawg2 ?? 0}`
-                                            : `${node.connected_openvpn} / ${node.connected_wireguard}`}
+                                          {nodeOnlineSummary(node, awg2Enabled, awg3Enabled)}
                                         </span>
                                       ) : metric.key === 'services' ? (
                                         <span className="font-mono text-xs">
@@ -1167,15 +1208,27 @@ export default function MonitoringPage() {
                   sub={`из ${amneziawg2Peers.length} пиров`}
                 />
               )}
+              {awg3Enabled && (
+                <SummaryCard
+                  label="AWG 3.1 онлайн"
+                  value={String(
+                    isFederated ? data.total_connected_amneziawg3 ?? awg3Active : awg3Active,
+                  )}
+                  icon={Radio}
+                  accent="text-violet-500"
+                  sub={`из ${amneziawg3Peers.length} пиров`}
+                />
+              )}
               <SummaryCard
                 label="Всего подключено"
                 value={String(totalConnections)}
                 icon={Users}
-                sub={
-                  awg2Enabled
-                    ? `OVPN ${openvpnClients.length} · WG ${wgActive} · AWG 2.0 ${awg2Active}`
-                    : `OVPN ${openvpnClients.length} · WG ${wgActive}`
-                }
+                sub={[
+                  `OVPN ${openvpnClients.length}`,
+                  `WG ${wgActive}`,
+                  ...(awg2Enabled ? [`AWG 2.0 ${awg2Active}`] : []),
+                  ...(awg3Enabled ? [`AWG 3.1 ${awg3Active}`] : []),
+                ].join(' · ')}
               />
               <SummaryCard
                 label="Трафик сессий"
@@ -1184,11 +1237,17 @@ export default function MonitoringPage() {
                 sub={`RX ${formatBytes(
                   openvpnClients.reduce((s, c) => s + c.bytes_received, 0) +
                     wireguardPeers.reduce((s, p) => s + p.transfer_rx, 0) +
-                    amneziawg2Peers.reduce((s, p) => s + p.transfer_rx, 0),
+                    awgTransferTotal(
+                      { amneziawg2: amneziawg2Peers, amneziawg3: amneziawg3Peers },
+                      'transfer_rx',
+                    ),
                 )} · TX ${formatBytes(
                   openvpnClients.reduce((s, c) => s + c.bytes_sent, 0) +
                     wireguardPeers.reduce((s, p) => s + p.transfer_tx, 0) +
-                    amneziawg2Peers.reduce((s, p) => s + p.transfer_tx, 0),
+                    awgTransferTotal(
+                      { amneziawg2: amneziawg2Peers, amneziawg3: amneziawg3Peers },
+                      'transfer_tx',
+                    ),
                 )}`}
               />
             </div>
@@ -1211,6 +1270,8 @@ export default function MonitoringPage() {
                   onlineOnly={onlineOnly}
                   amneziawg2Peers={visibleAmneziaWg2List}
                   showAmneziaWg2={showAmneziaWg2}
+                  amneziawg3Peers={visibleAmneziaWg3List}
+                  showAmneziaWg3={showAmneziaWg3}
                 />
               )}
             </div>
@@ -1260,7 +1321,7 @@ export default function MonitoringPage() {
                           ? 'Нет активных подключений'
                           : onlineOnly
                             ? `${visibleCount} онлайн${filteredTotalCount > visibleCount ? ` из ${filteredTotalCount}` : ''}`
-                            : `${visibleCount} из ${openvpnClients.length + wireguardPeers.length + amneziawg2Peers.length} записей`}
+                            : `${visibleCount} из ${openvpnClients.length + wireguardPeers.length + amneziawg2Peers.length + amneziawg3Peers.length} записей`}
                       </CardDescription>
                     </div>
                     <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto lg:justify-end">
@@ -1288,6 +1349,7 @@ export default function MonitoringPage() {
                           <SelectItem value="openvpn">OpenVPN</SelectItem>
                           <SelectItem value="wireguard">WireGuard</SelectItem>
                           {awg2Enabled && <SelectItem value="amneziawg2">AWG 2.0</SelectItem>}
+                          {awg3Enabled && <SelectItem value="amneziawg3">AWG 3.1</SelectItem>}
                         </SelectContent>
                       </Select>
                       <div className="flex h-9 shrink-0 items-center gap-2">

@@ -35,5 +35,6 @@ export function getProtocolBarColor(name: string) {
   if (name === 'OpenVPN') return MONITORING_PROTOCOL_COLORS.openvpn
   if (name === 'WireGuard') return MONITORING_PROTOCOL_COLORS.wireguard
   if (name === 'AWG 2.0') return MONITORING_PROTOCOL_COLORS.amneziawg2
+  if (name === 'AWG 3.1') return MONITORING_PROTOCOL_COLORS.amneziawg3
   return MONITORING_PROTOCOL_COLORS.total
 }

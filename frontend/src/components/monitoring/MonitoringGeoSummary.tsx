@@ -25,6 +25,8 @@ type MonitoringGeoSummaryProps = {
   onlineOnly?: boolean
   amneziawg2Peers?: WireGuardPeer[]
   showAmneziaWg2?: boolean
+  amneziawg3Peers?: WireGuardPeer[]
+  showAmneziaWg3?: boolean
 }
 
 type GeoDonutCardProps = {
@@ -157,6 +159,8 @@ export default function MonitoringGeoSummary({
   onlineOnly = true,
   amneziawg2Peers,
   showAmneziaWg2 = false,
+  amneziawg3Peers,
+  showAmneziaWg3 = false,
 }: MonitoringGeoSummaryProps) {
   const geoConnections = useMemo(
     () =>
@@ -167,6 +171,8 @@ export default function MonitoringGeoSummary({
         onlineOnly,
         amneziawg2Peers,
         showAmneziaWg2,
+        amneziawg3Peers,
+        showAmneziaWg3,
       }),
     [
       openvpnClients,
@@ -177,6 +183,8 @@ export default function MonitoringGeoSummary({
       onlineOnly,
       amneziawg2Peers,
       showAmneziaWg2,
+      amneziawg3Peers,
+      showAmneziaWg3,
     ],
   )
 

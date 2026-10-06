@@ -38,6 +38,7 @@ interface HistoryPoint {
   ovpn: number
   wg: number
   awg2: number
+  awg3: number
 }
 
 interface MonitoringChartsProps {
@@ -57,25 +58,29 @@ export default function MonitoringCharts({
 }: MonitoringChartsProps) {
   const { isEnabled } = useFeatureModules()
   const showAwg2 = isEnabled('awg2')
+  const showAwg3 = isEnabled('awg3')
   const [liveTail, setLiveTail] = useState<HistoryPoint[]>([])
 
   useEffect(() => {
     const wgActive = data.wireguard_peers.filter(isWireGuardOnline).length
     const awg2Peers = data.amneziawg2_peers ?? []
     const awg2Active = awg2Peers.filter(isWireGuardOnline).length
+    const awg3Active = (data.amneziawg3_peers ?? []).filter(isWireGuardOnline).length
     const point: HistoryPoint = {
       time: formatTime(data.timestamp, { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      connections: data.openvpn_clients.length + wgActive + (showAwg2 ? awg2Active : 0),
+      connections:
+        data.openvpn_clients.length + wgActive + (showAwg2 ? awg2Active : 0) + (showAwg3 ? awg3Active : 0),
       ovpn: data.openvpn_clients.length,
       wg: wgActive,
       awg2: awg2Active,
+      awg3: awg3Active,
     }
     setLiveTail((prev) => {
       const last = prev[prev.length - 1]
       if (last && last.time === point.time) return prev
       return [...prev.slice(-4), point]
     })
-  }, [data, showAwg2])
+  }, [data, showAwg2, showAwg3])
 
   const serverPoints: HistoryPoint[] = useMemo(() => {
     if (!serverHistory?.length) return []
@@ -85,6 +90,7 @@ export default function MonitoringCharts({
       ovpn: p.openvpn,
       wg: p.wireguard,
       awg2: p.amneziawg2 ?? 0,
+      awg3: p.amneziawg3 ?? 0,
     }))
   }, [serverHistory])
 
@@ -93,6 +99,7 @@ export default function MonitoringCharts({
   const connectionsBar = useMemo(() => {
     const wgActive = data.wireguard_peers.filter(isWireGuardOnline).length
     const awg2Active = (data.amneziawg2_peers ?? []).filter(isWireGuardOnline).length
+    const awg3Active = (data.amneziawg3_peers ?? []).filter(isWireGuardOnline).length
     const bars = [
       { name: 'OpenVPN', count: data.openvpn_clients.length },
       { name: 'WireGuard', count: wgActive },
@@ -100,8 +107,11 @@ export default function MonitoringCharts({
     if (showAwg2) {
       bars.push({ name: 'AWG 2.0', count: awg2Active })
     }
+    if (showAwg3) {
+      bars.push({ name: 'AWG 3.1', count: awg3Active })
+    }
     return bars
-  }, [data, showAwg2])
+  }, [data, showAwg2, showAwg3])
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -166,6 +176,16 @@ export default function MonitoringCharts({
                     dataKey="awg2"
                     name="AWG 2.0"
                     stroke={MONITORING_PROTOCOL_COLORS.amneziawg2}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                )}
+                {showAwg3 && (
+                  <Line
+                    type="monotone"
+                    dataKey="awg3"
+                    name="AWG 3.1"
+                    stroke={MONITORING_PROTOCOL_COLORS.amneziawg3}
                     strokeWidth={2}
                     dot={false}
                   />

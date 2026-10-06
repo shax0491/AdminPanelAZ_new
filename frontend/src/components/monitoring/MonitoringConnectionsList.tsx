@@ -41,7 +41,7 @@ const PAGE_SIZE = 25
 type SortKey = NocSortKey
 type SortDir = 'asc' | 'desc'
 
-export type MonitoringConnectionProtocol = 'openvpn' | 'wireguard' | 'amneziawg2'
+export type MonitoringConnectionProtocol = 'openvpn' | 'wireguard' | 'amneziawg2' | 'amneziawg3'
 
 export type MonitoringConnectionRow = {
   key: string
@@ -73,12 +73,13 @@ export type MonitoringConnectionRow = {
 function protocolLabel(protocol: MonitoringConnectionProtocol) {
   if (protocol === 'openvpn') return 'OpenVPN'
   if (protocol === 'amneziawg2') return 'AWG 2.0'
+  if (protocol === 'amneziawg3') return 'AWG 3.1'
   return 'WireGuard'
 }
 
 function protocolBadgeVariant(protocol: MonitoringConnectionProtocol): 'default' | 'secondary' | 'outline' {
   if (protocol === 'openvpn') return 'default'
-  if (protocol === 'amneziawg2') return 'outline'
+  if (protocol === 'amneziawg2' || protocol === 'amneziawg3') return 'outline'
   return 'secondary'
 }
 
@@ -102,7 +103,7 @@ function pushWireGuardStyleRows(
   rows: MonitoringConnectionRow[],
   peers: WireGuardPeer[],
   options: {
-    protocol: 'wireguard' | 'amneziawg2'
+    protocol: 'wireguard' | 'amneziawg2' | 'amneziawg3'
     keyPrefix: string
     isOnline: (peer: WireGuardPeer) => boolean
     rates?: Map<string, { rxBps: number | null; txBps: number | null }>
@@ -152,6 +153,9 @@ export function buildMonitoringConnectionRows(
     amneziawg2Peers?: WireGuardPeer[]
     showAmneziaWg2?: boolean
     isAwg2Online?: (peer: WireGuardPeer) => boolean
+    amneziawg3Peers?: WireGuardPeer[]
+    showAmneziaWg3?: boolean
+    isAwg3Online?: (peer: WireGuardPeer) => boolean
   },
 ): MonitoringConnectionRow[] {
   const rows: MonitoringConnectionRow[] = []
@@ -206,6 +210,15 @@ export function buildMonitoringConnectionRows(
       protocol: 'amneziawg2',
       keyPrefix: 'awg2',
       isOnline: options.isAwg2Online ?? options.isWireGuardOnline,
+      rates,
+    })
+  }
+
+  if (options.showAmneziaWg3 && options.amneziawg3Peers) {
+    pushWireGuardStyleRows(rows, options.amneziawg3Peers, {
+      protocol: 'amneziawg3',
+      keyPrefix: 'awg3',
+      isOnline: options.isAwg3Online ?? options.isWireGuardOnline,
       rates,
     })
   }
@@ -563,6 +576,7 @@ export default function MonitoringConnectionsList({
                     'align-top',
                     row.online && row.protocol === 'wireguard' && 'bg-emerald-500/5',
                     row.online && row.protocol === 'amneziawg2' && 'bg-amber-500/5',
+                    row.online && row.protocol === 'amneziawg3' && 'bg-violet-500/5',
                   )}
                 >
                   <TableCell>
