@@ -64,6 +64,7 @@ rule_add from $S to $S lookup main priority 5000
 # сначала убираем WARP-правила любого режима: после смены ANTIZAPRET_WARP старые остались бы рядом с новыми
 rule_del from $S lookup 13335 priority 10000
 rule_del from $S fwmark 0x2 lookup 13335 priority 10000
+del filter FORWARD -s $S -m mark --mark 0x2 ! -o warp-antizapret -j DROP
 purge_warp_nat $S warp-antizapret
 del mangle PREROUTING -s $S -d 198.18.0.0/15 -j ANTIZAPRET-WARP
 case "$ANTIZAPRET_WARP" in
@@ -75,6 +76,8 @@ case "$ANTIZAPRET_WARP" in
     rule_add from $S fwmark 0x2 lookup 13335 priority 10000
     add mangle PREROUTING -s $S -d 198.18.0.0/15 -j ANTIZAPRET-WARP
     warp_snat $S warp-antizapret "$AZ_WARP_IP" -m mark --mark 0x2
+    # как в up.sh для 10.29: помеченный пакет, не ушедший в WARP, режем, а не отдаём в main
+    iptables -w -C FORWARD -s $S -m mark --mark 0x2 ! -o warp-antizapret -j DROP 2>/dev/null || iptables -w -I FORWARD 2 -s $S -m mark --mark 0x2 ! -o warp-antizapret -j DROP
     ;;
 esac
 # full
@@ -87,7 +90,11 @@ add nat POSTROUTING -s $F -o $OUT -j MASQUERADE
 rule_add from $F to $F lookup main priority 5000
 rule_del from $F lookup 13336 priority 10000
 purge_warp_nat $F warp-vpn
+del filter FORWARD -s $F -m mark --mark 0x2 ! -o warp-vpn -j DROP
 if [ "$VPN_WARP" = "2" ]; then
   rule_add from $F lookup 13336 priority 10000
   warp_snat $F warp-vpn "$VPN_WARP_IP"
+fi
+if [ "$VPN_WARP" = "3" ]; then
+  iptables -w -C FORWARD -s $F -m mark --mark 0x2 ! -o warp-vpn -j DROP 2>/dev/null || iptables -w -I FORWARD 2 -s $F -m mark --mark 0x2 ! -o warp-vpn -j DROP
 fi
