@@ -378,3 +378,61 @@ def test_preview_cloudflare_warp_registration_failure_returns_error(monkeypatch,
 
     assert "error" in result
     assert "зарегистрироваться" in result["error"]
+
+
+def _awg3_env(monkeypatch, tmp_path, *, script_exists=True):
+    from app.services import warp_geo
+
+    script = tmp_path / "awg3-rules.sh"
+    if script_exists:
+        script.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(warp_geo, "AWG3_RULES_SCRIPT", script)
+    return warp_geo, script
+
+
+def test_reapply_awg3_runs_rules_up_when_awg1_active(tmp_path, monkeypatch):
+    warp_geo, script = _awg3_env(monkeypatch, tmp_path)
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(list(args))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(warp_geo.subprocess, "run", fake_run)
+    out = warp_geo._reapply_awg3_rules(Path("/root/antizapret"))
+    assert ["systemctl", "is-active", "--quiet", "awg3@awg1"] in calls
+    assert [str(script), "up"] in calls
+    assert "пересобраны" in out
+
+
+def test_reapply_awg3_skips_when_awg1_inactive(tmp_path, monkeypatch):
+    warp_geo, script = _awg3_env(monkeypatch, tmp_path)
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(list(args))
+        return SimpleNamespace(returncode=3, stdout="", stderr="")
+
+    monkeypatch.setattr(warp_geo.subprocess, "run", fake_run)
+    assert warp_geo._reapply_awg3_rules(Path("/root/antizapret")) == ""
+    assert [str(script), "up"] not in calls
+
+
+def test_reapply_awg3_noop_without_script_or_other_path(tmp_path, monkeypatch):
+    warp_geo, _ = _awg3_env(monkeypatch, tmp_path, script_exists=False)
+    monkeypatch.setattr(warp_geo.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no run")))
+    assert warp_geo._reapply_awg3_rules(Path("/root/antizapret")) == ""
+    warp_geo2, _ = _awg3_env(monkeypatch, tmp_path)
+    assert warp_geo2._reapply_awg3_rules(tmp_path) == ""
+
+
+def test_apply_warp_changes_reports_awg3_error_but_stays_successful(tmp_path, monkeypatch):
+    from app.services import warp_geo
+
+    monkeypatch.setattr(warp_geo, "_reapply_awg3_rules", lambda path: "\nAWG 3.1: ошибка")
+    up_sh = tmp_path / "up.sh"
+    up_sh.write_text("#!/bin/bash\n", encoding="utf-8")
+    fake = SimpleNamespace(returncode=0, stdout="ok", stderr="")
+    with patch("app.services.warp_geo.subprocess.run", return_value=fake):
+        result = warp_geo.apply_warp_changes(tmp_path)
+    assert result["success"] is True and "AWG 3.1" in result["output"]
