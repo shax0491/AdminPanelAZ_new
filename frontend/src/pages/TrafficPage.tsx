@@ -103,6 +103,13 @@ function TrafficClientDetails(props: TrafficClientDetailsProps) {
   )
 }
 
+/** Protocol family for online status: openvpn-udp / openvpn-tcp / openvpn -> openvpn. */
+function protocolFamily(protocol: string): string {
+  const value = (protocol || '').trim().toLowerCase()
+  if (value.startsWith('openvpn')) return 'openvpn'
+  return value || 'openvpn'
+}
+
 function isPageReload() {
   const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
   return nav?.type === 'reload'
@@ -406,15 +413,16 @@ export default function TrafficPage() {
 
         if (!initial) setLiveLoading(true)
         void getTrafficActiveClients()
-          .then(({ active_clients }) => {
-            const activeSet = new Set(active_clients)
+          .then(({ active_sessions }) => {
+            // Online is per (client, protocol family), so an old OpenVPN session never lights up AWG rows.
+            const activeSet = new Set(active_sessions)
             setData((prev) => {
               if (!prev) return prev
               return {
                 ...prev,
                 rows: prev.rows.map((row) => ({
                   ...row,
-                  is_active: activeSet.has(row.common_name),
+                  is_active: activeSet.has(`${row.common_name.trim().toLowerCase()}|${protocolFamily(row.protocol_type)}`),
                 })),
               }
             })

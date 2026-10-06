@@ -2509,8 +2509,21 @@ export interface Awg3IfaceMonitoring {
   peers: Awg3Peer[]
 }
 
-export interface Awg3MonitoringResponse {
-  ifaces: Record<string, Awg3IfaceMonitoring>
+/** Same shape as AmneziaWG 2.0 monitoring, so the shared AWG page components render it unchanged. */
+export interface Awg3MonitoringResponse extends Awg2MonitoringResponse {
+  node_id?: number
+  node_name?: string
+  node_host?: string
+}
+
+export interface Awg3MonitoringAllResponse {
+  nodes: Array<{
+    node_id: number
+    node_name: string
+    node_host: string
+    clients: Awg2MonitoringResponse['clients']
+    error?: string | null
+  }>
 }
 
 export interface Awg3Client {

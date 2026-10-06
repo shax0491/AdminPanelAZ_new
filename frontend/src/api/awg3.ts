@@ -8,6 +8,10 @@ export async function getAwg3Monitoring() {
   return apiFetch<import('../types').Awg3MonitoringResponse>('/awg3/monitoring')
 }
 
+export async function getAwg3MonitoringAll() {
+  return apiFetch<import('../types').Awg3MonitoringAllResponse>('/awg3/monitoring/all')
+}
+
 export async function listAwg3Clients() {
   return apiFetch<import('../types').Awg3ClientListResponse>('/awg3/clients')
 }

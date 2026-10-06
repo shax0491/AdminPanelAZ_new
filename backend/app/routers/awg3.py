@@ -14,7 +14,8 @@ from app.auth import require_admin
 from app.database import get_db
 from app.models import User
 from app.services import awg3_clients
-from app.services.node_manager import get_active_adapter
+from app.services.awg3_noc import awg3_monitoring_view
+from app.services.node_manager import get_active_adapter, get_active_node, get_adapter_for_node, list_vpn_nodes
 
 router = APIRouter(prefix="/awg3", tags=["awg3"])
 
@@ -31,7 +32,22 @@ def awg3_health(db: Session = Depends(get_db), _: User = Depends(require_admin))
 
 @router.get("/monitoring")
 def awg3_monitoring(db: Session = Depends(get_db), _: User = Depends(require_admin)):
-    return get_active_adapter(db).awg3_monitoring()
+    node = get_active_node(db)
+    return {**awg3_monitoring_view(get_active_adapter(db).awg3_monitoring()), "node_id": node.id, "node_name": node.name, "node_host": node.host}
+
+
+@router.get("/monitoring/all")
+def awg3_monitoring_all(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """All VPN nodes in one call (same contract as AWG 2.0): one node failing never breaks the rest."""
+    out: list[dict] = []
+    for node in list_vpn_nodes(db):
+        entry: dict = {"node_id": node.id, "node_name": node.name, "node_host": node.host, "clients": [], "error": None}
+        try:
+            entry["clients"] = awg3_monitoring_view(get_adapter_for_node(node).awg3_monitoring())["clients"]
+        except Exception as exc:  # noqa: BLE001
+            entry["error"] = str(exc)
+        out.append(entry)
+    return {"nodes": out}
 
 
 @router.get("/clients")

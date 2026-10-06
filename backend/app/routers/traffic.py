@@ -24,7 +24,9 @@ from app.models import Node
 from app.services.config_access import accessible_client_names
 from app.services.traffic.active_clients import (
     db_active_traffic_client_names,
+    db_active_traffic_sessions,
     live_active_names_for_node,
+    live_active_sessions_for_node,
 )
 from app.services.traffic.chart import fetch_traffic_chart
 from app.services.traffic.collector import TrafficCollectorService
@@ -82,16 +84,16 @@ def _active_traffic_client_names(db: Session, node_id: int) -> set[str]:
 
 
 def _active_names_by_node(db: Session, node_ids: list[int], *, live: bool) -> dict[int, set[str]]:
-    """Resolve active client names per node for an aggregation scope."""
+    """Resolve active online sessions (``client|protocol family``) per node for an aggregation scope."""
     result: dict[int, set[str]] = {}
     for node_id in node_ids:
         if live:
             node = db.get(Node, node_id)
             result[node_id] = (
-                live_active_names_for_node(db, node) if node else db_active_traffic_client_names(db, node_id)
+                live_active_sessions_for_node(db, node) if node else db_active_traffic_sessions(db, node_id)
             )
         else:
-            result[node_id] = db_active_traffic_client_names(db, node_id)
+            result[node_id] = db_active_traffic_sessions(db, node_id)
     return result
 
 
@@ -103,6 +105,14 @@ def _filter_client_names(names: set[str], allowed: set[str] | None) -> set[str]:
     if allowed is None:
         return names
     return {name for name in names if name in allowed}
+
+
+def _filter_session_keys(keys: set[str], allowed: set[str] | None) -> set[str]:
+    """Keep ``client|family`` keys whose client the user may see (allowed names are lowercase)."""
+    if allowed is None:
+        return keys
+    lowered = {name.lower() for name in allowed}
+    return {key for key in keys if key.split("|", 1)[0] in lowered}
 
 
 _OPENVPN_LOG_TTL_SECONDS = 30.0
@@ -147,9 +157,10 @@ def clear_openvpn_log_enabled_cache() -> None:
 def traffic_active_clients(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     node = get_active_node(db)
     allowed = _scoped_client_names(db, current_user, node.id)
-    active_names = _filter_client_names(_active_traffic_client_names(db, node.id), allowed)
+    sessions = _filter_session_keys(live_active_sessions_for_node(db, node), allowed)
     return {
-        "active_clients": sorted(active_names),
+        "active_clients": sorted({key.split("|", 1)[0] for key in sessions}),
+        "active_sessions": sorted(sessions),
         "timestamp": datetime.utcnow(),
         "node_id": node.id,
         "node_name": node.name,
@@ -186,7 +197,7 @@ def traffic_overview(
     merged_active: set[str] = set()
     for names in active_by_node.values():
         merged_active.update(names)
-    merged_active = _filter_client_names(merged_active, allowed)
+    merged_active = _filter_session_keys(merged_active, allowed)
 
     collector = TrafficCollectorService(db, node.id)
     rows, summary = collector.get_summary(

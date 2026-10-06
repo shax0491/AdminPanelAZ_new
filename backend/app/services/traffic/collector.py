@@ -397,10 +397,14 @@ class TrafficCollectorService:
                 tz_name="UTC",
             )
 
-        def _node_active(node_id: int, name: str) -> bool:
+        from app.services.traffic.active_clients import protocol_family, session_key
+
+        def _node_active(node_id: int, name: str, protocol_type: str) -> bool:
+            # Online is per (client, protocol family): an old OpenVPN session does not light up AWG rows.
+            key = session_key(name, protocol_family(protocol_type))
             if active_by_node is not None:
-                return name in active_by_node.get(node_id, set())
-            return name in active_names
+                return key in active_by_node.get(node_id, set())
+            return key in active_names
 
         stats = (
             self.db.query(UserTrafficStatProtocol)
@@ -476,7 +480,7 @@ class TrafficCollectorService:
                 if agg["last_seen_at"] is None or row.last_seen_at > agg["last_seen_at"]:
                     agg["last_seen_at"] = row.last_seen_at
 
-            node_active = _node_active(row.node_id, row.common_name)
+            node_active = _node_active(row.node_id, row.common_name, row.protocol_type)
             if node_active:
                 agg["is_active"] = True
 

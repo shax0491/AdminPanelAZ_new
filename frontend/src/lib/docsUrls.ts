@@ -18,6 +18,7 @@ export const DOCS = {
   proxyAgent: docsUrl('proxy-agent.md'),
   warper: docsUrl('warper.md'),
   awg2: docsUrl('awg2.md'),
+  awg3: docsUrl('awg3.md'),
   telegram: docsUrl('Telegram.md'),
   editFiles: docsUrl('edit-files.md'),
   logs: docsUrl('logs.md'),

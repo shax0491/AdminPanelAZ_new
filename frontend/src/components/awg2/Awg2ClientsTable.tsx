@@ -5,12 +5,14 @@ import EmptyState from '@/components/ui/EmptyState'
 import { Users } from 'lucide-react'
 import { formatBytes } from '@/components/warper/utils'
 import type { Awg2MonitoringResponse } from '@/types'
+import { AWG_VARIANTS, type AwgVariant } from './variants'
 
 type Awg2Client = Awg2MonitoringResponse['clients'][number]
 type RowClient = Awg2Client & { nodeName?: string }
 
 interface Awg2ClientsTableProps {
   monitoring: Awg2MonitoringResponse | null
+  variant?: AwgVariant
   /** When set, shows a "Узел" column and rows come pre-tagged with nodeName (combined/all-nodes view). */
   rows?: RowClient[] | null
 }
@@ -33,7 +35,7 @@ function ifaceOf(client: RowClient): IfaceFilter {
   return 'all'
 }
 
-export default function Awg2ClientsTable({ monitoring, rows }: Awg2ClientsTableProps) {
+export default function Awg2ClientsTable({ monitoring, rows, variant = 'awg2' }: Awg2ClientsTableProps) {
   const [ifaceFilter, setIfaceFilter] = useState<IfaceFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
@@ -56,8 +58,8 @@ export default function Awg2ClientsTable({ monitoring, rows }: Awg2ClientsTableP
       <div className="rounded-xl border bg-card/50 p-6">
         <EmptyState
           icon={Users}
-          title="Нет клиентов AmneziaWG 2.0"
-          description="Создайте клиента на странице Клиенты (галочка «AmneziaWG 2.0»)."
+          title={AWG_VARIANTS[variant].emptyTitle}
+          description={AWG_VARIANTS[variant].emptyDescription}
         />
         <div className="mt-3 flex justify-center">
           <Link to="/" className="text-sm font-medium text-foreground underline-offset-2 hover:underline">

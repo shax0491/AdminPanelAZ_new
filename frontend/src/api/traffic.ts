@@ -23,6 +23,7 @@ export async function getTrafficOverview(
 export async function getTrafficActiveClients() {
   return apiFetch<{
     active_clients: string[]
+    active_sessions: string[]
     timestamp: string
     node_id: number
     node_name: string

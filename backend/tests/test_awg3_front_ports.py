@@ -83,3 +83,24 @@ def test_awg2_failover_rules_with_same_label_are_not_touched():
 def test_invalid_label_rejected():
     with pytest.raises(ValueError):
         plan_awg3_switch("", "Bad Label!", "203.0.113.7")
+
+
+def test_awg3_monitoring_view_matches_awg2_page_shape():
+    from app.services.awg3_noc import awg3_monitoring_view
+
+    raw = {
+        "ifaces": {"split": {"name": "awg1", "up": True, "peers": []}},
+        "clients": [
+            {"name": "alice", "mode": "split", "online": True, "handshake_age_s": 5, "rx": 10, "tx": 20, "pubkey": "a"},
+            {"name": "bob", "mode": "full", "online": False, "handshake_age_s": None, "rx": 0, "tx": 0, "pubkey": "b"},
+        ],
+    }
+    view = awg3_monitoring_view(raw)
+    names = {i["name"]: i for i in view["ifaces"]}
+    assert set(names) == {"antizapret3", "vpn3"}
+    assert names["antizapret3"]["peer_count"] == 1 and names["vpn3"]["peer_count"] == 1
+    assert names["antizapret3"]["port"] == "51821"
+    by_name = {c["name"]: c for c in view["clients"]}
+    assert by_name["alice"]["iface"] == "antizapret3" and by_name["alice"]["online"] is True
+    assert by_name["bob"]["iface"] == "vpn3" and by_name["bob"]["online"] is False
+    assert view["stats_available"] is False

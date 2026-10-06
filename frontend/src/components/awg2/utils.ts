@@ -1,10 +1,20 @@
-import type { Awg2HealthResponse, Awg2MonitoringResponse, Node } from '@/types'
+import type { Awg2HealthResponse, Awg2MonitoringResponse, Awg3HealthResponse, Node } from '@/types'
 
 export function awg2StatusMeta(health: Awg2HealthResponse | null) {
   if (!health) {
     return { label: 'Нет данных', variant: 'secondary' as const, dot: 'bg-muted-foreground' }
   }
   if (!health.installed) {
+    return { label: 'Не установлен', variant: 'warning' as const, dot: 'bg-amber-500' }
+  }
+  return { label: 'Установлен', variant: 'success' as const, dot: 'bg-emerald-500' }
+}
+
+export function awg3StatusMeta(health: Awg3HealthResponse | null) {
+  if (!health) {
+    return { label: 'Нет данных', variant: 'secondary' as const, dot: 'bg-muted-foreground' }
+  }
+  if (!health.tools_present || !health.userspace_present) {
     return { label: 'Не установлен', variant: 'warning' as const, dot: 'bg-amber-500' }
   }
   return { label: 'Установлен', variant: 'success' as const, dot: 'bg-emerald-500' }
