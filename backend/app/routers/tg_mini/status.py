@@ -47,8 +47,11 @@ def mini_awg3_status(db: Session = Depends(get_db), _: User = Depends(require_tg
 
 @router.get("/mtproxy/status")
 def mini_mtproxy_status(db: Session = Depends(get_db), _: User = Depends(require_tg_mini_admin)):
+    from app.routers import tg_mini as root
     from app.services.mtproxy_monitor import mtproxy_overview
 
+    if not root.get_feature_service().is_enabled("mtproxy"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Модуль MTProxy отключён")
     return {"nodes": mtproxy_overview(db)}
 
 

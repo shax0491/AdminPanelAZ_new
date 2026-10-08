@@ -73,7 +73,14 @@ export default function TgMiniApp() {
                 </FeatureGate>
               }
             />
-            <Route path="mtproxy" element={<Mtproxy />} />
+            <Route
+              path="mtproxy"
+              element={
+                <FeatureGate featureKey="mtproxy">
+                  <Mtproxy />
+                </FeatureGate>
+              }
+            />
             <Route
               path="unlock-codes"
               element={

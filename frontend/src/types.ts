@@ -1686,6 +1686,8 @@ export interface FeatureToggleItem {
   group: string
   icon: string
   disable_hint?: string | null
+  install_command?: string | null
+  install_where?: string | null
   resource_impact_level: string
   resource_impact_label: string
   resource_savings: string

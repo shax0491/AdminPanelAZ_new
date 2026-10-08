@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
+  Copy,
   Gauge,
   Leaf,
   RefreshCw,
@@ -95,6 +96,32 @@ function matchesQuery(item: FeatureToggleItem, query: string): boolean {
   return haystack.includes(q)
 }
 
+/** Команда установки раздела на сервере (если без неё раздел не работает) с копированием. */
+function InstallCommand({ command, where }: { command: string; where?: string | null }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(command)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      setCopied(false)
+    }
+  }
+  return (
+    <div className="mt-2 rounded-md border bg-muted/40 px-2.5 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">Установка{where ? ` ${where}` : ''}:</span>
+        <Button type="button" variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs" onClick={() => void copy()}>
+          <Copy size={12} aria-hidden />
+          {copied ? 'Скопировано' : 'Скопировать'}
+        </Button>
+      </div>
+      <code className="mt-1 block break-all font-mono text-xs">{command}</code>
+    </div>
+  )
+}
+
 /** Linear/Clerk-style preference row: label + description left, switch right. */
 function ModuleToggleRow({
   item,
@@ -151,6 +178,8 @@ function ModuleToggleRow({
               proxy.sh.
             </p>
           )}
+
+          {item.install_command && <InstallCommand command={item.install_command} where={item.install_where} />}
 
           {!enabled && item.disable_hint && (
             <p className="mt-2 text-xs leading-snug text-muted-foreground">{item.disable_hint}</p>

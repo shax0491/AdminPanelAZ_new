@@ -39,6 +39,10 @@ def _awg3_visible(ctx: BotContext) -> bool:
     return _admin_menu_visible(ctx) and get_feature_service().is_enabled("awg3")
 
 
+def _mtproxy_visible(ctx: BotContext) -> bool:
+    return _admin_menu_visible(ctx) and get_feature_service().is_enabled("mtproxy")
+
+
 def _unlock_visible(ctx: BotContext) -> bool:
     return _admin_menu_visible(ctx) and get_feature_service().is_enabled("unlock_codes")
 
@@ -81,7 +85,9 @@ def _more_menu_row_actions(ctx: BotContext) -> list[list[str]]:
             module_row.append("awg3")
         if module_row:
             rows.append(module_row)
-        rows.append(["mtproxy", "unlock"] if _unlock_visible(ctx) else ["mtproxy"])
+        extra_row = [action for action, visible in (("mtproxy", _mtproxy_visible(ctx)), ("unlock", _unlock_visible(ctx))) if visible]
+        if extra_row:
+            rows.append(extra_row)
 
     return rows
 

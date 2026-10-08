@@ -5,6 +5,7 @@ from __future__ import annotations
 from html import escape
 
 from app.services import telegram_bot_i18n as i18n
+from app.services.feature_guards import get_feature_service
 from app.services.mtproxy_monitor import mtproxy_overview
 from app.services.telegram_bot_handlers.base import BotContext, is_admin, unlinked_message
 from app.services.telegram_bot_handlers.ui import nav_footer_keyboard, send_or_edit
@@ -55,6 +56,9 @@ async def handle_mtproxy_status(ctx: BotContext, *, message_id: int | None = Non
         return
     if not is_admin(ctx.user):
         await send_message(ctx.bot_token, ctx.chat_id, i18n.ADMIN_ONLY)
+        return
+    if not get_feature_service().is_enabled("mtproxy"):
+        await send_message(ctx.bot_token, ctx.chat_id, "MTProxy выключен в настройках панели.")
         return
     try:
         text = format_mtproxy_text(mtproxy_overview(ctx.db))

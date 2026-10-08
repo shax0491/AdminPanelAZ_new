@@ -30,6 +30,21 @@ FEATURE_TOGGLE_GROUPS = {
 }
 
 
+AZ_SETUP_UPDATE_CMD = (
+    "bash <(wget -qO- --no-hsts --inet4-only "
+    "https://raw.githubusercontent.com/shax0491/AntiZapret-VPN_new/main/setup.sh) --update"
+)
+AZ_PROXY_CMD = (
+    "bash <(wget -qO- --no-hsts --inet4-only "
+    "https://raw.githubusercontent.com/shax0491/AntiZapret-VPN_new/main/proxy.sh)"
+)
+AZ_WARP_INSTALL_CMD = "curl -fsSL https://raw.githubusercontent.com/Liafanx/AZ-WARP/main/install.sh | bash"
+MTPROXYL_INSTALL_CMD = (
+    "wget -qO /tmp/mtproxyl-install.sh https://raw.githubusercontent.com/Liafanx/MTProxyL/main/install.sh "
+    "&& sudo bash /tmp/mtproxyl-install.sh"
+)
+
+
 @dataclass(frozen=True)
 class FeatureToggleDefinition:
     key: str
@@ -46,6 +61,9 @@ class FeatureToggleDefinition:
     api_paths: tuple[str, ...] = ()
     frontend_paths: tuple[str, ...] = ()
     settings_tabs: tuple[str, ...] = ()
+    # Команда установки на сервере, если раздел без неё не работает (показывается в настройках)
+    install_command: Optional[str] = None
+    install_where: Optional[str] = None
 
 
 FEATURE_TOGGLES: tuple[FeatureToggleDefinition, ...] = (
@@ -196,6 +214,8 @@ FEATURE_TOGGLES: tuple[FeatureToggleDefinition, ...] = (
         group="app_module",
         api_prefixes=("/api/warper",),
         frontend_paths=("/warper",),
+        install_command=AZ_WARP_INSTALL_CMD,
+        install_where="на VPN-узле (SSH, root)",
     ),
     FeatureToggleDefinition(
         key="warp_geo",
@@ -226,12 +246,14 @@ FEATURE_TOGGLES: tuple[FeatureToggleDefinition, ...] = (
         group="app_module",
         api_prefixes=("/api/awg2", "/api/client-access/amneziawg2"),
         frontend_paths=("/awg2",),
+        install_command=AZ_SETUP_UPDATE_CMD,
+        install_where="на VPN-узле (SSH, root): ставится вместе с AntiZapret",
     ),
     FeatureToggleDefinition(
         key="awg3",
         env_key="FEATURE_AWG3_ENABLED",
         label="AmneziaWG 3",
-        description="Статус и мониторинг пиров AmneziaWG 3 (отдельный интерфейс awg1, userspace amneziawg-go).",
+        description="Статус и мониторинг пиров AmneziaWG 3 (отдельный интерфейс awg1, модуль ядра amneziawg, без него — amneziawg-go).",
         icon="🧬",
         disable_hint="Раздел AmneziaWG 3 и связанные API станут недоступны.",
         resource_impact_level="minimal",
@@ -239,6 +261,21 @@ FEATURE_TOGGLES: tuple[FeatureToggleDefinition, ...] = (
         group="app_module",
         api_prefixes=("/api/awg3",),
         frontend_paths=("/awg3",),
+        install_command=AZ_SETUP_UPDATE_CMD,
+        install_where="на VPN-узле (SSH, root): ставится вместе с AntiZapret",
+    ),
+    FeatureToggleDefinition(
+        key="mtproxy",
+        env_key="FEATURE_MTPROXY_ENABLED",
+        label="MTProxy",
+        description="Мониторинг MTProxy (MTProxyL) на узлах: команда бота /mtproxy, страница в Mini App, оповещения о падении.",
+        icon="📨",
+        disable_hint="Команда /mtproxy и страница MTProxy в Mini App будут скрыты.",
+        resource_impact_level="minimal",
+        default=True,
+        group="app_module",
+        install_command=MTPROXYL_INSTALL_CMD,
+        install_where="на каждом узле, где нужен MTProxy (SSH, root); затем обновите агент узла",
     ),
     FeatureToggleDefinition(
         key="failover_pools",
@@ -321,6 +358,8 @@ FEATURE_TOGGLES: tuple[FeatureToggleDefinition, ...] = (
             "/api/nodes/{id}/proxy/destination",
             "/api/nodes/{id}/proxy/mappings",
         ),
+        install_command=AZ_PROXY_CMD,
+        install_where="на прокси-сервере в России (SSH, root)",
     ),
     FeatureToggleDefinition(
         key="backups",

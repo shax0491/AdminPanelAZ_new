@@ -34,7 +34,7 @@ const ADMIN_TABS: MiniTabItem[] = [
   { to: '/warper', label: 'WARP', icon: Cloud, featureKey: 'warper' },
   { to: '/awg2', label: 'AWG 2', icon: Shield, featureKey: 'awg2' },
   { to: '/awg3', label: 'AWG 3', icon: Shield, featureKey: 'awg3' },
-  { to: '/mtproxy', label: 'MTProxy', shortLabel: 'MTP', icon: Send },
+  { to: '/mtproxy', label: 'MTProxy', shortLabel: 'MTP', icon: Send, featureKey: 'mtproxy' },
   { to: '/unlock-codes', label: 'Коды', shortLabel: 'Коды', icon: KeyRound, featureKey: 'unlock_codes' },
   { to: '/cidr', label: 'CIDR', icon: Database },
   { to: '/settings', label: 'Настройки', shortLabel: 'Настр.', icon: Settings },
