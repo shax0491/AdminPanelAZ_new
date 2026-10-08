@@ -24,6 +24,7 @@ ALERT_METRIC_LABELS: dict[str, str] = {
     AlertRuleMetric.traffic_collector_lag_seconds.value: "Задержка traffic collector (сек)",
     AlertRuleMetric.mtproxy_down.value: "MTProxy остановлен (узлов)",
     AlertRuleMetric.mtproxy_availability_pct.value: "MTProxy: доступность из России, % (худший узел)",
+    AlertRuleMetric.mtproxy_quota_pct.value: "MTProxy: расход квоты трафика, % (самый большой у пользователя)",
 }
 
 OPERATOR_LABELS: dict[str, str] = {
@@ -131,6 +132,10 @@ def resolve_metric_value(db: Session, metric: AlertRuleMetric | str, node_id: in
         from app.services.mtproxy_monitor import mtproxy_availability_value
 
         return mtproxy_availability_value(db, node_id)
+    if metric_key == AlertRuleMetric.mtproxy_quota_pct.value:
+        from app.services.mtproxy_monitor import mtproxy_quota_max_value
+
+        return mtproxy_quota_max_value(db, node_id)
     if metric_key == AlertRuleMetric.node_offline_seconds.value:
         if node_id is not None:
             node = db.query(Node).filter(Node.id == node_id).first()
@@ -204,11 +209,19 @@ def notify_rule_trigger(db: Session, rule: AlertRule, value: float) -> None:
     if rule.node_id is not None:
         node = db.query(Node).filter(Node.id == rule.node_id).first()
         node_name = node.name if node else None
+    details = format_rule_condition(rule, value)
+    metric_key = rule.metric.value if hasattr(rule.metric, "value") else str(rule.metric)
+    if metric_key == AlertRuleMetric.mtproxy_quota_pct.value:
+        from app.services.mtproxy_monitor import mtproxy_quota_users
+
+        users = mtproxy_quota_users(db, rule.node_id, float(rule.threshold))
+        if users:
+            details += "\n" + "\n".join(users)
     admin_notify_service.send(
         db,
         "alert_rule",
         target_name=rule.name,
-        details=format_rule_condition(rule, value),
+        details=details,
         node_id=rule.node_id,
         node_name=node_name,
     )

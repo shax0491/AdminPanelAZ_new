@@ -85,13 +85,34 @@ export default function Mtproxy() {
             <p className="text-xs text-muted-foreground">
               {[
                 node.domain && `домен ${node.domain}`,
-                node.port && `порт ${node.port}`,
+                node.port &&
+                  (node.public_port && node.public_port !== node.port
+                    ? `порт ${node.public_port} (слушает ${node.port})`
+                    : `порт ${node.port}`),
                 node.connections != null && `подключений ${node.connections}`,
                 node.version && `v${node.version}`,
               ]
                 .filter(Boolean)
                 .join(' · ')}
             </p>
+            {(node.users?.length ?? 0) > 0 && (
+              <p className="text-xs">
+                👥 онлайн {node.users!.filter((u) => u.connections > 0).length} из {node.users!.length}
+                {node.users!.some((u) => u.connections > 0) &&
+                  `: ${node.users!
+                    .filter((u) => u.connections > 0)
+                    .sort((a, b) => b.connections - a.connections)
+                    .map((u) => `${u.label} (${u.connections})`)
+                    .join(', ')}`}
+              </p>
+            )}
+            {node.users
+              ?.filter((u) => u.quota_pct != null && u.quota_pct >= 90)
+              .map((u) => (
+                <p key={u.label} className="text-xs text-destructive">
+                  {(u.quota_pct ?? 0) >= 100 ? '⛔' : '⚠️'} {u.label}: {u.quota_pct}% квоты
+                </p>
+              ))}
             {node.error && <p className="text-xs text-destructive">{node.error}</p>}
           </CardContent>
         </Card>

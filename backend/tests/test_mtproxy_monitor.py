@@ -102,6 +102,7 @@ def test_alert_metrics_registered():
 
     assert AlertRuleMetric.mtproxy_down.value in ALERT_METRIC_LABELS
     assert AlertRuleMetric.mtproxy_availability_pct.value in ALERT_METRIC_LABELS
+    assert AlertRuleMetric.mtproxy_quota_pct.value in ALERT_METRIC_LABELS
 
 
 def test_bot_text_lists_nodes():
@@ -115,3 +116,56 @@ def test_bot_text_lists_nodes():
     assert "NL2" in text and "✅ работает" in text and "<b>100%</b> (20/20 зондов)" in text
     assert "❌ stopped" in text and "нет данных" in text
     assert "не найден" in format_mtproxy_text([])
+
+
+def test_merge_users_keeps_limits_and_drops_secrets():
+    traffic = {"users": [
+        {"user": "a", "total": 5_000, "session_in": 100, "session_out": 400, "connections": 3, "unique_ips": 2, "enabled": True},
+        {"user": "b", "total": 9, "session_in": 0, "session_out": 0, "connections": 0, "unique_ips": 0},
+        {"user": "gone", "total": 1, "deleted": True},
+    ]}
+    secrets = [
+        {"label": "a", "secret": "deadbeef", "max_conns": 25, "max_ips": 4, "quota_bytes": 1000, "ip_history": [{"ip": "1.2.3.4"}]},
+        {"label": "b", "secret": "cafe", "max_conns": 35, "max_ips": 8, "quota_bytes": 0},
+    ]
+    users = mtproxy_monitor.merge_users(traffic, secrets)
+    assert [u["label"] for u in users] == ["a", "b"]
+    assert users[0]["quota_pct"] == 50.0 and users[0]["connections"] == 3 and users[0]["max_ips"] == 4
+    assert users[1]["quota_pct"] is None
+    assert all("secret" not in u and "ip_history" not in u for u in users)
+    assert mtproxy_monitor.merge_users(None, None) == []
+
+
+def test_parse_public_port():
+    assert mtproxy_monitor.parse_public_port("x|y|1\ngeneral.links|public_port|443\n") == 443
+    assert mtproxy_monitor.parse_public_port("") is None
+
+
+def test_quota_metric_and_users(monkeypatch):
+    statuses = {
+        1: {"installed": True, "users": [{"label": "a", "quota_pct": 95.0}, {"label": "b", "quota_pct": None}]},
+        2: {"installed": True, "users": [{"label": "c", "quota_pct": 101.5}]},
+        3: None,
+    }
+    nodes = [SimpleNamespace(id=i, name=f"n{i}") for i in statuses]
+    monkeypatch.setattr(mtproxy_monitor, "_monitored_nodes", lambda db, node_id: [n for n in nodes if node_id in (None, n.id)])
+    monkeypatch.setattr(mtproxy_monitor, "node_mtproxy_status", lambda node, **kw: statuses[node.id])
+    assert mtproxy_monitor.mtproxy_quota_max_value(None, None) == 101.5
+    assert mtproxy_monitor.mtproxy_quota_max_value(None, 3) is None
+    assert mtproxy_monitor.mtproxy_quota_users(None, None, 100.0) == ["n2: c — 101.5% квоты"]
+
+
+def test_bot_text_shows_public_port_and_online_users():
+    from app.services.telegram_bot_handlers.mtproxy_status import format_mtproxy_text
+
+    text = format_mtproxy_text([{
+        "node_name": "DE2", "running": True, "status": "running", "port": 8083, "public_port": 443, "availability": None,
+        "users": [
+            {"label": "a", "connections": 6, "quota_pct": None},
+            {"label": "b", "connections": 0, "quota_pct": 100.0},
+            {"label": "c", "connections": 1, "quota_pct": 92.0},
+        ],
+    }])
+    assert "порт 443 (слушает 8083)" in text
+    assert "онлайн 2 из 3: a (6), c (1)" in text
+    assert "⛔ b: 100% квоты" in text and "⚠️ c: 92% квоты" in text

@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 MTPROXYL_DIR = Path("/opt/mtproxyl")
 MTPROXYL_SCRIPT = MTPROXYL_DIR / "mtproxyl.sh"
 AVAILABILITY_HISTORY = MTPROXYL_DIR / "availability" / "history.jsonl"
+EXPERT_CONF = MTPROXYL_DIR / "expert.conf"
 RECENT_CHECKS = 8
 CACHE_SECONDS = 120
 
@@ -49,6 +50,58 @@ def parse_status_json(text: str) -> dict | None:
                 continue
             return data if isinstance(data, dict) else None
     return None
+
+
+def parse_last_json(text: str):
+    """Последний JSON (объект или массив) в выводе mtproxyl: перед ним бывают строки лога."""
+    for line in reversed(text.strip().splitlines()):
+        line = line.strip()
+        if line.startswith(("{", "[")):
+            try:
+                return json.loads(line)
+            except ValueError:
+                continue
+    return None
+
+
+def parse_public_port(text: str) -> int | None:
+    """Порт в ссылках tg://proxy из expert.conf (general.links|public_port|443); None - как слушает прокси."""
+    for line in text.splitlines():
+        parts = line.strip().split("|")
+        if len(parts) == 3 and parts[0] == "general.links" and parts[1] == "public_port" and parts[2].isdigit():
+            return int(parts[2])
+    return None
+
+
+def merge_users(traffic: dict | None, secrets: list | None) -> list[dict]:
+    """Пользователи прокси: трафик из `mtproxyl traffic --json` + лимиты из `secret list --json`.
+
+    Сам секрет и история IP не передаются. Квоту движок считает с последнего запуска прокси, поэтому
+    расход квоты - трафик текущей сессии, а не за всё время.
+    """
+    limits = {str(item.get("label")): item for item in secrets or [] if isinstance(item, dict)}
+    users: list[dict] = []
+    for item in (traffic or {}).get("users") or []:
+        if not isinstance(item, dict) or item.get("deleted"):
+            continue
+        label = str(item.get("user") or "")
+        limit = limits.get(label, {})
+        session = int(item.get("session_in") or 0) + int(item.get("session_out") or 0)
+        quota = int(limit.get("quota_bytes") or 0)
+        users.append({
+            "label": label,
+            "enabled": bool(item.get("enabled", limit.get("enabled", True))),
+            "connections": int(item.get("connections") or 0),
+            "unique_ips": int(item.get("unique_ips") or 0),
+            "total_bytes": int(item.get("total") or 0),
+            "session_bytes": session,
+            "max_conns": int(limit.get("max_conns") or 0),
+            "max_ips": int(limit.get("max_ips") or 0),
+            "quota_bytes": quota,
+            "quota_pct": round(session * 100 / quota, 1) if quota > 0 else None,
+            "expires": str(limit.get("expires") or "0"),
+        })
+    return users
 
 
 def parse_availability_history(text: str, limit: int = RECENT_CHECKS) -> list[dict]:
@@ -103,6 +156,12 @@ def collect_mtproxy_status() -> dict:
     except (subprocess.TimeoutExpired, OSError) as exc:
         result["error"] = f"mtproxyl status: {exc}"
 
+    try:
+        result["public_port"] = parse_public_port(EXPERT_CONF.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        result["public_port"] = None
+    result["users"] = _collect_users(cmd)
+
     history_text = ""
     try:
         history_text = AVAILABILITY_HISTORY.read_text(encoding="utf-8", errors="replace")
@@ -113,6 +172,19 @@ def collect_mtproxy_status() -> dict:
     result["availability_recent"] = recent
     result["checked_at"] = int(time.time())
     return result
+
+
+def _collect_users(cmd: list[str]) -> list[dict]:
+    env = {**os.environ, "MTPROXYL_NONINTERACTIVE": "true", "NO_COLOR": "1"}
+    outputs = []
+    for args in (["traffic", "--json"], ["secret", "list", "--json"]):
+        try:
+            proc = subprocess.run([*cmd, *args], capture_output=True, text=True, timeout=30, env=env)
+            outputs.append(parse_last_json(proc.stdout))
+        except (subprocess.TimeoutExpired, OSError):
+            outputs.append(None)
+    traffic, secrets = outputs
+    return merge_users(traffic if isinstance(traffic, dict) else None, secrets if isinstance(secrets, list) else None)
 
 
 # --- панель: кэш опроса узлов -------------------------------------------------------------------
@@ -173,6 +245,28 @@ def mtproxy_availability_value(db, node_id: int | None) -> float | None:
         if status and status.get("installed") and availability.get("percentage") is not None:
             values.append(float(availability["percentage"]))
     return min(values) if values else None
+
+
+def mtproxy_quota_max_value(db, node_id: int | None) -> float | None:
+    """Наибольший расход квоты среди пользователей с квотой, % (100 и больше - квота исчерпана)."""
+    values = [
+        float(user["quota_pct"])
+        for node in _monitored_nodes(db, node_id)
+        for user in ((node_mtproxy_status(node) or {}).get("users") or [])
+        if user.get("quota_pct") is not None
+    ]
+    return max(values) if values else None
+
+
+def mtproxy_quota_users(db, node_id: int | None, min_pct: float) -> list[str]:
+    """Строки «узел: пользователь — N% квоты» для текста оповещения."""
+    lines: list[str] = []
+    for node in _monitored_nodes(db, node_id):
+        for user in (node_mtproxy_status(node) or {}).get("users") or []:
+            pct = user.get("quota_pct")
+            if pct is not None and pct >= min_pct:
+                lines.append(f"{node.name}: {user['label']} — {pct:g}% квоты")
+    return lines
 
 
 def mtproxy_overview(db) -> list[dict]:

@@ -24,6 +24,23 @@ def _availability_line(row: dict) -> str:
     return f"{icon} доступность из России: <b>{pct:g}%</b>{probes}" + (f", {escape(when)}" if when else "")
 
 
+def _users_lines(users: list[dict]) -> list[str]:
+    """Кто сейчас подключён и у кого квота на исходе."""
+    lines: list[str] = []
+    online = sorted((u for u in users if u.get("connections")), key=lambda u: -int(u["connections"]))
+    if online:
+        names = ", ".join(f"{escape(str(u['label']))} ({u['connections']})" for u in online)
+        lines.append(f"👥 онлайн {len(online)} из {len(users)}: {names}")
+    elif users:
+        lines.append(f"👥 онлайн 0 из {len(users)}")
+    for user in users:
+        pct = user.get("quota_pct")
+        if pct is not None and pct >= 90:
+            icon = "⛔" if pct >= 100 else "⚠️"
+            lines.append(f"{icon} {escape(str(user['label']))}: {pct:g}% квоты")
+    return lines
+
+
 def format_mtproxy_text(rows: list[dict]) -> str:
     lines = ["<b>MTProxy</b>"]
     if not rows:
@@ -37,12 +54,17 @@ def format_mtproxy_text(rows: list[dict]) -> str:
         if row.get("domain"):
             details.append(f"домен <code>{escape(str(row['domain']))}</code>")
         if row.get("port"):
-            details.append(f"порт {row['port']}")
+            public = row.get("public_port")
+            if public and public != row["port"]:
+                details.append(f"порт {public} (слушает {row['port']})")
+            else:
+                details.append(f"порт {row['port']}")
         if row.get("connections") is not None:
             details.append(f"подключений {row['connections']}")
         if details:
             lines.append(", ".join(details))
         lines.append(_availability_line(row))
+        lines.extend(_users_lines(row.get("users") or []))
         if row.get("error"):
             lines.append(f"ошибка: {escape(str(row['error']))}")
     return "\n".join(lines)

@@ -958,6 +958,8 @@ export interface TgMiniMtproxyNode {
   connections?: number | null
   error?: string | null
   availability?: { percentage: number | null; success?: number | null; total?: number | null; checked_at?: string | null } | null
+  public_port?: number | null
+  users?: { label: string; connections: number; quota_pct: number | null }[]
 }
 
 export interface MtproxyAvailabilityCheck {
@@ -966,6 +968,21 @@ export interface MtproxyAvailabilityCheck {
   total?: number | null
   checked_at?: string | null
   error?: string | null
+}
+
+/** Пользователь (секрет) MTProxyL: квоту движок считает с последнего запуска прокси (session_bytes). */
+export interface MtproxyUser {
+  label: string
+  enabled: boolean
+  connections: number
+  unique_ips: number
+  total_bytes: number
+  session_bytes: number
+  max_conns: number
+  max_ips: number
+  quota_bytes: number
+  quota_pct: number | null
+  expires: string
 }
 
 /** Узел на вкладке MTProxy: installed=null - агент не ответил или старый, false - MTProxyL нет. */
@@ -984,6 +1001,8 @@ export interface MtproxyNodeStatus {
   error?: string | null
   availability?: MtproxyAvailabilityCheck | null
   availability_recent?: MtproxyAvailabilityCheck[]
+  public_port?: number | null
+  users?: MtproxyUser[]
 }
 
 export interface TgMiniAwg2Status {

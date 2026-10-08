@@ -7,8 +7,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { formatDateTime } from '@/lib/datetime'
+import { formatBytes } from '@/lib/trafficFormat'
 import { cn } from '@/lib/utils'
-import type { MtproxyAvailabilityCheck, MtproxyNodeStatus } from '@/types'
+import type { MtproxyAvailabilityCheck, MtproxyNodeStatus, MtproxyUser } from '@/types'
 
 function pctVariant(pct: number | null | undefined) {
   if (pct == null) return 'secondary' as const
@@ -43,6 +44,65 @@ function AvailabilityBars({ checks }: { checks: MtproxyAvailabilityCheck[] }) {
           />
         )
       })}
+    </div>
+  )
+}
+
+function QuotaCell({ user }: { user: MtproxyUser }) {
+  if (!user.quota_bytes) return <span className="text-muted-foreground">без квоты</span>
+  const pct = user.quota_pct ?? 0
+  return (
+    <div className="min-w-[90px] space-y-0.5" title={`${formatBytes(user.session_bytes)} из ${formatBytes(user.quota_bytes)} с последнего запуска прокси`}>
+      <div className="h-1.5 rounded bg-muted">
+        <div
+          className={cn('h-1.5 rounded', pct >= 100 ? 'bg-destructive' : pct >= 90 ? 'bg-amber-500' : 'bg-emerald-500')}
+          style={{ width: `${Math.min(100, pct)}%` }}
+        />
+      </div>
+      <div className="text-[11px] text-muted-foreground">
+        {pct}% · {formatBytes(user.quota_bytes)}
+      </div>
+    </div>
+  )
+}
+
+/** Пользователи (секреты) узла: кто сейчас подключён, трафик, лимиты и квота. */
+function UsersTable({ users }: { users: MtproxyUser[] }) {
+  const sorted = [...users].sort((a, b) => b.connections - a.connections || b.total_bytes - a.total_bytes)
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead className="text-muted-foreground">
+          <tr className="border-b text-left">
+            <th className="py-1 pr-2 font-medium">Пользователь</th>
+            <th className="py-1 pr-2 font-medium" title="Соединений сейчас / лимит">Соед.</th>
+            <th className="py-1 pr-2 font-medium" title="IP сейчас / лимит">IP</th>
+            <th className="py-1 pr-2 font-medium">Трафик</th>
+            <th className="py-1 font-medium">Квота</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((user) => (
+            <tr key={user.label} className={cn('border-b last:border-0', !user.enabled && 'opacity-50')}>
+              <td className="py-1 pr-2">
+                <span className={cn('mr-1 inline-block h-1.5 w-1.5 rounded-full', user.connections ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
+                {user.label}
+                {!user.enabled && <span className="text-muted-foreground"> (выкл.)</span>}
+              </td>
+              <td className="py-1 pr-2 tabular-nums">
+                {user.connections}/{user.max_conns || '∞'}
+              </td>
+              <td className="py-1 pr-2 tabular-nums">
+                {user.unique_ips}/{user.max_ips || '∞'}
+              </td>
+              <td className="py-1 pr-2 tabular-nums">{formatBytes(user.total_bytes)}</td>
+              <td className="py-1">
+                <QuotaCell user={user} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -103,7 +163,7 @@ export default function MtproxyPage() {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-2">
         {nodes?.map((node) => {
           const pct = node.availability?.percentage
           return (
@@ -125,7 +185,11 @@ export default function MtproxyPage() {
                       {node.domain || '—'}
                     </dd>
                     <dt className="text-muted-foreground">Порт</dt>
-                    <dd>{node.port ?? '—'}</dd>
+                    <dd title="Порт в ссылках tg://proxy; если он другой, на сервере стоит переадресация на порт прокси">
+                      {node.public_port && node.public_port !== node.port
+                        ? `${node.public_port} (слушает ${node.port})`
+                        : (node.port ?? '—')}
+                    </dd>
                     <dt className="text-muted-foreground">Подключений</dt>
                     <dd>
                       {node.connections ?? '—'}
@@ -144,6 +208,7 @@ export default function MtproxyPage() {
                   </dl>
                 )}
                 {node.installed && <AvailabilityBars checks={node.availability_recent ?? []} />}
+                {node.installed && (node.users?.length ?? 0) > 0 && <UsersTable users={node.users ?? []} />}
                 {node.installed === false && (
                   <p className="text-xs text-muted-foreground">
                     MTProxyL на узле нет. Команда установки — в «Настройки → Модули → MTProxy».

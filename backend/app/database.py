@@ -1638,10 +1638,46 @@ def _migrate_seed_mtproxy_alert_rules() -> None:
     logger.info("DB migration: MTProxy alert rules seeded")
 
 
+_MTPROXY_QUOTA_RULES_MARKER = "migration_mtproxy_quota_rules_seeded"
+
+
+def _migrate_seed_mtproxy_quota_rules() -> None:
+    """One-shot: оповещения о квоте трафика пользователей MTProxy (90% и исчерпана - прокси их не пускает)."""
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    if "alert_rules" not in tables or "app_settings" not in tables:
+        return
+    with _migration_transaction() as conn:
+        if conn.execute(
+            text("SELECT value FROM app_settings WHERE key = :key"),
+            {"key": _MTPROXY_QUOTA_RULES_MARKER},
+        ).scalar():
+            return
+        now = datetime.utcnow()
+        for name, threshold, cooldown in (
+            ("MTProxy: пользователь израсходовал 90% квоты", 90.0, 720),
+            ("MTProxy: квота пользователя исчерпана, доступ закрыт", 100.0, 360),
+        ):
+            conn.execute(
+                text(
+                    "INSERT INTO alert_rules (name, metric, operator, threshold, node_id, cooldown_minutes, enabled, "
+                    "created_at, updated_at) VALUES (:name, 'mtproxy_quota_pct', 'gte', :threshold, NULL, :cooldown, 1, "
+                    ":now, :now)"
+                ),
+                {"name": name, "threshold": threshold, "cooldown": cooldown, "now": now},
+            )
+        conn.execute(
+            text("INSERT INTO app_settings (key, value) VALUES (:key, '1')"),
+            {"key": _MTPROXY_QUOTA_RULES_MARKER},
+        )
+    logger.info("DB migration: MTProxy quota alert rules seeded")
+
+
 def _run_db_migrations() -> None:
     _migrate_nodes_columns()
     _migrate_alert_rules_table()
     _migrate_seed_mtproxy_alert_rules()
+    _migrate_seed_mtproxy_quota_rules()
     _migrate_openvpn_buffer_guard_tables()
     _migrate_openvpn_buffer_guard_factory_thresholds()
     _migrate_node_sync_groups_table()
