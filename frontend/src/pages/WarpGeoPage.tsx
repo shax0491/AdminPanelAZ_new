@@ -147,7 +147,13 @@ export default function WarpGeoPage() {
     setManageMessage(null)
     try {
       await saveWarpProtonFields(nodeId, scope, fields)
-      setManageMessage('Конфиг сохранён. Нажмите «Применить», чтобы поднять туннель.')
+      // Сохранённый в setup конфиг без up.sh ничего не меняет на узле - применяем сразу
+      const result = await applyWarpChanges(nodeId)
+      setManageMessage(
+        result.success
+          ? 'Конфиг сохранён и применён: туннель поднят с новым сервером Proton.'
+          : `Конфиг сохранён, но up.sh завершился с ошибкой: ${result.output}`,
+      )
       loadStatus(nodeId)
     } catch (err) {
       setManageError(err instanceof Error ? err.message : 'Не удалось сохранить конфиг')
@@ -167,7 +173,12 @@ export default function WarpGeoPage() {
     setManageMessage(null)
     try {
       await setWarpProvider(nodeId, provider)
-      setManageMessage('Провайдер сохранён в конфиг. Нажмите «Применить», чтобы переключить туннель.')
+      const result = await applyWarpChanges(nodeId)
+      setManageMessage(
+        result.success
+          ? 'Провайдер сохранён и применён: туннели подняты заново.'
+          : `Провайдер записан, но up.sh завершился с ошибкой: ${result.output}`,
+      )
       loadStatus(nodeId)
     } catch (err) {
       setManageError(err instanceof Error ? err.message : 'Не удалось сменить провайдера')
@@ -548,7 +559,7 @@ export default function WarpGeoPage() {
                         }
                         onClick={() => handleSaveProtonFields(scope)}
                       >
-                        {savingScope === scope ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Сохранить'}
+                        {savingScope === scope ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Сохранить и применить'}
                       </Button>
                     </>
                   )}
@@ -560,10 +571,9 @@ export default function WarpGeoPage() {
             <div className="flex items-start gap-2 text-sm">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <span>
-                Смена провайдера, режима WARP{status?.warp_provider === 'proton' ? ' и новые ключи' : ''} не
-                действует, пока не нажата «Применить» — это выполняет{' '}
-                <code className="font-mono">up.sh</code> на узле, который кратко (на секунды)
-                обрывает ВСЕ активные туннели на этом сервере, не только WARP.
+                Смена провайдера, режима WARP{status?.warp_provider === 'proton' ? ' и сохранение ключей Proton' : ''}{' '}
+                применяются сразу: на узле выполняется <code className="font-mono">up.sh</code>, который кратко (на
+                секунды) обрывает ВСЕ активные туннели на этом сервере, не только WARP. «Применить» — повторить вручную.
               </span>
             </div>
             <Button
