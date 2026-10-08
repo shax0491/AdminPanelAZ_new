@@ -93,8 +93,7 @@ BTN_MENU_SETTINGS = "⚙️ Настройки"
 BTN_MENU_NODES = "🖥 Узлы"
 BTN_MENU_CIDR = "🗂 CIDR"
 BTN_MENU_WARPER = "🌐 WARP"
-BTN_MENU_AWG2 = "🛡️ AWG2"
-BTN_MENU_AWG3 = "🛡️ AWG3"
+BTN_MENU_AWG = "🛡️ AmneziaWG"
 BTN_MENU_MTPROXY = "📨 MTProxy"
 BTN_MENU_UNLOCK_CODES = "🎟 Коды доступа"
 
@@ -112,11 +111,12 @@ MENU_ACTIONS: dict[str, str] = {
     BTN_MENU_NODES: "nodes",
     BTN_MENU_CIDR: "cidr",
     BTN_MENU_WARPER: "warper",
-    BTN_MENU_AWG2: "awg2",
-    BTN_MENU_AWG3: "awg3",
+    BTN_MENU_AWG: "awg",
     BTN_MENU_MTPROXY: "mtproxy",
     # Старые подписи кнопок (до обновления меню)
     "🌐 AZ-WARP": "warper",
+    "🛡️ AWG2": "awg",
+    "🛡️ AWG3": "awg",
 }
 
 BOT_COMMANDS: tuple[tuple[str, str], ...] = (
@@ -133,8 +133,7 @@ BOT_COMMANDS: tuple[tuple[str, str], ...] = (
     ("nodes", "VPN-узлы (admin)"),
     ("cidr", "Статус CIDR pipeline (admin)"),
     ("warper", "Статус AZ-WARP (admin)"),
-    ("awg2", "Статус AZ-AWG2 (admin)"),
-    ("awg3", "Статус AmneziaWG 3 (admin)"),
+    ("awg", "AmneziaWG 2 и 3 (admin)"),
     ("mtproxy", "MTProxy на узлах (admin)"),
 )
 
@@ -186,8 +185,7 @@ HELP_ADMIN_CIDR = "• /cidr — статус CIDR pipeline"
 HELP_ADMIN_NODES = "• /nodes — VPN-узлы (health, активация)"
 HELP_ADMIN_UNLOCK = "• /unlock — генерация unlock-ключа"
 HELP_ADMIN_WARPER = "• /warper — статус AZ-WARP"
-HELP_ADMIN_AWG2 = "• /awg2 — статус AZ-AWG2"
-HELP_ADMIN_AWG3 = "• /awg3 — статус AmneziaWG 3"
+HELP_ADMIN_AWG = "• /awg — AmneziaWG 2 и 3: онлайн, интерфейсы, топ трафика"
 HELP_ADMIN_MTPROXY = "• /mtproxy — MTProxy на узлах: работает ли и доступность из России"
 HELP_ADMIN_SETTINGS = "/settings — настройки панели (inline-меню)"
 HELP_ADMIN_FOOTER = ""

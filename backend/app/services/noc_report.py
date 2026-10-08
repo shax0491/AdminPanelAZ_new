@@ -510,7 +510,9 @@ def _format_lag_duration(seconds: int | None) -> str:
 
 def _traffic_sync_status(db: Session) -> dict:
     settings = get_settings()
-    last_sample = db.query(func.max(UserTrafficSample.created_at)).scalar()
+    from app.services.traffic.collector import traffic_sync_last_at
+
+    last_sample = traffic_sync_last_at(db)
     lag_seconds = None
     if last_sample is not None:
         lag_seconds = max(0, int((datetime.utcnow() - last_sample).total_seconds()))

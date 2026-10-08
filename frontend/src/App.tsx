@@ -24,13 +24,11 @@ const AntizapretConfigPage = lazyWithRetry(() => import('./pages/AntizapretConfi
 const ProxyHubPage = lazyWithRetry(() => import('./pages/ProxyHubPage'))
 const WarperPage = lazyWithRetry(() => import('./pages/WarperPage'))
 const WarpGeoPage = lazyWithRetry(() => import('./pages/WarpGeoPage'))
-const Awg2Page = lazyWithRetry(() => import('./pages/Awg2Page'))
-const Awg3Page = lazyWithRetry(() => import('./pages/Awg3Page'))
 const FailoverPoolsPage = lazyWithRetry(() => import('./pages/FailoverPoolsPage'))
 const TelegramPage = lazyWithRetry(() => import('./pages/TelegramPage'))
 const SubscriptionPage = lazyWithRetry(() => import('./pages/SubscriptionPage'))
 const SettingsPage = lazyWithRetry(() => import('./pages/SettingsPage'))
-const TrafficPage = lazyWithRetry(() => import('./pages/TrafficPage'))
+const TrafficHubPage = lazyWithRetry(() => import('./pages/TrafficHubPage'))
 const EditFilesPage = lazyWithRetry(() => import('./pages/EditFilesPage'))
 const LogsPage = lazyWithRetry(() => import('./pages/LogsPage'))
 const ServerMonitorPage = lazyWithRetry(() => import('./pages/ServerMonitorPage'))
@@ -66,14 +64,14 @@ export default function App() {
                 >
                   <Route index element={<LazyPage><DashboardPage /></LazyPage>} />
                   <Route path="monitoring" element={<LazyPage><FeatureGuardRoute feature="logs_dashboard"><MonitoringPage /></FeatureGuardRoute></LazyPage>} />
-                  <Route path="traffic" element={<LazyPage><FeatureGuardRoute feature="traffic_sync"><TrafficPage /></FeatureGuardRoute></LazyPage>} />
+                  <Route path="traffic" element={<LazyPage><FeatureGuardRoute feature="traffic_sync"><TrafficHubPage /></FeatureGuardRoute></LazyPage>} />
                   <Route path="routing" element={<LazyPage><FeatureGuardRoute feature="routing"><RoutingPage /></FeatureGuardRoute></LazyPage>} />
                   <Route path="antizapret" element={<LazyPage><FeatureGuardRoute feature="antizapret_config"><AntizapretConfigPage /></FeatureGuardRoute></LazyPage>} />
                   <Route path="proxy" element={<LazyPage><FeatureGuardRoute feature="proxy_nodes"><ProxyHubPage /></FeatureGuardRoute></LazyPage>} />
                   <Route path="warper" element={<LazyPage><FeatureGuardRoute feature="warper"><WarperPage /></FeatureGuardRoute></LazyPage>} />
                   <Route path="warp-geo" element={<LazyPage><FeatureGuardRoute feature="warp_geo"><WarpGeoPage /></FeatureGuardRoute></LazyPage>} />
-                  <Route path="awg2" element={<LazyPage><FeatureGuardRoute feature="awg2"><Awg2Page /></FeatureGuardRoute></LazyPage>} />
-                  <Route path="awg3" element={<LazyPage><FeatureGuardRoute feature="awg3"><Awg3Page /></FeatureGuardRoute></LazyPage>} />
+                  <Route path="awg2" element={<Navigate to="/traffic?view=awg2" replace />} />
+                  <Route path="awg3" element={<Navigate to="/traffic?view=awg3" replace />} />
                   <Route path="failover" element={<LazyPage><FeatureGuardRoute feature="failover_pools"><FailoverPoolsPage /></FeatureGuardRoute></LazyPage>} />
                   <Route path="telegram" element={<LazyPage><FeatureGuardRoute feature="telegram"><TelegramPage /></FeatureGuardRoute></LazyPage>} />
                   <Route

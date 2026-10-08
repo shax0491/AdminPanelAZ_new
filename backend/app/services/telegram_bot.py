@@ -42,8 +42,7 @@ from app.services.telegram_bot_handlers.unlock_codes import (
 from app.services.telegram_bot_handlers.ui import handle_unknown_text, nav_footer_keyboard
 from app.services.telegram_bot_handlers.status import handle_status
 from app.services.telegram_bot_handlers.warper_status import handle_warper_status
-from app.services.telegram_bot_handlers.awg2_status import handle_awg2_status
-from app.services.telegram_bot_handlers.awg3_status import handle_awg3_status
+from app.services.telegram_bot_handlers.awg_status import handle_awg_status
 from app.services.telegram_bot_handlers.mtproxy_status import handle_mtproxy_status
 from app.services.telegram_bot_handlers.traffic import handle_traffic
 from app.services.telegram_bot_handlers.inline import handle_chosen_inline_result, handle_inline_query
@@ -135,10 +134,8 @@ async def _dispatch_command(ctx: BotContext, command: str, args: str) -> None:
         await handle_nodes_root(ctx)
     elif command == "/warper":
         await handle_warper_status(ctx)
-    elif command == "/awg2":
-        await handle_awg2_status(ctx)
-    elif command == "/awg3":
-        await handle_awg3_status(ctx)
+    elif command in {"/awg", "/awg2", "/awg3"}:
+        await handle_awg_status(ctx)
     elif command == "/mtproxy":
         await handle_mtproxy_status(ctx)
     else:

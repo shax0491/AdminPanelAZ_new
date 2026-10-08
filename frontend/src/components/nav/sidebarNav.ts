@@ -16,7 +16,6 @@ import {
   Server,
   Settings,
   Settings2,
-  Shield,
   Ticket,
 } from 'lucide-react'
 
@@ -59,8 +58,6 @@ export const SIDEBAR_NAV_GROUPS: SidebarNavGroup[] = [
       { to: '/proxy', label: 'Прокси', icon: Network, end: false, adminOnly: true, featureKey: 'proxy_nodes' },
       { to: '/warper', label: 'AZ-WARP', icon: Globe, end: false, adminOnly: true, featureKey: 'warper' },
       { to: '/warp-geo', label: 'WARP Geolocation', icon: Satellite, end: false, adminOnly: true, featureKey: 'warp_geo' },
-      { to: '/awg2', label: 'AmneziaWG 2', icon: Shield, end: false, adminOnly: true, featureKey: 'awg2' },
-      { to: '/awg3', label: 'AmneziaWG 3', icon: Shield, end: false, adminOnly: true, featureKey: 'awg3' },
       { to: '/failover', label: 'Автопереключение', icon: RefreshCw, end: false, adminOnly: true, featureKey: 'failover_pools' },
     ],
   },

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import operators
 from sqlalchemy.sql.elements import UnaryExpression
 
-from app.models import Node, TrafficSessionState, UserTrafficSample, UserTrafficStatProtocol
+from app.models import AppSetting, Node, TrafficSessionState, UserTrafficSample, UserTrafficStatProtocol
 from app.schemas import (
     OpenVpnClient,
     TrafficClientRow,
@@ -34,6 +34,34 @@ _recent_usage_lock = Lock()
 _recent_usage_cache: dict[tuple, tuple[float, dict]] = {}
 # Past ~3 days, scanning the node's covering index in group order beats sorting the window.
 _CLIENT_INDEX_MIN_WINDOW = timedelta(days=3)
+# Last successful poll per node: samples are only written when traffic moves, so an
+# idle node must not look like a stale database.
+_COLLECTED_AT_KEY = "traffic_collected_at:{}"
+
+
+def _last_collected_at(db: Session, node_ids: list[int] | None) -> datetime | None:
+    query = db.query(AppSetting)
+    if node_ids is None:
+        query = query.filter(AppSetting.key.like(_COLLECTED_AT_KEY.format("%")))
+    else:
+        query = query.filter(AppSetting.key.in_([_COLLECTED_AT_KEY.format(node_id) for node_id in node_ids]))
+    values = [row.value for row in query.all()]
+    parsed = []
+    for value in values:
+        try:
+            parsed.append(datetime.fromisoformat(value))
+        except (TypeError, ValueError):
+            continue
+    return max(parsed) if parsed else None
+
+
+def traffic_sync_last_at(db: Session, node_ids: list[int] | None = None) -> datetime | None:
+    """Newest of the last traffic sample and the last successful node poll."""
+    query = db.query(func.max(UserTrafficSample.created_at))
+    if node_ids is not None:
+        query = query.filter(UserTrafficSample.node_id.in_(node_ids))
+    stamps = [ts for ts in (query.scalar(), _last_collected_at(db, node_ids)) if ts is not None]
+    return max(stamps) if stamps else None
 
 
 def clear_recent_usage_cache() -> None:
@@ -363,6 +391,9 @@ class TrafficCollectorService:
                 session_state.is_active = False
                 session_state.ended_at = now
 
+        from app.services.app_setting_store import _set_setting
+
+        _set_setting(self.db, _COLLECTED_AT_KEY.format(self.node_id), now.isoformat())
         self.db.commit()
         return {"samples_added": samples_added, "active_sessions": len(seen_keys)}
 
@@ -553,9 +584,10 @@ class TrafficCollectorService:
             .filter(UserTrafficSample.node_id.in_(scope_ids))
             .scalar()
         )
+        freshest = traffic_sync_last_at(self.db, scope_ids)
         db_age_seconds = None
-        if latest_sample:
-            db_age_seconds = max(int((now - latest_sample).total_seconds()), 0)
+        if freshest:
+            db_age_seconds = max(int((now - freshest).total_seconds()), 0)
 
         summary = TrafficSummary(
             users_count=len(rows_out),

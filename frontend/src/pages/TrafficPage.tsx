@@ -336,6 +336,7 @@ export default function TrafficPage() {
   const isAdmin = user?.role === 'admin'
   const { isEnabled } = useFeatureModules()
   const awg2Enabled = isEnabled('awg2')
+  const awg3Enabled = isEnabled('awg3')
   const { success, error: notifyError, warning: notifyWarning } = useNotifications()
   const { startGlobal, doneGlobal, withInline } = useProgress()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -372,7 +373,7 @@ export default function TrafficPage() {
   const [search, setSearch] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('total_bytes')
   const [resetting, setResetting] = useState(false)
-  const [resetScope, setResetScope] = useState<'all' | 'openvpn' | 'wireguard' | 'amneziawg2'>('all')
+  const [resetScope, setResetScope] = useState<'all' | 'openvpn' | 'wireguard' | 'amneziawg2' | 'amneziawg3'>('all')
   const [deletedRows, setDeletedRows] = useState<
     Array<{
       common_name: string
@@ -711,10 +712,10 @@ export default function TrafficPage() {
   ])
 
   useEffect(() => {
-    if (!awg2Enabled && resetScope === 'amneziawg2') {
+    if ((!awg2Enabled && resetScope === 'amneziawg2') || (!awg3Enabled && resetScope === 'amneziawg3')) {
       setResetScope('all')
     }
-  }, [awg2Enabled, resetScope])
+  }, [awg2Enabled, awg3Enabled, resetScope])
 
   useIntervalWhenVisible(
     () => {
@@ -1057,6 +1058,7 @@ export default function TrafficPage() {
                     <SelectItem value="openvpn">Сброс: OpenVPN</SelectItem>
                     <SelectItem value="wireguard">Сброс: WG/AWG</SelectItem>
                     {awg2Enabled && <SelectItem value="amneziawg2">Сброс: AWG 2</SelectItem>}
+                    {awg3Enabled && <SelectItem value="amneziawg3">Сброс: AWG 3</SelectItem>}
                   </SelectContent>
                 </Select>
                 <Button variant="outline" size="sm" onClick={handleReset} disabled={resetting}>

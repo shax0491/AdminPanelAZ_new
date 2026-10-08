@@ -24,10 +24,8 @@ def _help_text(ctx: BotContext) -> str:
             lines.append(i18n.HELP_ADMIN_UNLOCK)
         if get_feature_service().is_enabled("warper"):
             lines.append(i18n.HELP_ADMIN_WARPER)
-        if get_feature_service().is_enabled("awg2"):
-            lines.append(i18n.HELP_ADMIN_AWG2)
-        if get_feature_service().is_enabled("awg3"):
-            lines.append(i18n.HELP_ADMIN_AWG3)
+        if get_feature_service().is_enabled("awg2") or get_feature_service().is_enabled("awg3"):
+            lines.append(i18n.HELP_ADMIN_AWG)
         lines.append(i18n.HELP_ADMIN_MTPROXY)
     lines.extend(["", i18n.HELP_FOOTER])
     return "\n".join(lines)

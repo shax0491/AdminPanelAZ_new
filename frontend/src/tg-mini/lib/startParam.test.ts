@@ -3,7 +3,7 @@ import { mapTelegramStartParam } from '@/tg-mini/lib/startParam'
 
 describe('mapTelegramStartParam', () => {
   it('maps supported deep-link params to routes', () => {
-    expect(mapTelegramStartParam('awg2')).toBe('/awg2')
+    expect(mapTelegramStartParam('awg2')).toBe('/awg?v=2')
     expect(mapTelegramStartParam('warper')).toBe('/warper')
     expect(mapTelegramStartParam('cidr')).toBe('/cidr')
     expect(mapTelegramStartParam('nodes')).toBe('/nodes')

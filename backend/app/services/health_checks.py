@@ -6,11 +6,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import Node, NodeStatus, UserTrafficSample
+from app.models import Node, NodeStatus
 
 settings = get_settings()
 
@@ -72,7 +72,9 @@ def build_deep_health(db: Session, *, app_root: Path) -> dict[str, Any]:
     checks["cidr_db"] = cidr_check
 
     try:
-        last_sync = db.query(func.max(UserTrafficSample.created_at)).scalar()
+        from app.services.traffic.collector import traffic_sync_last_at
+
+        last_sync = traffic_sync_last_at(db)
         lag_seconds = None
         if last_sync is not None:
             lag_seconds = max(

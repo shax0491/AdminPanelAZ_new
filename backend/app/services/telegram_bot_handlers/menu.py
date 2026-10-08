@@ -16,7 +16,7 @@ from app.services.telegram_bot_handlers.ui import send_or_edit
 from app.services import telegram_bot_i18n as i18n
 from app.services.telegram_bot_handlers import settings_fsm
 
-_ADMIN_ACTIONS = frozenset({"settings", "nodes", "cidr", "warper", "awg2", "awg3", "mtproxy", "unlock"})
+_ADMIN_ACTIONS = frozenset({"settings", "nodes", "cidr", "warper", "awg", "awg2", "awg3", "mtproxy", "unlock"})
 
 
 def _admin_menu_visible(ctx: BotContext) -> bool:
@@ -31,12 +31,9 @@ def _warper_visible(ctx: BotContext) -> bool:
     return _admin_menu_visible(ctx) and get_feature_service().is_enabled("warper")
 
 
-def _awg2_visible(ctx: BotContext) -> bool:
-    return _admin_menu_visible(ctx) and get_feature_service().is_enabled("awg2")
-
-
-def _awg3_visible(ctx: BotContext) -> bool:
-    return _admin_menu_visible(ctx) and get_feature_service().is_enabled("awg3")
+def _awg_visible(ctx: BotContext) -> bool:
+    features = get_feature_service()
+    return _admin_menu_visible(ctx) and (features.is_enabled("awg2") or features.is_enabled("awg3"))
 
 
 def _mtproxy_visible(ctx: BotContext) -> bool:
@@ -62,8 +59,7 @@ def _menu_button_label(action: str) -> str:
         "nodes": i18n.BTN_MENU_NODES,
         "cidr": i18n.BTN_MENU_CIDR,
         "warper": i18n.BTN_MENU_WARPER,
-        "awg2": i18n.BTN_MENU_AWG2,
-        "awg3": i18n.BTN_MENU_AWG3,
+        "awg": i18n.BTN_MENU_AWG,
         "mtproxy": i18n.BTN_MENU_MTPROXY,
         "unlock": i18n.BTN_MENU_UNLOCK_CODES,
     }[action]
@@ -79,10 +75,8 @@ def _more_menu_row_actions(ctx: BotContext) -> list[list[str]]:
             module_row.append("cidr")
         if _warper_visible(ctx):
             module_row.append("warper")
-        if _awg2_visible(ctx):
-            module_row.append("awg2")
-        if _awg3_visible(ctx):
-            module_row.append("awg3")
+        if _awg_visible(ctx):
+            module_row.append("awg")
         if module_row:
             rows.append(module_row)
         extra_row = [action for action, visible in (("mtproxy", _mtproxy_visible(ctx)), ("unlock", _unlock_visible(ctx))) if visible]
@@ -190,14 +184,10 @@ async def _dispatch_action(ctx: BotContext, action: str, *, message_id: int | No
         from app.services.telegram_bot_handlers.warper_status import handle_warper_status
 
         await handle_warper_status(ctx, message_id=message_id)
-    elif action == "awg2":
-        from app.services.telegram_bot_handlers.awg2_status import handle_awg2_status
+    elif action in {"awg", "awg2", "awg3"}:
+        from app.services.telegram_bot_handlers.awg_status import handle_awg_status
 
-        await handle_awg2_status(ctx, message_id=message_id)
-    elif action == "awg3":
-        from app.services.telegram_bot_handlers.awg3_status import handle_awg3_status
-
-        await handle_awg3_status(ctx, message_id=message_id)
+        await handle_awg_status(ctx, message_id=message_id)
     elif action == "mtproxy":
         from app.services.telegram_bot_handlers.mtproxy_status import handle_mtproxy_status
 

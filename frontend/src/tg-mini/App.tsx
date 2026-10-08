@@ -4,8 +4,7 @@ import FeatureGate from '@/tg-mini/FeatureGate'
 import { TgAuthProvider, useTgAuth } from '@/tg-mini/context/TgAuthContext'
 import MiniShell from '@/tg-mini/layout/MiniShell'
 import { mapTelegramStartParam } from '@/tg-mini/lib/startParam'
-import Awg2 from '@/tg-mini/pages/Awg2'
-import Awg3 from '@/tg-mini/pages/Awg3'
+import Awg from '@/tg-mini/pages/Awg'
 import Mtproxy from '@/tg-mini/pages/Mtproxy'
 import Configs from '@/tg-mini/pages/Configs'
 import Cidr from '@/tg-mini/pages/Cidr'
@@ -57,22 +56,9 @@ export default function TgMiniApp() {
                 </FeatureGate>
               }
             />
-            <Route
-              path="awg2"
-              element={
-                <FeatureGate featureKey="awg2">
-                  <Awg2 />
-                </FeatureGate>
-              }
-            />
-            <Route
-              path="awg3"
-              element={
-                <FeatureGate featureKey="awg3">
-                  <Awg3 />
-                </FeatureGate>
-              }
-            />
+            <Route path="awg" element={<Awg />} />
+            <Route path="awg2" element={<Navigate to="/awg?v=2" replace />} />
+            <Route path="awg3" element={<Navigate to="/awg?v=3" replace />} />
             <Route
               path="mtproxy"
               element={

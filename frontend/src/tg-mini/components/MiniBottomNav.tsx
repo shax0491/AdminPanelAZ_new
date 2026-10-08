@@ -20,6 +20,8 @@ export interface MiniTabItem {
   icon: LucideIcon
   end?: boolean
   featureKey?: string
+  /** Shown when any of these features is on. */
+  anyFeatureKeys?: string[]
 }
 
 const USER_TABS: MiniTabItem[] = [
@@ -32,8 +34,7 @@ const ADMIN_TABS: MiniTabItem[] = [
   { to: '/configs', label: 'Конфиги', icon: FileKey },
   { to: '/nodes', label: 'Узлы', icon: Server },
   { to: '/warper', label: 'WARP', icon: Cloud, featureKey: 'warper' },
-  { to: '/awg2', label: 'AWG 2', icon: Shield, featureKey: 'awg2' },
-  { to: '/awg3', label: 'AWG 3', icon: Shield, featureKey: 'awg3' },
+  { to: '/awg', label: 'AmneziaWG', shortLabel: 'AWG', icon: Shield, anyFeatureKeys: ['awg2', 'awg3'] },
   { to: '/mtproxy', label: 'MTProxy', shortLabel: 'MTP', icon: Send, featureKey: 'mtproxy' },
   { to: '/unlock-codes', label: 'Коды', shortLabel: 'Коды', icon: KeyRound, featureKey: 'unlock_codes' },
   { to: '/cidr', label: 'CIDR', icon: Database },
@@ -55,6 +56,7 @@ export function miniTabsForRole(
 ): MiniTabItem[] {
   const tabs = isAdmin ? ADMIN_TABS : USER_TABS
   return tabs.filter((tab) => {
+    if (tab.anyFeatureKeys) return tab.anyFeatureKeys.some((key) => Boolean(features?.[key]))
     if (!tab.featureKey) return true
     return Boolean(features?.[tab.featureKey])
   })
