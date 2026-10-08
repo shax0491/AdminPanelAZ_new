@@ -121,3 +121,29 @@ def test_mode_class_ignores_warp_dns_rule():
     assert _mode_class(rules, "13335") == "marked"
     assert _mode_class("9990:\tfrom 10.2.0.2 lookup 13335\n", "13335") == "none"
     assert _mode_class("10000:\tfrom 10.29.0.0/16 lookup 13335\n", "13335") == "all"
+
+
+def test_parse_peer_names():
+    conf = (
+        "[Interface]\nAddress = 10.29.9.1/24\n\n"
+        "# Client = AT_Keenetic_WRK\n# PrivateKey = x\n[Peer]\nPublicKey = p\nAllowedIPs = 10.29.9.3/32\n\n"
+        "# Client = phone\n[Peer]\nPublicKey = q\nAllowedIPs = 10.29.9.4/32, fd00::4/128\n"
+    )
+    names = warp_dns.parse_peer_names(conf)
+    assert names["10.29.9.3"] == "AT_Keenetic_WRK"
+    assert names["10.29.9.4"] == "phone"
+    assert "10.29.9.1" not in names
+
+
+def test_parse_conntrack_dns_counts_foreign():
+    text = (
+        "udp      17 108 src=10.9.0.2 dst=1.1.1.1 sport=50043 dport=53 src=127.1.1.1 dst=10.9.0.2 sport=53 dport=53904 [ASSURED] mark=0 use=1\n"
+        "udp      17 20 src=10.9.0.2 dst=10.9.0.1 sport=50044 dport=53 src=127.1.1.1 dst=10.9.0.2 sport=53 dport=50044 mark=0 use=1\n"
+        "tcp      6 30 TIME_WAIT src=10.29.0.3 dst=10.29.0.1 sport=4000 dport=53 src=127.1.1.1 dst=10.29.0.3 sport=53 dport=4000 [ASSURED] mark=0 use=1\n"
+        "udp      17 1 src=5.231.28.16 dst=195.208.5.1 sport=50942 dport=53 src=195.208.5.1 dst=5.231.28.16 sport=53 dport=50942 mark=0 use=1\n"
+    )
+    rows = warp_dns.parse_conntrack_dns(text)
+    assert rows["10.9.0.2"] == {"total": 2, "foreign": 1}
+    assert rows["10.29.0.3"] == {"total": 1, "foreign": 0}
+    # запросы самого сервера (kresd к резолверам) не считаются
+    assert "5.231.28.16" not in rows

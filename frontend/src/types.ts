@@ -2174,6 +2174,11 @@ export interface WarpDnsResponse {
   kresd: Record<string, { reachable: boolean; outgoing: string | null }>
   resolvers: WarpDnsResolver[]
   counters: { intercepted: WarpDnsCounterRow[]; foreign: WarpDnsCounterRow[] | null }
+  top_clients?: {
+    available: boolean
+    reason: string | null
+    clients: { ip: string; name: string | null; protocol: string | null; flows: number; foreign: number }[]
+  }
   checked_at: number
 }
 

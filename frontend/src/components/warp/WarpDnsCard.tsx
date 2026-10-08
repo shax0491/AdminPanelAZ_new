@@ -170,6 +170,49 @@ export default function WarpDnsCard({ nodeId }: { nodeId: number | null }) {
             </div>
 
             <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium">Кто сейчас шлёт DNS</span>
+              {!data.top_clients ? (
+                <p className="text-xs text-muted-foreground">Обновите агент узла, чтобы видеть клиентов.</p>
+              ) : !data.top_clients.available ? (
+                <p className="text-xs text-muted-foreground">Недоступно: {data.top_clients.reason}</p>
+              ) : data.top_clients.clients.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Открытых DNS-соединений клиентов сейчас нет.</p>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Снимок открытых DNS-соединений (живут около минуты), а не сумма за всё время. «К чужим DNS» — запросы
+                    не к DNS туннеля: у устройства прописан свой DNS.
+                  </p>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Клиент</TableHead>
+                        <TableHead>Протокол</TableHead>
+                        <TableHead className="text-right">Соединений</TableHead>
+                        <TableHead className="text-right">К чужим DNS</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.top_clients.clients.map((client) => (
+                        <TableRow key={client.ip}>
+                          <TableCell>
+                            <div className="font-medium">{client.name ?? 'неизвестный'}</div>
+                            <div className="font-mono text-xs text-muted-foreground">{client.ip}</div>
+                          </TableCell>
+                          <TableCell>{client.protocol ?? '—'}</TableCell>
+                          <TableCell className="text-right tabular-nums">{client.flows}</TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {client.foreign > 0 ? <Badge variant="warning">{client.foreign}</Badge> : 0}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2">
               <button
                 type="button"
                 className="flex items-center gap-1 text-left text-sm font-medium"

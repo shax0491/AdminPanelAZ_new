@@ -70,4 +70,19 @@ describe('WarpDnsCard', () => {
     render(<WarpDnsCard nodeId={2} />)
     expect(await screen.findByText('Выключено (как у апстрима)')).toBeTruthy()
   })
+
+  it('shows who is sending DNS right now', async () => {
+    api.getWarpDns.mockResolvedValue(
+      dns({
+        top_clients: {
+          available: true,
+          reason: null,
+          clients: [{ ip: '10.29.0.3', name: 'AT_Keenetic_WRK', protocol: 'OpenVPN', flows: 7, foreign: 2 }],
+        },
+      }),
+    )
+    render(<WarpDnsCard nodeId={1} />)
+    expect(await screen.findByText('AT_Keenetic_WRK')).toBeTruthy()
+    expect(screen.getByText('OpenVPN')).toBeTruthy()
+  })
 })

@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 import socket
 import subprocess
 import time
@@ -239,5 +240,137 @@ def dns_diagnostics(antizapret_path: Path) -> dict:
         },
         "resolvers": resolvers,
         "counters": counters,
+        "top_clients": dns_top_clients(client_prefix),
         "checked_at": int(time.time()),
     }
+
+
+# --- кто сейчас шлёт DNS ------------------------------------------------------------------------
+
+PEER_CONFIGS = (
+    (Path("/etc/wireguard/antizapret.conf"), "WireGuard"),
+    (Path("/etc/wireguard/vpn.conf"), "WireGuard"),
+    (Path("/etc/amneziawg/antizapret2.conf"), "AmneziaWG 2"),
+    (Path("/etc/amneziawg/vpn2.conf"), "AmneziaWG 2"),
+)
+OPENVPN_SOCKETS = Path("/run/openvpn-server")
+_CONNTRACK_RE = re.compile(r"^(udp|tcp)\s.*?\bsrc=(\S+) dst=(\S+) sport=\d+ dport=53\b")
+
+
+def parse_peer_names(conf_text: str) -> dict[str, str]:
+    """{ip: имя клиента} из блоков "# Client = имя" ... AllowedIPs = ip/32 конфига WireGuard/AmneziaWG."""
+    names: dict[str, str] = {}
+    current: str | None = None
+    for raw in conf_text.splitlines():
+        line = raw.strip()
+        if line.startswith("# Client ="):
+            current = line.split("=", 1)[1].strip()
+        elif line.startswith("AllowedIPs") and current:
+            for item in line.split("=", 1)[1].split(","):
+                ip = item.strip().split("/")[0]
+                if ip:
+                    names[ip] = current
+            current = None
+    return names
+
+
+def _openvpn_names(timeout: float = 2.0) -> dict[str, str]:
+    """{виртуальный ip: имя} из CLIENT_LIST сокетов управления OpenVPN."""
+    names: dict[str, str] = {}
+    if not OPENVPN_SOCKETS.is_dir():
+        return names
+    for sock_path in OPENVPN_SOCKETS.glob("*.sock"):
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+                sock.settimeout(timeout)
+                sock.connect(str(sock_path))
+                sock.sendall(b"status 2\n")
+                data = b""
+                deadline = time.monotonic() + timeout
+                while b"\nEND" not in data and time.monotonic() < deadline:
+                    chunk = sock.recv(65536)
+                    if not chunk:
+                        break
+                    data += chunk
+        except OSError:
+            continue
+        for line in data.decode("utf-8", errors="replace").splitlines():
+            parts = line.split(",")
+            if parts[0] == "CLIENT_LIST" and len(parts) > 3 and parts[3]:
+                names[parts[3]] = parts[1]
+    return names
+
+
+def _awg3_names() -> dict[str, str]:
+    try:
+        from app.services.awg3_clients import Awg3Store
+
+        return {str(c.get("ip")): name for name, c in Awg3Store().load_clients().items() if c.get("ip")}
+    except Exception:  # AWG 3 не установлен или файл клиентов повреждён
+        return {}
+
+
+def client_names() -> dict[str, tuple[str, str]]:
+    """{ip туннеля: (имя, протокол)}."""
+    result: dict[str, tuple[str, str]] = {}
+    for path, proto in PEER_CONFIGS:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for ip, name in parse_peer_names(text).items():
+            result[ip] = (name, proto)
+    for ip, name in _openvpn_names().items():
+        result[ip] = (name, "OpenVPN")
+    for ip, name in _awg3_names().items():
+        result[ip] = (name, "AmneziaWG 3")
+    return result
+
+
+def parse_conntrack_dns(text: str, client_prefix: str = "10") -> dict[str, dict]:
+    """{ip клиента: {total, foreign}} из `conntrack -L` для DNS-потоков клиентов туннелей.
+
+    dst первого направления - DNS, который спросил клиент (до DNAT на kresd). Свой DNS туннеля
+    оканчивается на .1 (10.29.8.1, 10.9.0.1 ...), остальное - чужой DNS.
+    """
+    tunnel_prefixes = (f"{client_prefix}.28.", f"{client_prefix}.29.", "10.9.")
+    rows: dict[str, dict] = {}
+    for line in text.splitlines():
+        match = _CONNTRACK_RE.match(line.strip())
+        if not match:
+            continue
+        src, dst = match.group(2), match.group(3)
+        if not src.startswith(tunnel_prefixes):
+            continue
+        row = rows.setdefault(src, {"total": 0, "foreign": 0})
+        row["total"] += 1
+        if not (dst.startswith(tunnel_prefixes) and dst.endswith(".1")):
+            row["foreign"] += 1
+    return rows
+
+
+def dns_top_clients(client_prefix: str = "10", limit: int = 15) -> dict:
+    """Снимок: кто из клиентов сейчас шлёт DNS (по открытым DNS-потокам conntrack)."""
+    if not shutil.which("conntrack"):
+        return {"available": False, "reason": "на узле нет conntrack (apt install conntrack)", "clients": []}
+    text = ""
+    for proto in ("udp", "tcp"):
+        try:
+            res = subprocess.run(["conntrack", "-L", "-p", proto, "--dport", "53"], capture_output=True, text=True, timeout=10)
+            text += res.stdout
+        except (subprocess.TimeoutExpired, OSError):
+            continue
+    flows = parse_conntrack_dns(text, client_prefix)
+    names = client_names() if flows else {}
+    clients = [
+        {
+            "ip": ip,
+            "name": names.get(ip, ("", ""))[0] or None,
+            "protocol": names.get(ip, ("", ""))[1] or None,
+            "flows": row["total"],
+            "foreign": row["foreign"],
+        }
+        for ip, row in flows.items()
+    ]
+    clients.sort(key=lambda c: (-c["flows"], c["ip"]))
+    return {"available": True, "reason": None, "clients": clients[:limit]}
