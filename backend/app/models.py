@@ -831,6 +831,8 @@ class AlertRuleMetric(str, enum.Enum):
     nodes_offline = "nodes_offline"
     node_offline_seconds = "node_offline_seconds"
     traffic_collector_lag_seconds = "traffic_collector_lag_seconds"
+    mtproxy_down = "mtproxy_down"
+    mtproxy_availability_pct = "mtproxy_availability_pct"
 
 
 class AlertRule(Base):

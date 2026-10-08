@@ -345,6 +345,13 @@ def warp_geo_dns(_: None = Depends(verify_api_key)):
     return dns_diagnostics(ANTIZAPRET_PATH)
 
 
+@app.get("/mtproxy/status")
+def mtproxy_status(_: None = Depends(verify_api_key)):
+    from app.services.mtproxy_monitor import collect_mtproxy_status
+
+    return collect_mtproxy_status()
+
+
 @app.get("/warp-geo/check")
 def warp_geo_check(scope: str = "antizapret", _: None = Depends(verify_api_key)):
     if scope not in ("antizapret", "vpn", "raw"):

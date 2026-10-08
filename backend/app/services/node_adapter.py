@@ -320,6 +320,9 @@ class NodeAdapter(ABC):
     def get_warp_dns(self) -> dict: ...
 
     @abstractmethod
+    def get_mtproxy_status(self) -> dict: ...
+
+    @abstractmethod
     def save_warp_proton_config(self, scope: str, raw_config: str) -> dict: ...
 
     @abstractmethod
@@ -853,6 +856,11 @@ class LocalNodeAdapter(NodeAdapter):
         from app.services.warp_dns import dns_diagnostics
 
         return dns_diagnostics(self._service.base_path)
+
+    def get_mtproxy_status(self) -> dict:
+        from app.services.mtproxy_monitor import collect_mtproxy_status
+
+        return collect_mtproxy_status()
 
     def save_warp_proton_config(self, scope: str, raw_config: str) -> dict:
         from app.services.warp_geo import save_proton_config
@@ -2070,6 +2078,9 @@ class RemoteNodeAdapter(NodeAdapter):
 
     def get_warp_dns(self) -> dict:
         return self._request("GET", "/warp-geo/dns", timeout=30.0)
+
+    def get_mtproxy_status(self) -> dict:
+        return self._request("GET", "/mtproxy/status", timeout=40.0)
 
     def save_warp_proton_config(self, scope: str, raw_config: str) -> dict:
         return self._request(

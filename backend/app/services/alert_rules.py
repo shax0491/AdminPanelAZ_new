@@ -22,6 +22,8 @@ ALERT_METRIC_LABELS: dict[str, str] = {
     AlertRuleMetric.nodes_offline.value: "Узлы offline",
     AlertRuleMetric.node_offline_seconds.value: "Узел offline (сек)",
     AlertRuleMetric.traffic_collector_lag_seconds.value: "Задержка traffic collector (сек)",
+    AlertRuleMetric.mtproxy_down.value: "MTProxy остановлен (узлов)",
+    AlertRuleMetric.mtproxy_availability_pct.value: "MTProxy: доступность из России, % (худший узел)",
 }
 
 OPERATOR_LABELS: dict[str, str] = {
@@ -121,6 +123,14 @@ def resolve_metric_value(db: Session, metric: AlertRuleMetric | str, node_id: in
         return float(count)
     if metric_key == AlertRuleMetric.traffic_collector_lag_seconds.value:
         return _traffic_collector_lag_seconds(db)
+    if metric_key == AlertRuleMetric.mtproxy_down.value:
+        from app.services.mtproxy_monitor import mtproxy_down_value
+
+        return mtproxy_down_value(db, node_id)
+    if metric_key == AlertRuleMetric.mtproxy_availability_pct.value:
+        from app.services.mtproxy_monitor import mtproxy_availability_value
+
+        return mtproxy_availability_value(db, node_id)
     if metric_key == AlertRuleMetric.node_offline_seconds.value:
         if node_id is not None:
             node = db.query(Node).filter(Node.id == node_id).first()

@@ -132,6 +132,7 @@ BOT_COMMANDS: tuple[tuple[str, str], ...] = (
     ("cidr", "Статус CIDR pipeline (admin)"),
     ("warper", "Статус AZ-WARP (admin)"),
     ("awg2", "Статус AZ-AWG2 (admin)"),
+    ("mtproxy", "MTProxy на узлах (admin)"),
 )
 
 # --- /start ---
@@ -184,6 +185,7 @@ HELP_ADMIN_UNLOCK = "• /unlock — генерация unlock-ключа"
 HELP_ADMIN_WARPER = "• /warper — статус AZ-WARP"
 HELP_ADMIN_AWG2 = "• /awg2 — статус AZ-AWG2"
 HELP_ADMIN_AWG3 = "• /awg3 — статус AmneziaWG 3"
+HELP_ADMIN_MTPROXY = "• /mtproxy — MTProxy на узлах: работает ли и доступность из России"
 HELP_ADMIN_SETTINGS = "/settings — настройки панели (inline-меню)"
 HELP_ADMIN_FOOTER = ""
 HELP_LINES = HELP_LINES_MAIN

@@ -44,6 +44,7 @@ from app.services.telegram_bot_handlers.status import handle_status
 from app.services.telegram_bot_handlers.warper_status import handle_warper_status
 from app.services.telegram_bot_handlers.awg2_status import handle_awg2_status
 from app.services.telegram_bot_handlers.awg3_status import handle_awg3_status
+from app.services.telegram_bot_handlers.mtproxy_status import handle_mtproxy_status
 from app.services.telegram_bot_handlers.traffic import handle_traffic
 from app.services.telegram_bot_handlers.inline import handle_chosen_inline_result, handle_inline_query
 from app.services.telegram_bot_command_rate_limit import telegram_bot_command_rate_limit_service
@@ -138,6 +139,8 @@ async def _dispatch_command(ctx: BotContext, command: str, args: str) -> None:
         await handle_awg2_status(ctx)
     elif command == "/awg3":
         await handle_awg3_status(ctx)
+    elif command == "/mtproxy":
+        await handle_mtproxy_status(ctx)
     else:
         from app.services.telegram_api import send_message
 
