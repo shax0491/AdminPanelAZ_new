@@ -570,7 +570,7 @@ function ConnectionAddressesCard({
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {listSynced
-                    ? 'Первый адрес списка remote при сохранении записывается в OPENVPN_HOST. Поле setup здесь только для просмотра.'
+                    ? 'Адрес берётся из списка remote (первый в списке). Чтобы поменять, отредактируйте список.'
                     : fieldDisplay(openvpnField).description}
                 </p>
                 <p className="font-mono text-[10px] text-muted-foreground/70">
@@ -580,22 +580,29 @@ function ConnectionAddressesCard({
               <Input
                 id={openvpnField.html_id || openvpnField.key}
                 value={listSynced ? (syncedOpenvpnHost ?? '') : (draft.openvpn_host ?? '')}
-                disabled={disabled || listSynced}
+                disabled={disabled}
                 readOnly={listSynced}
+                className={cn(listSynced && 'bg-muted/40')}
                 placeholder={openvpnField.env}
                 onChange={(e) => onDraftChange('openvpn_host', e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">
-                Несколько remote — на вкладке{' '}
-                <button
-                  type="button"
-                  className="font-medium text-primary underline-offset-4 hover:underline"
-                  onClick={onOpenPanelTab}
-                >
-                  OpenVPN (панель)
-                </button>
-                .
-              </p>
+              {listSynced ? (
+                <Button type="button" variant="outline" size="sm" onClick={onOpenPanelTab}>
+                  Изменить список адресов
+                </Button>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Несколько remote — на вкладке{' '}
+                  <button
+                    type="button"
+                    className="font-medium text-primary underline-offset-4 hover:underline"
+                    onClick={onOpenPanelTab}
+                  >
+                    OpenVPN (панель)
+                  </button>
+                  .
+                </p>
+              )}
             </div>
           )}
           {wireguardField && (
@@ -626,7 +633,7 @@ function ConnectionAddressesCard({
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {wireguardSynced
-                    ? 'Первый адрес списка remote при сохранении записывается в WIREGUARD_HOST (прокси для AWG/WG). Поле setup здесь только для просмотра.'
+                    ? 'Включена галочка «Также для AmneziaWG / WireGuard»: адрес берётся из списка remote (первый в списке). Чтобы поменять, отредактируйте список.'
                     : fieldDisplay(wireguardField).description}
                 </p>
                 <p className="font-mono text-[10px] text-muted-foreground/70">
@@ -636,16 +643,22 @@ function ConnectionAddressesCard({
               <Input
                 id={wireguardField.html_id || wireguardField.key}
                 value={wireguardSynced ? (syncedOpenvpnHost ?? '') : (draft.wireguard_host ?? '')}
-                disabled={disabled || wireguardSynced}
+                disabled={disabled}
                 readOnly={wireguardSynced}
+                className={cn(wireguardSynced && 'bg-muted/40')}
                 placeholder={wireguardField.env}
                 onChange={(e) => onDraftChange('wireguard_host', e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">
-                {wireguardSynced
-                  ? 'Галочка «Также для AmneziaWG / WireGuard» на вкладке OpenVPN (панель).'
-                  : 'Несколько адресов пока только для OpenVPN. Для прокси GubernievS включите галочку на вкладке OpenVPN (панель).'}
-              </p>
+              {wireguardSynced ? (
+                <Button type="button" variant="outline" size="sm" onClick={onOpenPanelTab}>
+                  Изменить список адресов
+                </Button>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Несколько адресов пока только для OpenVPN. Для прокси GubernievS включите галочку на вкладке OpenVPN
+                  (панель).
+                </p>
+              )}
             </div>
           )}
         </div>
