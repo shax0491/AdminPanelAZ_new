@@ -25,6 +25,7 @@ describe('vpnVisibility', () => {
       'openvpn',
       'wireguard',
       'amneziawg2',
+      'amneziawg3',
     ])
   })
 

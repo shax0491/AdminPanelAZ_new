@@ -23,11 +23,12 @@ import {
 import { cn } from '@/lib/utils'
 import type { SelfServiceQuota, User, VpnType } from '@/types'
 
-const PROTOCOL_ORDER: VpnType[] = ['openvpn', 'wireguard', 'amneziawg2']
+const PROTOCOL_ORDER: VpnType[] = ['openvpn', 'wireguard', 'amneziawg2', 'amneziawg3']
 
 function vpnLabel(type: VpnType): string {
   if (type === 'openvpn') return 'OpenVPN'
   if (type === 'wireguard') return 'WG/AWG 1.5'
+  if (type === 'amneziawg3') return 'AWG 3'
   return 'AWG 2'
 }
 
@@ -46,6 +47,9 @@ async function setTrafficLimitForProtocol(
     await tgAwg2SetTrafficLimit(clientName, value, unit, periodDays)
     return
   }
+  if (protocol === 'amneziawg3') {
+    throw new Error('лимит трафика для AWG 3 задаётся в панели')
+  }
   await tgWgSetTrafficLimit(clientName, value, unit, periodDays)
 }
 
@@ -57,6 +61,7 @@ interface CreateConfigDialogProps {
   openvpnEnabled: boolean
   wireguardEnabled: boolean
   awg2Enabled: boolean
+  awg3Enabled: boolean
   quota: SelfServiceQuota | null
   onCreated: () => void
 }
@@ -69,6 +74,7 @@ export default function CreateConfigDialog({
   openvpnEnabled,
   wireguardEnabled,
   awg2Enabled,
+  awg3Enabled,
   quota,
   onCreated,
 }: CreateConfigDialogProps) {
@@ -77,9 +83,10 @@ export default function CreateConfigDialog({
       PROTOCOL_ORDER.filter((type) => {
         if (type === 'openvpn') return openvpnEnabled
         if (type === 'wireguard') return wireguardEnabled
+        if (type === 'amneziawg3') return awg3Enabled
         return awg2Enabled
       }),
-    [openvpnEnabled, wireguardEnabled, awg2Enabled],
+    [openvpnEnabled, wireguardEnabled, awg2Enabled, awg3Enabled],
   )
 
   const [clientName, setClientName] = useState('')
@@ -268,7 +275,7 @@ export default function CreateConfigDialog({
             )
           } catch (err) {
             failed.push(
-              `${vpnLabel(protocol)}: ${err instanceof ApiError ? err.message : 'ошибка'}`,
+              `${vpnLabel(protocol)}: ${err instanceof Error ? err.message : 'ошибка'}`,
             )
           }
         }

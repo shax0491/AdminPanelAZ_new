@@ -18,6 +18,9 @@ export function isVpnTypeVisibleInPolicy(
   if (vpnType === 'amneziawg2') {
     return protocols.includes('amneziawg2')
   }
+  if (vpnType === 'amneziawg3') {
+    return protocols.includes('amneziawg3')
+  }
   return false
 }
 
@@ -29,5 +32,6 @@ export function protocolFiltersForPolicy(
   if (isVpnTypeVisibleInPolicy('openvpn', policy, isAdmin)) options.push('openvpn')
   if (isVpnTypeVisibleInPolicy('wireguard', policy, isAdmin)) options.push('wireguard')
   if (isVpnTypeVisibleInPolicy('amneziawg2', policy, isAdmin)) options.push('amneziawg2')
+  if (isVpnTypeVisibleInPolicy('amneziawg3', policy, isAdmin)) options.push('amneziawg3')
   return options
 }

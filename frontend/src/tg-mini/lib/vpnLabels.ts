@@ -9,6 +9,6 @@ export function vpnTypeLabel(vpnType: string): string {
 export function vpnTypeBadgeClass(vpnType: string): string {
   if (vpnType === 'openvpn') return 'tg-mini-protocol-ovpn'
   if (vpnType === 'wireguard') return 'tg-mini-protocol-wg'
-  if (vpnType === 'amneziawg2') return 'tg-mini-protocol-awg2'
+  if (vpnType === 'amneziawg2' || vpnType === 'amneziawg3') return 'tg-mini-protocol-awg2'
   return 'tg-mini-protocol-default'
 }

@@ -946,6 +946,20 @@ export interface TgMiniAwg2TopTraffic {
   tx: number
 }
 
+export interface TgMiniMtproxyNode {
+  node_id: number
+  node_name: string
+  installed: boolean
+  running?: boolean
+  status?: string
+  version?: string | null
+  port?: number | null
+  domain?: string | null
+  connections?: number | null
+  error?: string | null
+  availability?: { percentage: number | null; success?: number | null; total?: number | null; checked_at?: string | null } | null
+}
+
 export interface TgMiniAwg2Status {
   node_id: number
   node_name: string

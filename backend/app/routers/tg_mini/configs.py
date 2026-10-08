@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models import User, VpnConfig, VpnType
 from app.schemas import MessageResponse
 from app.services.node_manager import get_active_adapter, get_active_node
+from app.services.profile_delivery import profile_files_for_delivery
 from app.services.profile_download_name import build_profile_download_filename, enrich_profile_files
 from app.services.vpn_profile_visibility import (
     EMPTY_CATALOG_MESSAGE,
@@ -60,7 +61,7 @@ def mini_config_files(
 ):
     config = _get_accessible_config(db, config_id, current_user)
     adapter = get_active_adapter(db)
-    files = adapter.get_profile_files(config.client_name, VpnType(config.vpn_type.value))
+    files = profile_files_for_delivery(adapter, config.client_name, VpnType(config.vpn_type.value))
     policy = resolve_effective_visible_vpn_profiles(db, current_user)
     files = filter_profile_files(files, policy)
     if not files:
@@ -77,7 +78,7 @@ def mini_send_config(
 ):
     config = _get_accessible_config(db, config_id, current_user)
     adapter = get_active_adapter(db)
-    files = adapter.get_profile_files(config.client_name, VpnType(config.vpn_type.value))
+    files = profile_files_for_delivery(adapter, config.client_name, VpnType(config.vpn_type.value))
     match = next((item for item in files if item.get("path") == payload.path), None)
     policy = resolve_effective_visible_vpn_profiles(db, current_user)
     if match is None or not profile_file_allowed(
@@ -107,7 +108,7 @@ def mini_qr_link(
 ):
     config = _get_accessible_config(db, config_id, current_user)
     adapter = get_active_adapter(db)
-    files = adapter.get_profile_files(config.client_name, VpnType(config.vpn_type.value))
+    files = profile_files_for_delivery(adapter, config.client_name, VpnType(config.vpn_type.value))
     match = next((item for item in files if item.get("path") == path), None)
     policy = resolve_effective_visible_vpn_profiles(db, current_user)
     if match is None or not profile_file_allowed(
@@ -120,7 +121,9 @@ def mini_qr_link(
     return _qr_download_service(db, request).create_token(
         file_path=path,
         config_type=config.vpn_type.value,
-        config_name=build_profile_download_filename(config.client_name, path=path),
+        config_name=build_profile_download_filename(
+            config.client_name, protocol=match.get("protocol", ""), variant=match.get("variant", ""), path=path,
+        ),
         creator_id=current_user.id,
         creator_username=current_user.username,
         remote_addr=request.client.host if request.client else None,

@@ -45,6 +45,13 @@ def mini_awg3_status(db: Session = Depends(get_db), _: User = Depends(require_tg
     return build_awg3_status_payload(db)
 
 
+@router.get("/mtproxy/status")
+def mini_mtproxy_status(db: Session = Depends(get_db), _: User = Depends(require_tg_mini_admin)):
+    from app.services.mtproxy_monitor import mtproxy_overview
+
+    return {"nodes": mtproxy_overview(db)}
+
+
 @router.get("/cidr/status")
 def mini_cidr_status(db: Session = Depends(get_db), _: User = Depends(require_tg_mini_admin)):
     return build_cidr_status_payload(db)

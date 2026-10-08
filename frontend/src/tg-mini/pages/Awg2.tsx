@@ -18,14 +18,14 @@ import MetricCard from '@/components/noc/MetricCard'
 import { formatBytes } from '@/components/warper/utils'
 import { cn } from '@/lib/utils'
 import MiniPageHeader from '@/tg-mini/components/MiniPageHeader'
-import { getTgAwg2Status } from '@/tg-mini/api'
+import { getTgAwg2Status, getTgAwg3Status } from '@/tg-mini/api'
 import { useTgAuth } from '@/tg-mini/context/TgAuthContext'
 import { awg2NodeLabel, awg2StatusMeta } from '@/tg-mini/lib/awg2Mini'
 import type { TgMiniAwg2Status } from '@/types'
 
-function Awg2Skeleton() {
+function Awg2Skeleton({ version }: { version: 2 | 3 }) {
   return (
-    <div className="tg-mini-dashboard space-y-4" aria-busy="true" aria-label="Загрузка AmneziaWG 2">
+    <div className="tg-mini-dashboard space-y-4" aria-busy="true" aria-label={`Загрузка AmneziaWG ${version}`}>
       <div className="tg-mini-skeleton" style={{ height: '2.5rem' }} />
       <div className="tg-mini-skeleton tg-mini-skeleton-summary" />
       <div className="tg-mini-cards">
@@ -79,6 +79,11 @@ function DetailTile({ label, children }: { label: string; children: ReactNode })
 }
 
 export default function Awg2() {
+  return <AwgStatusPage version={2} />
+}
+
+/** Статус AmneziaWG 2 или 3 на активном узле: ответы /awg2/status и /awg3/status одной формы. */
+export function AwgStatusPage({ version }: { version: 2 | 3 }) {
   const { isAdmin } = useTgAuth()
   const [data, setData] = useState<TgMiniAwg2Status | null>(null)
   const [loading, setLoading] = useState(true)
@@ -94,14 +99,14 @@ export default function Awg2() {
     }
     setError(null)
     try {
-      setData(await getTgAwg2Status())
+      setData(await (version === 3 ? getTgAwg3Status() : getTgAwg2Status()))
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Ошибка загрузки')
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [])
+  }, [version])
 
   useEffect(() => {
     if (!isAdmin) return
@@ -113,7 +118,7 @@ export default function Awg2() {
   }
 
   if (loading) {
-    return <Awg2Skeleton />
+    return <Awg2Skeleton version={version} />
   }
 
   const status = awg2StatusMeta(data)
@@ -122,8 +127,8 @@ export default function Awg2() {
   return (
     <div className="tg-mini-dashboard space-y-4">
       <MiniPageHeader
-        title="AmneziaWG 2"
-        subtitle="Нативный AmneziaWG 2 на активном узле (только просмотр)"
+        title={`AmneziaWG ${version}`}
+        subtitle={`AmneziaWG ${version} на активном узле (только просмотр)`}
         onRefresh={() => void load({ silent: true })}
         refreshing={refreshing}
       />
@@ -243,9 +248,9 @@ export default function Awg2() {
           {!installed && (
             <div className="tg-mini-filter-empty">
               <ShieldOff size={24} className="text-muted-foreground" aria-hidden />
-              <p className="text-sm font-medium">AmneziaWG 2 не найден</p>
+              <p className="text-sm font-medium">AmneziaWG {version} не найден</p>
               <p className="max-w-sm text-xs text-muted-foreground">
-                На узле <strong>{data.node_name}</strong> нет нативного AmneziaWG 2 (бинарь awg отсутствует).
+                На узле <strong>{data.node_name}</strong> AmneziaWG {version} не установлен.
                 {data.missing_components.length > 0 && (
                   <> Не хватает: {data.missing_components.join(', ')}.</>
                 )}

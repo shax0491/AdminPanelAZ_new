@@ -21,6 +21,7 @@ import type {
   TgMiniSettings,
   TgMiniWarperStatus,
   TgMiniAwg2Status,
+  TgMiniMtproxyNode,
   TgMiniCidrStatus,
   User,
   VpnConfig,
@@ -238,6 +239,15 @@ export async function getTgWarperStatus(): Promise<TgMiniWarperStatus> {
 
 export async function getTgAwg2Status(): Promise<TgMiniAwg2Status> {
   return tgFetch<TgMiniAwg2Status>('/awg2/status')
+}
+
+// /awg3/status отвечает в той же форме, что /awg2/status
+export async function getTgAwg3Status(): Promise<TgMiniAwg2Status> {
+  return tgFetch<TgMiniAwg2Status>('/awg3/status')
+}
+
+export async function getTgMtproxyStatus(): Promise<{ nodes: TgMiniMtproxyNode[] }> {
+  return tgFetch<{ nodes: TgMiniMtproxyNode[] }>('/mtproxy/status')
 }
 
 export async function getTgCidrStatus(): Promise<TgMiniCidrStatus> {

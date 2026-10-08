@@ -5,6 +5,8 @@ import { TgAuthProvider, useTgAuth } from '@/tg-mini/context/TgAuthContext'
 import MiniShell from '@/tg-mini/layout/MiniShell'
 import { mapTelegramStartParam } from '@/tg-mini/lib/startParam'
 import Awg2 from '@/tg-mini/pages/Awg2'
+import Awg3 from '@/tg-mini/pages/Awg3'
+import Mtproxy from '@/tg-mini/pages/Mtproxy'
 import Configs from '@/tg-mini/pages/Configs'
 import Cidr from '@/tg-mini/pages/Cidr'
 import Dashboard from '@/tg-mini/pages/Dashboard'
@@ -63,6 +65,15 @@ export default function TgMiniApp() {
                 </FeatureGate>
               }
             />
+            <Route
+              path="awg3"
+              element={
+                <FeatureGate featureKey="awg3">
+                  <Awg3 />
+                </FeatureGate>
+              }
+            />
+            <Route path="mtproxy" element={<Mtproxy />} />
             <Route
               path="unlock-codes"
               element={
