@@ -16,23 +16,54 @@ import { triggerFileDownload } from '@/lib/triggerFileDownload'
 import { cn } from '@/lib/utils'
 import type { RouteResultFileEntry } from '@/types'
 
+// Шлюз у каждого протокола свой (свой интерфейс на сервере): маршрут на чужой шлюз уйдёт не в тот туннель.
+// При ALTERNATIVE_CLIENT_IP вместо 10.29 будет 172.29 — в файлах адрес уже подставлен правильно.
+const KEENETIC_DNS =
+  'DNS_IP_1 и DNS_IP_2 замените на DNS-серверы, прописанные в роутере (например 1.1.1.1 и 8.8.8.8): запросы к ним пойдут в туннель, и ответит DNS AntiZapret.'
+
 const ROUTER_META: Record<
   string,
-  { label: string; initial: string; hint: string }
+  { label: string; initial: string; hint: string; howto: string }
 > = {
-  keenetic_wg: { label: 'Keenetic', initial: 'K', hint: 'WireGuard-маршруты' },
-  mikrotik_wg: { label: 'MikroTik', initial: 'M', hint: 'WireGuard-маршруты' },
-  tplink_ovpn: { label: 'TP-Link', initial: 'T', hint: 'OpenVPN-маршруты' },
-  keenetic_awg2: { label: 'Keenetic (AmneziaWG 2)', initial: 'K2', hint: 'AmneziaWG 2-маршруты' },
-  mikrotik_awg2: { label: 'MikroTik (AmneziaWG 2)', initial: 'M2', hint: 'AmneziaWG 2-маршруты' },
-  keenetic_awg3: { label: 'Keenetic (AmneziaWG 3)', initial: 'K3', hint: 'AmneziaWG 3-маршруты' },
-  mikrotik_awg3: { label: 'MikroTik (AmneziaWG 3)', initial: 'M3', hint: 'AmneziaWG 3-маршруты' },
+  keenetic_wg: {
+    label: 'Keenetic', initial: 'K', hint: 'WireGuard / AmneziaWG 1.5',
+    howto: 'Шлюз 10.29.8.1 (интерфейс WireGuard). Импорт: Маршрутизация → Импорт маршрутов, интерфейс — подключение WireGuard. ' + KEENETIC_DNS,
+  },
+  mikrotik_wg: {
+    label: 'MikroTik', initial: 'M', hint: 'WireGuard / AmneziaWG 1.5',
+    howto: 'Шлюз 10.29.8.1. Вставьте строки в терминал MikroTik (New Terminal).',
+  },
+  tplink_ovpn: {
+    label: 'TP-Link', initial: 'T', hint: 'OpenVPN',
+    howto: 'Строки route добавьте в конец .ovpn-файла перед загрузкой в роутер (VPN-клиент → OpenVPN).',
+  },
+  tplink_wg: {
+    label: 'TP-Link (WireGuard)', initial: 'TW', hint: 'WireGuard: строка AllowedIPs',
+    howto: 'Замените строку AllowedIPs в WireGuard-конфиге на эту и загрузите конфиг в роутер (VPN-клиент → WireGuard). AmneziaWG 2/3 штатная прошивка TP-Link не поддерживает.',
+  },
+  keenetic_awg2: {
+    label: 'Keenetic (AmneziaWG 2)', initial: 'K2', hint: 'AmneziaWG 2',
+    howto: 'Шлюз 10.29.9.1 (свой у AmneziaWG 2). Импорт: Маршрутизация → Импорт маршрутов, интерфейс — подключение AmneziaWG 2. ' + KEENETIC_DNS,
+  },
+  mikrotik_awg2: {
+    label: 'MikroTik (AmneziaWG 2)', initial: 'M2', hint: 'AmneziaWG 2',
+    howto: 'Шлюз 10.29.9.1. Вставьте строки в терминал MikroTik.',
+  },
+  keenetic_awg3: {
+    label: 'Keenetic (AmneziaWG 3)', initial: 'K3', hint: 'AmneziaWG 3',
+    howto: 'Шлюз 10.9.0.1 (свой у AmneziaWG 3). Импорт: Маршрутизация → Импорт маршрутов, интерфейс — подключение AmneziaWG 3. ' + KEENETIC_DNS,
+  },
+  mikrotik_awg3: {
+    label: 'MikroTik (AmneziaWG 3)', initial: 'M3', hint: 'AmneziaWG 3',
+    howto: 'Шлюз 10.9.0.1. Вставьте строки в терминал MikroTik.',
+  },
 }
 
 const PUBLIC_SLUGS: Record<string, string> = {
   keenetic_wg: 'keenetic',
   mikrotik_wg: 'mikrotik',
   tplink_ovpn: 'tplink',
+  tplink_wg: 'tplink-wg',
   keenetic_awg2: 'keenetic-awg2',
   mikrotik_awg2: 'mikrotik-awg2',
   keenetic_awg3: 'keenetic-awg3',
@@ -45,6 +76,7 @@ const ROUTER_FILENAMES: Record<string, string> = {
   keenetic_wg: 'keenetic-wireguard-routes.txt',
   mikrotik_wg: 'mikrotik-wireguard-routes.txt',
   tplink_ovpn: 'tp-link-openvpn-routes.txt',
+  tplink_wg: 'tp-link-wireguard-allowedips.txt',
   keenetic_awg2: 'keenetic-amneziawg2-routes.txt',
   mikrotik_awg2: 'mikrotik-amneziawg2-routes.txt',
   keenetic_awg3: 'keenetic-amneziawg3-routes.txt',
@@ -115,6 +147,7 @@ function RouterFileRow({
               {ready ? `${file.line_count} строк` : 'Сгенерируйте в «Маршрутизация»'}
               {meta?.hint ? ` · ${meta.hint}` : ''}
             </p>
+            {meta?.howto && <p className="mt-1 text-xs text-muted-foreground">{meta.howto}</p>}
           </div>
         </div>
 

@@ -7,6 +7,7 @@ PUBLIC_ROUTE_ROUTERS: dict[str, str] = {
     "keenetic": "keenetic_wg",
     "mikrotik": "mikrotik_wg",
     "tplink": "tplink_ovpn",
+    "tplink-wg": "tplink_wg",
     "keenetic-awg2": "keenetic_awg2",
     "mikrotik-awg2": "mikrotik_awg2",
     "keenetic-awg3": "keenetic_awg3",
