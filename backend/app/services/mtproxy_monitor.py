@@ -184,3 +184,22 @@ def mtproxy_overview(db) -> list[dict]:
             continue
         rows.append({"node_id": node.id, "node_name": node.name, **status})
     return rows
+
+
+def mtproxy_all_nodes(db) -> list[dict]:
+    """Все VPN-узлы для вкладки MTProxy панели: и без MTProxyL, и недоступные, чтобы было видно, где его нет."""
+    from app.models import Node, NodeStatus
+    from app.services.node_manager import is_vpn_node
+
+    rows: list[dict] = []
+    for node in db.query(Node).order_by(Node.id.asc()).all():
+        if not is_vpn_node(node):
+            continue
+        row: dict = {"node_id": node.id, "node_name": node.name, "node_online": node.status == NodeStatus.online}
+        status = node_mtproxy_status(node) if row["node_online"] else None
+        if status is None:
+            row["installed"] = None  # агент не ответил или не умеет /mtproxy/status
+        else:
+            row.update(status)
+        rows.append(row)
+    return rows

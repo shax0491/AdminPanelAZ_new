@@ -58,6 +58,7 @@ export const SIDEBAR_NAV_GROUPS: SidebarNavGroup[] = [
       { to: '/proxy', label: 'Прокси', icon: Network, end: false, adminOnly: true, featureKey: 'proxy_nodes' },
       { to: '/warper', label: 'AZ-WARP', icon: Globe, end: false, adminOnly: true, featureKey: 'warper' },
       { to: '/warp-geo', label: 'WARP Geolocation', icon: Satellite, end: false, adminOnly: true, featureKey: 'warp_geo' },
+      { to: '/mtproxy', label: 'MTProxy', icon: Send, end: false, adminOnly: true, featureKey: 'mtproxy' },
       { to: '/failover', label: 'Автопереключение', icon: RefreshCw, end: false, adminOnly: true, featureKey: 'failover_pools' },
     ],
   },

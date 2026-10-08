@@ -960,6 +960,32 @@ export interface TgMiniMtproxyNode {
   availability?: { percentage: number | null; success?: number | null; total?: number | null; checked_at?: string | null } | null
 }
 
+export interface MtproxyAvailabilityCheck {
+  percentage: number | null
+  success?: number | null
+  total?: number | null
+  checked_at?: string | null
+  error?: string | null
+}
+
+/** Узел на вкладке MTProxy: installed=null - агент не ответил или старый, false - MTProxyL нет. */
+export interface MtproxyNodeStatus {
+  node_id: number
+  node_name: string
+  node_online: boolean
+  installed: boolean | null
+  running?: boolean
+  status?: string
+  version?: string | null
+  port?: number | null
+  domain?: string | null
+  connections?: number | null
+  unique_ips?: number | null
+  error?: string | null
+  availability?: MtproxyAvailabilityCheck | null
+  availability_recent?: MtproxyAvailabilityCheck[]
+}
+
 export interface TgMiniAwg2Status {
   node_id: number
   node_name: string

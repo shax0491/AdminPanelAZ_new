@@ -39,6 +39,7 @@ describe('SIDEBAR_NAV_GROUPS IA', () => {
       '/proxy',
       '/warper',
       '/warp-geo',
+      '/mtproxy',
       '/failover',
     ])
   })

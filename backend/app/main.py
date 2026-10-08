@@ -33,6 +33,7 @@ from app.routers import (
     configs,
     configs_bulk,
     dns_aaaa,
+    mtproxy,
     edit_files,
     failover_pools,
     ip_blocked,
@@ -289,6 +290,7 @@ app.include_router(monitoring.router, prefix=_API_PREFIX)
 app.include_router(alert_rules.router, prefix=_API_PREFIX)
 app.include_router(openvpn_buffer_guard.router, prefix=_API_PREFIX)
 app.include_router(dns_aaaa.router, prefix=_API_PREFIX)
+app.include_router(mtproxy.router, prefix=_API_PREFIX)
 app.include_router(settings_router.router, prefix=_API_PREFIX)
 app.include_router(maintenance.router, prefix=_API_PREFIX)
 app.include_router(settings_reboot.router, prefix=_API_PREFIX)
