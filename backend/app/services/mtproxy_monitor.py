@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import re
 import logging
 import os
 import shutil
@@ -297,3 +298,67 @@ def mtproxy_all_nodes(db) -> list[dict]:
             row.update(status)
         rows.append(row)
     return rows
+
+
+# --- действия из панели (выполняются на узле от root) ---------------------------------------------
+
+MTPROXY_ACTIONS = frozenset({"setlimits", "enable", "disable", "link", "reset_traffic", "restart"})
+_LABEL_RE = re.compile(r"^[A-Za-z0-9_.@-]{1,64}$")
+
+
+def _quota_arg(quota_gb) -> str:
+    """Квота для `secret setlimits`: 0 - без квоты, иначе гигабайты (MTProxyL понимает 12.5G)."""
+    value = round(float(quota_gb or 0), 2)
+    if value < 0 or value > 100_000:
+        raise ValueError("Квота: от 0 до 100000 ГБ")
+    return "0" if value == 0 else f"{value:g}G"
+
+
+def _known_labels(cmd: list[str], env: dict) -> set[str]:
+    proc = subprocess.run([*cmd, "secret", "list", "--json"], capture_output=True, text=True, timeout=30, env=env)
+    data = parse_last_json(proc.stdout)
+    return {str(item.get("label")) for item in data or [] if isinstance(item, dict)}
+
+
+def run_mtproxy_action(payload: dict) -> dict:
+    """Действие над MTProxyL узла: лимиты пользователя, вкл/выкл, ссылка, обнуление трафика, перезапуск."""
+    cmd = _mtproxyl_cmd()
+    if cmd is None:
+        raise ValueError("MTProxyL на узле не установлен")
+    action = str(payload.get("action") or "")
+    if action not in MTPROXY_ACTIONS:
+        raise ValueError(f"Неизвестное действие: {action}")
+    env = {**os.environ, "MTPROXYL_NONINTERACTIVE": "true", "NO_COLOR": "1"}
+    label = str(payload.get("label") or "")
+    if action in {"setlimits", "enable", "disable", "link"}:
+        if not _LABEL_RE.match(label) or label not in _known_labels(cmd, env):
+            raise ValueError(f"Пользователь не найден: {label}")
+
+    if action == "setlimits":
+        conns, ips = int(payload.get("max_conns") or 0), int(payload.get("max_ips") or 0)
+        if not (0 <= conns <= 10_000 and 0 <= ips <= 1_000):
+            raise ValueError("Соединения 0-10000, IP 0-1000 (0 - без лимита)")
+        args = ["secret", "setlimits", label, str(conns), str(ips), _quota_arg(payload.get("quota_gb"))]
+        expires = str(payload.get("expires") or "").strip()
+        if expires:
+            if not re.match(r"^(0|\d{4}-\d{2}-\d{2})$", expires):
+                raise ValueError("Срок: 0 (бессрочно) или дата ГГГГ-ММ-ДД")
+            args.append(expires)
+    elif action in {"enable", "disable"}:
+        args = ["secret", action, label]
+    elif action == "link":
+        args = ["secret", "link", label]
+    elif action == "reset_traffic":
+        args = ["stats", "reset", "traffic"]
+    else:
+        args = ["restart"]
+
+    proc = subprocess.run(
+        [*cmd, *args], capture_output=True, text=True, timeout=120, env=env,
+        input="y\n" if action == "reset_traffic" else None,
+    )
+    output = re.sub(r"\x1b\[[0-9;]*m", "", (proc.stdout or "") + (proc.stderr or "")).strip()
+    result = {"ok": proc.returncode == 0, "action": action, "label": label or None, "output": output[-2000:]}
+    if action == "link":
+        result["links"] = re.findall(r"(?:tg://proxy|https://t\.me/proxy)\?[^\s]+", output)
+    return result

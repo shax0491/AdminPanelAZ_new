@@ -16,9 +16,9 @@ export function awg2StatusMeta(data: TgMiniAwg2Status | null): {
     return { label: 'Не установлен', tone: 'warning' }
   }
   if (data.online_count > 0) {
-    return { label: 'Online', tone: 'success' }
+    return { label: `Онлайн: ${data.online_count}`, tone: 'success' }
   }
-  return { label: 'Установлен', tone: 'secondary' }
+  return { label: 'Работает, онлайн 0', tone: 'secondary' }
 }
 
 export function awg2NodeLabel(data: TgMiniAwg2Status): string {

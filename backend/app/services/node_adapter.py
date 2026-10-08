@@ -323,6 +323,9 @@ class NodeAdapter(ABC):
     def get_mtproxy_status(self) -> dict: ...
 
     @abstractmethod
+    def mtproxy_action(self, payload: dict) -> dict: ...
+
+    @abstractmethod
     def save_warp_proton_config(self, scope: str, raw_config: str) -> dict: ...
 
     @abstractmethod
@@ -861,6 +864,11 @@ class LocalNodeAdapter(NodeAdapter):
         from app.services.mtproxy_monitor import collect_mtproxy_status
 
         return collect_mtproxy_status()
+
+    def mtproxy_action(self, payload: dict) -> dict:
+        from app.services.mtproxy_monitor import run_mtproxy_action
+
+        return run_mtproxy_action(payload)
 
     def save_warp_proton_config(self, scope: str, raw_config: str) -> dict:
         from app.services.warp_geo import save_proton_config
@@ -2081,6 +2089,9 @@ class RemoteNodeAdapter(NodeAdapter):
 
     def get_mtproxy_status(self) -> dict:
         return self._request("GET", "/mtproxy/status", timeout=40.0)
+
+    def mtproxy_action(self, payload: dict) -> dict:
+        return self._request("POST", "/mtproxy/action", json=payload, timeout=150.0)
 
     def save_warp_proton_config(self, scope: str, raw_config: str) -> dict:
         return self._request(

@@ -169,3 +169,51 @@ def test_bot_text_shows_public_port_and_online_users():
     assert "порт 443 (слушает 8083)" in text
     assert "онлайн 2 из 3: a (6), c (1)" in text
     assert "⛔ b: 100% квоты" in text and "⚠️ c: 92% квоты" in text
+
+
+class _Proc:
+    def __init__(self, stdout="", returncode=0):
+        self.stdout, self.stderr, self.returncode = stdout, "", returncode
+
+
+def test_action_setlimits_builds_command(monkeypatch):
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        if args[-3:] == ["secret", "list", "--json"]:
+            return _Proc('[{"label": "bob"}]')
+        return _Proc("ok")
+
+    monkeypatch.setattr(mtproxy_monitor, "_mtproxyl_cmd", lambda: ["mtproxyl"])
+    monkeypatch.setattr(mtproxy_monitor.subprocess, "run", fake_run)
+    result = mtproxy_monitor.run_mtproxy_action(
+        {"action": "setlimits", "label": "bob", "max_conns": 20, "max_ips": 6, "quota_gb": 12, "expires": "2026-12-31"}
+    )
+    assert result["ok"] is True
+    assert calls[-1] == ["mtproxyl", "secret", "setlimits", "bob", "20", "6", "12G", "2026-12-31"]
+
+
+def test_action_rejects_unknown_user_and_bad_input(monkeypatch):
+    monkeypatch.setattr(mtproxy_monitor, "_mtproxyl_cmd", lambda: ["mtproxyl"])
+    monkeypatch.setattr(mtproxy_monitor.subprocess, "run", lambda args, **kw: _Proc('[{"label": "bob"}]'))
+    with pytest.raises(ValueError):
+        mtproxy_monitor.run_mtproxy_action({"action": "enable", "label": "eve"})
+    with pytest.raises(ValueError):
+        mtproxy_monitor.run_mtproxy_action({"action": "setlimits", "label": "bob", "expires": "30d"})
+    with pytest.raises(ValueError):
+        mtproxy_monitor.run_mtproxy_action({"action": "rm -rf"})
+    assert mtproxy_monitor._quota_arg(0) == "0" and mtproxy_monitor._quota_arg(12.5) == "12.5G"
+
+
+def test_action_link_extracts_links(monkeypatch):
+    def fake_run(args, **kwargs):
+        if args[-3:] == ["secret", "list", "--json"]:
+            return _Proc('[{"label": "bob"}]')
+        return _Proc("  Ссылка:\n  tg://proxy?server=a.example&port=443&secret=ee00\n")
+
+    monkeypatch.setattr(mtproxy_monitor, "_mtproxyl_cmd", lambda: ["mtproxyl"])
+    monkeypatch.setattr(mtproxy_monitor.subprocess, "run", fake_run)
+    assert mtproxy_monitor.run_mtproxy_action({"action": "link", "label": "bob"})["links"] == [
+        "tg://proxy?server=a.example&port=443&secret=ee00"
+    ]

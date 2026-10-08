@@ -352,6 +352,16 @@ def mtproxy_status(_: None = Depends(verify_api_key)):
     return collect_mtproxy_status()
 
 
+@app.post("/mtproxy/action")
+def mtproxy_action(payload: dict, _: None = Depends(verify_api_key)):
+    from app.services.mtproxy_monitor import run_mtproxy_action
+
+    try:
+        return run_mtproxy_action(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
 @app.get("/warp-geo/check")
 def warp_geo_check(scope: str = "antizapret", _: None = Depends(verify_api_key)):
     if scope not in ("antizapret", "vpn", "raw"):

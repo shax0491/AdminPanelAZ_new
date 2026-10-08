@@ -193,10 +193,12 @@ def panel_mtls_dir_writable() -> bool:
     """True when the panel process can create or update files under ``node_agent_mtls_dir``."""
     root = _mtls_root()
     try:
-        if root.exists():
-            return os.access(root, os.W_OK)
-        parent = root.parent
-        return parent.exists() and os.access(parent, os.W_OK)
+        # The directory is created with parents on first use, so the nearest existing
+        # ancestor decides (a fresh install has no /etc/adminpanelaz yet).
+        probe = root
+        while not probe.exists() and probe != probe.parent:
+            probe = probe.parent
+        return os.access(probe, os.W_OK)
     except OSError:
         return False
 
