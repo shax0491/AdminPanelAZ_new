@@ -2148,6 +2148,35 @@ export interface WarpGeoCheckResponse {
   preview?: boolean
 }
 
+export interface WarpDnsResolver {
+  instance: string
+  set: string
+  role: string
+  ip: string
+  interface: string | null
+  via_warp: boolean
+}
+
+export interface WarpDnsCounterRow {
+  subnet: string
+  label: string
+  udp: number
+  tcp: number
+}
+
+export interface WarpDnsResponse {
+  status: 'off' | 'no_warp' | 'russian_set' | 'ok' | 'leak'
+  status_text: string
+  enabled: boolean
+  warp_active: boolean
+  dns1: string
+  dns2: string
+  kresd: Record<string, { reachable: boolean; outgoing: string | null }>
+  resolvers: WarpDnsResolver[]
+  counters: { intercepted: WarpDnsCounterRow[]; foreign: WarpDnsCounterRow[] | null }
+  checked_at: number
+}
+
 export interface WarperHealthResponse {
   installed: boolean
   active: boolean

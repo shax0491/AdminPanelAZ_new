@@ -13,6 +13,7 @@ const api = vi.hoisted(() => ({
   setWarpModes: vi.fn(),
   applyWarpChanges: vi.fn(),
   testCloudflareWarpPreview: vi.fn(),
+  getWarpDns: vi.fn(),
 }))
 
 vi.mock('@/api/warpGeo', () => api)

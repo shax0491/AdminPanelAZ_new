@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
+import WarpDnsCard from '@/components/warp/WarpDnsCard'
 import {
   ANTIZAPRET_WARP_OPTIONS,
   describeModeSwitch,
@@ -663,6 +664,8 @@ export default function WarpGeoPage() {
           })}
         </CardContent>
       </Card>
+
+      <WarpDnsCard nodeId={nodeId} />
     </div>
   )
 }

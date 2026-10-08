@@ -146,6 +146,15 @@ ANTIZAPRET_PARAMS = [
         "description": "Блокировать трафик AntiZapret VPN и полного VPN, если встроенный WARP не подключился (иначе — выход напрямую)",
     },
     {
+        "key": "ANTIZAPRET_WARP_DNS",
+        "env": "ANTIZAPRET_WARP_DNS",
+        "type": "flag",
+        "default": "n",
+        "html_id": "ANTIZAPRET_WARP_DNS-toggle",
+        "title": "DNS через WARP",
+        "description": "Запросы сервера к зарубежным DNS-резолверам (заблокированные домены, список WARP, полный VPN) отправлять через WARP, а не с IP сервера; российские резолверы остаются напрямую. По умолчанию выключено, как у апстрима. Нужны скрипты узла не старее setup.sh --update от 08.10",
+    },
+    {
         "key": "WARP_MTU",
         "env": "WARP_MTU",
         "type": "number",

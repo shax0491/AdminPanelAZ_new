@@ -1,5 +1,5 @@
 import { apiFetch } from './http'
-import type { WarpGeoCheckResponse, WarpGeoNodesResponse, WarpGeoStatusResponse } from '../types'
+import type { WarpDnsResponse, WarpGeoCheckResponse, WarpGeoNodesResponse, WarpGeoStatusResponse } from '../types'
 
 export async function listWarpGeoNodes() {
   return apiFetch<WarpGeoNodesResponse>('/warp-geo/nodes')
@@ -11,6 +11,10 @@ export async function getWarpGeoStatus(nodeId: number) {
 
 export async function checkWarpGeo(nodeId: number, scope: 'antizapret' | 'vpn' | 'raw') {
   return apiFetch<WarpGeoCheckResponse>(`/warp-geo/${nodeId}/check?scope=${scope}`)
+}
+
+export async function getWarpDns(nodeId: number) {
+  return apiFetch<WarpDnsResponse>(`/warp-geo/${nodeId}/dns`)
 }
 
 export async function saveWarpProtonConfig(nodeId: number, scope: 'antizapret' | 'vpn', rawConfig: string) {

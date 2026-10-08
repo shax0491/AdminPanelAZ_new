@@ -71,6 +71,23 @@ def warp_geo_check(
     return adapter.check_warp_geo(scope)
 
 
+@router.get("/{node_id}/dns")
+def warp_geo_dns(node_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """DNS через WARP: куда уходят запросы kresd к резолверам и счётчики DNS клиентов."""
+    node = _get_vpn_node_or_404(node_id, db)
+    adapter = get_adapter_for_node(node)
+    try:
+        return adapter.get_warp_dns()
+    except HTTPException as exc:
+        # Агент старее этой версии панели не знает /warp-geo/dns и отвечает 404
+        if "not found" in str(exc.detail).lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Агент узла не умеет DNS-диагностику — обновите агент (Узлы → Обновить)",
+            ) from exc
+        raise
+
+
 @router.post("/{node_id}/proton-config")
 def warp_geo_save_proton_config(
     node_id: int,

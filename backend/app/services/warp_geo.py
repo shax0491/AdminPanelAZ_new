@@ -64,7 +64,9 @@ def _read_setup_file(antizapret_path: Path) -> dict[str, str]:
     return values
 
 
-_IP_RULE_TABLE_RE = re.compile(r"^\d+:\s+from\s+\S+\s+(fwmark\s+\S+\s+)?lookup\s+(\d+)\s*$")
+# Только правила подсетей клиентов ("from 10.29.0.0/16 ..."): правило DNS через WARP
+# ("from <адрес WARP> lookup 13335", одиночный адрес без маски) к режиму WARP не относится
+_IP_RULE_TABLE_RE = re.compile(r"^\d+:\s+from\s+\S+/\d+\s+(fwmark\s+\S+\s+)?lookup\s+(\d+)\s*$")
 
 
 def _mode_class(rules_text: str, table: str) -> str:

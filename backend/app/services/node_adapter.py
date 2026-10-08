@@ -317,6 +317,9 @@ class NodeAdapter(ABC):
     def check_warp_geo(self, scope: str) -> dict: ...
 
     @abstractmethod
+    def get_warp_dns(self) -> dict: ...
+
+    @abstractmethod
     def save_warp_proton_config(self, scope: str, raw_config: str) -> dict: ...
 
     @abstractmethod
@@ -845,6 +848,11 @@ class LocalNodeAdapter(NodeAdapter):
         from app.services.warp_geo import check_warp_geo as _check_warp_geo
 
         return _check_warp_geo(scope, self._service.base_path)
+
+    def get_warp_dns(self) -> dict:
+        from app.services.warp_dns import dns_diagnostics
+
+        return dns_diagnostics(self._service.base_path)
 
     def save_warp_proton_config(self, scope: str, raw_config: str) -> dict:
         from app.services.warp_geo import save_proton_config
@@ -2059,6 +2067,9 @@ class RemoteNodeAdapter(NodeAdapter):
 
     def check_warp_geo(self, scope: str) -> dict:
         return self._request("GET", "/warp-geo/check", params={"scope": scope}, timeout=30.0)
+
+    def get_warp_dns(self) -> dict:
+        return self._request("GET", "/warp-geo/dns", timeout=30.0)
 
     def save_warp_proton_config(self, scope: str, raw_config: str) -> dict:
         return self._request(

@@ -44,6 +44,7 @@ from app.services.native_awg2_runtime import (
     unblock_client_runtime as awg2_unblock_client_runtime,
 )
 from app.services.warper import WarperService, run_warper_action
+from app.services.warp_dns import dns_diagnostics
 from app.services.warp_geo import (
     ProtonConfigError,
     apply_warp_changes,
@@ -337,6 +338,11 @@ def server_ip(_: None = Depends(verify_api_key)):
 @app.get("/warp-geo/status")
 def warp_geo_status(_: None = Depends(verify_api_key)):
     return read_warp_status(ANTIZAPRET_PATH)
+
+
+@app.get("/warp-geo/dns")
+def warp_geo_dns(_: None = Depends(verify_api_key)):
+    return dns_diagnostics(ANTIZAPRET_PATH)
 
 
 @app.get("/warp-geo/check")
