@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Copy, Loader2, Pencil, Power, RefreshCw, RotateCcw, Send } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, Loader2, Pencil, Power, RefreshCw, RotateCcw, Send } from 'lucide-react'
 import { getMtproxyStatus, runMtproxyAction, type MtproxyActionPayload } from '@/api/mtproxy'
 import AutoRefreshControl from '@/components/noc/AutoRefreshControl'
 import SettingsAlert from '@/components/settings/SettingsAlert'
@@ -181,16 +181,23 @@ function LimitsDialog({
 /** Пользователи (секреты) узла: кто подключён, трафик, лимиты, квота и действия. */
 function UsersTable({
   node,
+  onlineOnly,
   busy,
   onEdit,
   onAction,
 }: {
   node: MtproxyNodeStatus
+  onlineOnly: boolean
   busy: string | null
   onEdit: (user: MtproxyUser) => void
   onAction: (payload: MtproxyActionPayload) => void
 }) {
-  const sorted = [...(node.users ?? [])].sort((a, b) => b.connections - a.connections || b.total_bytes - a.total_bytes)
+  const sorted = [...(node.users ?? [])]
+    .filter((u) => !onlineOnly || u.connections > 0)
+    .sort((a, b) => b.connections - a.connections || b.total_bytes - a.total_bytes)
+  if (sorted.length === 0) {
+    return <p className="text-xs text-muted-foreground">Сейчас никто не подключён.</p>
+  }
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
@@ -284,6 +291,15 @@ export default function MtproxyPage() {
   const [countdown, setCountdown] = useState(REFRESH_SEC)
   const [busy, setBusy] = useState<string | null>(null)
   const [editing, setEditing] = useState<EditTarget | null>(null)
+  const [onlineOnly, setOnlineOnly] = useState(true)
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const toggleExpanded = (id: number) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
   const load = useCallback(async (refresh = false) => {
     setLoading(true)
@@ -374,6 +390,24 @@ export default function MtproxyPage() {
         }
       />
 
+      <div className="flex w-fit overflow-hidden rounded-md border text-xs" role="tablist" aria-label="Какие пользователи показывать">
+        {([true, false] as const).map((value) => (
+          <button
+            key={String(value)}
+            type="button"
+            role="tab"
+            aria-selected={onlineOnly === value}
+            onClick={() => setOnlineOnly(value)}
+            className={cn(
+              'px-3 py-1.5 transition-colors',
+              onlineOnly === value ? 'bg-primary text-primary-foreground' : 'bg-card hover:bg-muted/60',
+            )}
+          >
+            {value ? 'Пользователи: онлайн' : 'Пользователи: все'}
+          </button>
+        ))}
+      </div>
+
       {error && (
         <SettingsAlert variant="danger" title="Ошибка загрузки">
           {error}
@@ -433,12 +467,26 @@ export default function MtproxyPage() {
                 )}
                 {node.installed && <AvailabilityBars checks={node.availability_recent ?? []} />}
                 {node.installed && node.users && node.users.length > 0 && (
-                  <UsersTable
-                    node={node}
-                    busy={busy}
-                    onEdit={(user) => setEditing({ nodeId: node.node_id, nodeName: node.node_name, user })}
-                    onAction={(payload) => void act(node, payload)}
-                  />
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-sm font-medium hover:text-primary"
+                      onClick={() => toggleExpanded(node.node_id)}
+                      aria-expanded={expanded.has(node.node_id)}
+                    >
+                      {expanded.has(node.node_id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      Пользователи: {node.users.length}, онлайн {node.users.filter((u) => u.connections > 0).length}
+                    </button>
+                    {expanded.has(node.node_id) && (
+                      <UsersTable
+                        node={node}
+                        onlineOnly={onlineOnly}
+                        busy={busy}
+                        onEdit={(user) => setEditing({ nodeId: node.node_id, nodeName: node.node_name, user })}
+                        onAction={(payload) => void act(node, payload)}
+                      />
+                    )}
+                  </div>
                 )}
                 {node.installed && node.users === undefined && (
                   <p className="text-xs text-muted-foreground">
