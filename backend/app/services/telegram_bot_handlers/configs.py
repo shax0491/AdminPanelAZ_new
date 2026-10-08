@@ -21,6 +21,7 @@ from app.services.telegram_profile_ui import (
     format_config_protocol_badge_for_filter,
 )
 from app.services import telegram_bot_i18n as i18n
+from app.services.profile_delivery import profile_files_for_delivery
 from app.services.vpn_profile_visibility import (
     EMPTY_CATALOG_MESSAGE,
     filter_profile_files,
@@ -85,9 +86,10 @@ def _load_config_protocol_map(ctx: BotContext, configs: list[VpnConfig]) -> dict
     for config in configs:
         key = profile_files_batch_key(config.client_name, config.vpn_type)
         files = files_by_key.get(key)
-        if files is None:
+        # AmneziaWG 3: файлов на узле нет, профили - из реестра клиентов
+        if files is None or config.vpn_type == VpnType.amneziawg3:
             try:
-                files = adapter.get_profile_files(config.client_name, config.vpn_type)
+                files = profile_files_for_delivery(adapter, config.client_name, config.vpn_type)
             except Exception:
                 files = []
         files = filter_profile_files(files or [], policy)
@@ -300,7 +302,7 @@ async def _get_accessible_config(ctx: BotContext, config_id: int) -> VpnConfig |
 
 def _load_profile_groups(ctx: BotContext, config: VpnConfig) -> list[ProfileFileGroup]:
     adapter = get_active_adapter(ctx.db)
-    raw_files = adapter.get_profile_files(config.client_name, VpnType(config.vpn_type.value))
+    raw_files = profile_files_for_delivery(adapter, config.client_name, VpnType(config.vpn_type.value))
     policy = resolve_effective_visible_vpn_profiles(ctx.db, ctx.user)
     raw_files = filter_profile_files(raw_files, policy)
     return build_profile_file_groups(config.client_name, raw_files)
@@ -517,7 +519,7 @@ async def handle_config_file_send(
         return
 
     adapter = get_active_adapter(ctx.db)
-    raw_files = adapter.get_profile_files(config.client_name, VpnType(config.vpn_type.value))
+    raw_files = profile_files_for_delivery(adapter, config.client_name, VpnType(config.vpn_type.value))
     policy = resolve_effective_visible_vpn_profiles(ctx.db, ctx.user)
     raw_files = filter_profile_files(raw_files, policy)
     enriched = enrich_profile_files(config.client_name, raw_files)

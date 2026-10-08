@@ -19,6 +19,7 @@ from app.services.telegram_bot_inline_cache import (
     inline_results_cache_key,
 )
 from app.services import telegram_bot_i18n as i18n
+from app.services.profile_delivery import profile_files_for_delivery
 from app.services.vpn_profile_visibility import filter_profile_files, resolve_effective_visible_vpn_profiles
 
 logger = logging.getLogger(__name__)
@@ -144,7 +145,7 @@ def _config_article_fallback(ctx: BotContext, config: VpnConfig) -> dict[str, An
 
 def _build_config_results(ctx: BotContext, config: VpnConfig) -> list[dict[str, Any]]:
     adapter = get_active_adapter(ctx.db)
-    raw_files = adapter.get_profile_files(config.client_name, VpnType(config.vpn_type.value))
+    raw_files = profile_files_for_delivery(adapter, config.client_name, VpnType(config.vpn_type.value))
     if ctx.user is not None:
         policy = resolve_effective_visible_vpn_profiles(ctx.db, ctx.user)
         raw_files = filter_profile_files(raw_files, policy)

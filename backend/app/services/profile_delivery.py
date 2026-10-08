@@ -79,7 +79,28 @@ def wireguard_host_from_adapter(adapter) -> str:
     return host.strip()
 
 
+AWG3_VIRTUAL_PREFIX = "awg3:"
+
+
+def profile_files_for_delivery(adapter, client_name: str, vpn_type) -> list[dict]:
+    """Файлы профиля для выдачи (бот): у AmneziaWG 3 файлов на узле нет, конфиг собирается из реестра
+    клиентов по виртуальному пути awg3:<запись>, как в портале."""
+    from app.models import VpnType
+
+    vt = vpn_type if isinstance(vpn_type, VpnType) else VpnType(str(vpn_type))
+    if vt == VpnType.amneziawg3:
+        from app.services.client_portal import _awg3_portal_entries
+
+        entries = _awg3_portal_entries(adapter, client_name)
+        for item in entries:
+            item.setdefault("filename", f"{item['variant']}-{client_name}-awg3.conf")
+        return entries
+    return adapter.get_profile_files(client_name, vt)
+
+
 def read_profile_file_for_delivery(adapter, path: str, hosts: list[str]) -> str:
+    if path.startswith(AWG3_VIRTUAL_PREFIX):
+        return adapter.awg3_client_config(path[len(AWG3_VIRTUAL_PREFIX):])
     raw = adapter.read_profile_file(path)
     name = PurePosixPath(path.replace("\\", "/")).name
     if name.lower().endswith(".ovpn"):

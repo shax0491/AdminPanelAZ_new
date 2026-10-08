@@ -16,7 +16,7 @@ from app.services.telegram_bot_handlers.ui import send_or_edit
 from app.services import telegram_bot_i18n as i18n
 from app.services.telegram_bot_handlers import settings_fsm
 
-_ADMIN_ACTIONS = frozenset({"settings", "nodes", "cidr", "warper", "awg2", "awg3", "unlock"})
+_ADMIN_ACTIONS = frozenset({"settings", "nodes", "cidr", "warper", "awg2", "awg3", "mtproxy", "unlock"})
 
 
 def _admin_menu_visible(ctx: BotContext) -> bool:
@@ -60,6 +60,7 @@ def _menu_button_label(action: str) -> str:
         "warper": i18n.BTN_MENU_WARPER,
         "awg2": i18n.BTN_MENU_AWG2,
         "awg3": i18n.BTN_MENU_AWG3,
+        "mtproxy": i18n.BTN_MENU_MTPROXY,
         "unlock": i18n.BTN_MENU_UNLOCK_CODES,
     }[action]
 
@@ -80,8 +81,7 @@ def _more_menu_row_actions(ctx: BotContext) -> list[list[str]]:
             module_row.append("awg3")
         if module_row:
             rows.append(module_row)
-        if _unlock_visible(ctx):
-            rows.append(["unlock"])
+        rows.append(["mtproxy", "unlock"] if _unlock_visible(ctx) else ["mtproxy"])
 
     return rows
 
@@ -192,6 +192,10 @@ async def _dispatch_action(ctx: BotContext, action: str, *, message_id: int | No
         from app.services.telegram_bot_handlers.awg3_status import handle_awg3_status
 
         await handle_awg3_status(ctx, message_id=message_id)
+    elif action == "mtproxy":
+        from app.services.telegram_bot_handlers.mtproxy_status import handle_mtproxy_status
+
+        await handle_mtproxy_status(ctx, message_id=message_id)
     elif action == "unlock":
         from app.services.telegram_bot_handlers.unlock_codes import handle_unlock_codes_root
 

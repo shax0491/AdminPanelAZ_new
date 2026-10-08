@@ -34,7 +34,7 @@ def classify_config_profile_groups(files: list[dict[str, str]], vpn_type) -> fro
     groups: set[str] = set()
     if "wireguard" in protocols:
         groups.add("wg")
-    if "amneziawg" in protocols:
+    if protocols & {"amneziawg", "amneziawg2", "amneziawg3"}:
         groups.add("awg")
     if not groups:
         groups.add("wg")

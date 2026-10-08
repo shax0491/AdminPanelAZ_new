@@ -24,6 +24,8 @@ _PROTOCOL_ALIASES = {
     "amneziawg2": "amneziawg2",
     "awg2": "amneziawg2",
     "awg 2.0": "amneziawg2",
+    "amneziawg3": "amneziawg3",
+    "awg3": "amneziawg3",
 }
 
 
@@ -366,6 +368,37 @@ def _profile_format_tip(*, protocol: str, filename: str | None, path: str | None
     )
 
 
+# AmneziaWG 3.1 (HeaderProtectionKey, ContentPaddingAddition) понимают не все сборки: нужны версии не старше этих
+_AWG3_APPS = {
+    "android": (
+        "<b>AmneziaWG</b> v3.1.20260814 или новее (APK с GitHub: github.com/amnezia-vpn/amneziawg-android/releases — "
+        "в Google Play может быть старая версия) или <b>AmneziaVPN</b> 5.0.1.5+"
+    ),
+    "ios": "<b>AmneziaVPN</b> 5.0.1.5 или новее из App Store",
+    "mac": "<b>AmneziaVPN</b> 5.0.1.5 или новее",
+    "windows": (
+        "<b>AmneziaWG</b> 3.1.0 или новее (github.com/amnezia-vpn/amneziawg-windows-client/releases) "
+        "или <b>AmneziaVPN</b> 5.0.1.5+"
+    ),
+    "linux": "<b>amneziawg-tools</b> 3.1 и <code>awg-quick up</code> (модуль ядра amneziawg или amneziawg-go 3.1)",
+}
+
+
+def _awg3_builder(platform: str) -> Callable[[str], str]:
+    def build(client_name: str) -> str:
+        return (
+            f"<b>🌀 Установка AmneziaWG 3 ({platform})</b>\n"
+            f"Профиль: <code>{client_name}</code>\n\n"
+            f"1. Установите {_AWG3_APPS[platform]}.\n"
+            "2. Импортируйте файл <code>.conf</code> из этого чата.\n"
+            "3. Подключитесь.\n\n"
+            "📎 Старые версии AmneziaWG и обычный WireGuard этот конфиг не примут "
+            "(в нём параметры AmneziaWG 3.1)."
+        )
+
+    return build
+
+
 _BUILDERS: dict[tuple[str, str], Callable[[str], str]] = {
     ("openvpn", "ios"): _openvpn_ios,
     ("openvpn", "android"): _openvpn_android,
@@ -387,6 +420,7 @@ _BUILDERS: dict[tuple[str, str], Callable[[str], str]] = {
     ("amneziawg2", "mac"): _awg2_mac,
     ("amneziawg2", "windows"): _awg2_windows,
     ("amneziawg2", "linux"): _awg2_linux,
+    **{("amneziawg3", platform): _awg3_builder(platform) for platform in _AWG3_APPS},
 }
 
 

@@ -95,6 +95,7 @@ BTN_MENU_CIDR = "🗂 CIDR"
 BTN_MENU_WARPER = "🌐 WARP"
 BTN_MENU_AWG2 = "🛡️ AWG2"
 BTN_MENU_AWG3 = "🛡️ AWG3"
+BTN_MENU_MTPROXY = "📨 MTProxy"
 BTN_MENU_UNLOCK_CODES = "🎟 Коды доступа"
 
 MENU_KEYBOARD_PLACEHOLDER = "Конфиги, статус или Ещё…"
@@ -113,6 +114,7 @@ MENU_ACTIONS: dict[str, str] = {
     BTN_MENU_WARPER: "warper",
     BTN_MENU_AWG2: "awg2",
     BTN_MENU_AWG3: "awg3",
+    BTN_MENU_MTPROXY: "mtproxy",
     # Старые подписи кнопок (до обновления меню)
     "🌐 AZ-WARP": "warper",
 }
@@ -132,6 +134,7 @@ BOT_COMMANDS: tuple[tuple[str, str], ...] = (
     ("cidr", "Статус CIDR pipeline (admin)"),
     ("warper", "Статус AZ-WARP (admin)"),
     ("awg2", "Статус AZ-AWG2 (admin)"),
+    ("awg3", "Статус AmneziaWG 3 (admin)"),
     ("mtproxy", "MTProxy на узлах (admin)"),
 )
 
