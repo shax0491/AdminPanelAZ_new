@@ -13,7 +13,14 @@ from app.database import get_db
 from app.models import Node, User
 from app.services.action_log import log_action
 from app.services.feature_guards import get_feature_service
-from app.services.mtproxy_monitor import mtproxy_all_nodes, reset_cache
+from app.services.mtproxy_monitor import (
+    PANEL_NODE_ID,
+    mtproxy_all_nodes,
+    panel_mtproxy_status,
+    panel_node_name,
+    reset_cache,
+    run_mtproxy_action,
+)
 
 router = APIRouter(prefix="/mtproxy", tags=["mtproxy"])
 
@@ -55,11 +62,19 @@ def mtproxy_node_action(
     _require_enabled()
     from app.services.node_manager import get_adapter_for_node, is_vpn_node
 
-    node = db.get(Node, node_id)
-    if node is None or not is_vpn_node(node):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Узел не найден")
     try:
-        result = get_adapter_for_node(node).mtproxy_action(payload.model_dump(exclude_none=True))
+        if node_id == PANEL_NODE_ID:
+            # MTProxyL на сервере самой панели: выполняем здесь же, панель работает от root
+            if panel_mtproxy_status(db) is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MTProxyL на панели не найден")
+            node_name = panel_node_name()
+            result = run_mtproxy_action(payload.model_dump(exclude_none=True))
+        else:
+            node = db.get(Node, node_id)
+            if node is None or not is_vpn_node(node):
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Узел не найден")
+            node_name = node.name
+            result = get_adapter_for_node(node).mtproxy_action(payload.model_dump(exclude_none=True))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if not result.get("ok"):
@@ -74,6 +89,6 @@ def mtproxy_node_action(
             action="mtproxy_action",
             user_id=current_user.id,
             username=current_user.username,
-            details=f"node={node.name};action={payload.action};label={payload.label or ''}",
+            details=f"node={node_name};action={payload.action};label={payload.label or ''}",
         )
     return result

@@ -213,6 +213,40 @@ def node_mtproxy_status(node, *, max_age: float = CACHE_SECONDS) -> dict | None:
     return data
 
 
+PANEL_NODE_ID = 0  # MTProxyL на сервере самой панели (не VPN-узел, без агента)
+
+
+def panel_has_local_vpn_node(db) -> bool:
+    from app.models import Node
+
+    return db.query(Node).filter(Node.is_local.is_(True), Node.node_kind == "vpn").first() is not None
+
+
+def panel_mtproxy_status(db, *, max_age: float = CACHE_SECONDS) -> dict | None:
+    """MTProxyL на сервере панели, если он там стоит, а локального VPN-узла нет (иначе его покажет узел)."""
+    if _mtproxyl_cmd() is None or panel_has_local_vpn_node(db):
+        return None
+    now = time.monotonic()
+    with _cache_lock:
+        cached = _cache.get(PANEL_NODE_ID)
+        if cached and now - cached[0] < max_age:
+            return cached[1]
+    try:
+        data = collect_mtproxy_status()
+    except Exception as exc:
+        logger.debug("MTProxy status of panel host unavailable: %s", exc)
+        data = None
+    with _cache_lock:
+        _cache[PANEL_NODE_ID] = (now, data)
+    return data
+
+
+def panel_node_name() -> str:
+    import socket
+
+    return f"Панель ({socket.gethostname()})"
+
+
 def reset_cache() -> None:
     with _cache_lock:
         _cache.clear()
@@ -278,6 +312,9 @@ def mtproxy_overview(db) -> list[dict]:
         if not status or not status.get("installed"):
             continue
         rows.append({"node_id": node.id, "node_name": node.name, **status})
+    panel = panel_mtproxy_status(db)
+    if panel and panel.get("installed"):
+        rows.append({"node_id": PANEL_NODE_ID, "node_name": panel_node_name(), **panel})
     return rows
 
 
@@ -297,6 +334,9 @@ def mtproxy_all_nodes(db) -> list[dict]:
         else:
             row.update(status)
         rows.append(row)
+    panel = panel_mtproxy_status(db)
+    if panel is not None:
+        rows.append({"node_id": PANEL_NODE_ID, "node_name": panel_node_name(), "node_online": True, **panel})
     return rows
 
 

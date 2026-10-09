@@ -54,6 +54,7 @@ def fake_nodes(monkeypatch):
     nodes = [SimpleNamespace(id=i, name=f"n{i}") for i in statuses]
     monkeypatch.setattr(mtproxy_monitor, "_monitored_nodes", lambda db, node_id: [n for n in nodes if node_id in (None, n.id)])
     monkeypatch.setattr(mtproxy_monitor, "node_mtproxy_status", lambda node, **kw: statuses[node.id])
+    monkeypatch.setattr(mtproxy_monitor, "panel_mtproxy_status", lambda db, **kw: None)
     return statuses
 
 
@@ -75,6 +76,28 @@ def test_availability_is_worst_node(fake_nodes):
 def test_overview_lists_only_installed(fake_nodes):
     rows = mtproxy_monitor.mtproxy_overview(None)
     assert [r["node_id"] for r in rows] == [1, 2, 5]
+
+
+def test_overview_includes_panel_host(fake_nodes, monkeypatch):
+    # MTProxyL на сервере самой панели (не VPN-узел) - отдельная строка с node_id 0
+    monkeypatch.setattr(mtproxy_monitor, "panel_mtproxy_status", lambda db, **kw: {"installed": True, "running": True})
+    monkeypatch.setattr(mtproxy_monitor, "panel_node_name", lambda: "Панель (de3)")
+    rows = mtproxy_monitor.mtproxy_overview(None)
+    assert rows[-1]["node_id"] == mtproxy_monitor.PANEL_NODE_ID
+    assert rows[-1]["node_name"] == "Панель (de3)"
+
+
+def test_panel_status_skipped_without_mtproxyl_or_with_local_node(monkeypatch):
+    mtproxy_monitor.reset_cache()
+    monkeypatch.setattr(mtproxy_monitor, "collect_mtproxy_status", lambda: {"installed": True})
+    monkeypatch.setattr(mtproxy_monitor, "_mtproxyl_cmd", lambda: None)
+    assert mtproxy_monitor.panel_mtproxy_status(None) is None
+    monkeypatch.setattr(mtproxy_monitor, "_mtproxyl_cmd", lambda: ["mtproxyl"])
+    monkeypatch.setattr(mtproxy_monitor, "panel_has_local_vpn_node", lambda db: True)
+    assert mtproxy_monitor.panel_mtproxy_status(None) is None
+    monkeypatch.setattr(mtproxy_monitor, "panel_has_local_vpn_node", lambda db: False)
+    assert mtproxy_monitor.panel_mtproxy_status(None) == {"installed": True}
+    mtproxy_monitor.reset_cache()
 
 
 def test_node_status_cached(monkeypatch):
