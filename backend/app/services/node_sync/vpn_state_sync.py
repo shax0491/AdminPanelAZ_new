@@ -471,12 +471,14 @@ def sync_amneziawg2_state_from_primary(
     if not runtime.get("success"):
         errors = runtime.get("errors") or []
         detail = "; ".join(
-            str(entry.get("stderr") or entry.get("error") or entry) for entry in errors
+            str(entry.get("stderr") or entry.get("error") or entry) if isinstance(entry, dict) else str(entry)
+            for entry in errors
         ) or "AmneziaWG 2 syncconf failed"
         logger.warning(
             "HA AWG2 runtime apply partial (configs copied): %s",
             detail,
         )
+        runtime_error = detail
 
     if reblock:
         _reapply_blocked_awg2_policies(db, replica_node, replica_adapter)

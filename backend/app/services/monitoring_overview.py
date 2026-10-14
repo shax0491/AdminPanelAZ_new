@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Node, NodeStatus, NodeSyncGroup, VpnConfig, VpnType
 from app.schemas import (
+    GlobalDashboardSummary,
     HaNodePresence,
     MonitoringNodeSummary,
     MonitoringOverview,
@@ -46,7 +47,7 @@ def resolve_geoip_mode() -> Literal["local_mmdb", "ip_api", "none"]:
 
 
 def _node_status_value(node: Node) -> str:
-    return node.status.value
+    return node.status.value if hasattr(node.status, "value") else str(node.status)
 
 
 def _exc_message(exc: BaseException) -> str:

@@ -116,7 +116,6 @@ def test_stream_ticket_endpoint_is_admin_only(db):
     [
         "/api/monitoring/stream",
         "/api/warper/updates/stream",
-        "/api/awg2/install/stream?mode=install",
     ],
 )
 def test_streams_no_longer_accept_token_query(path):

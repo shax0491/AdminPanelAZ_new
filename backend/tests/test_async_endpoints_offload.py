@@ -15,7 +15,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import app.database as database_module
-from app.auth import create_access_token, require_admin
+from app.auth import require_admin
 from app.database import Base, get_db
 from app.models import User, UserRole
 
@@ -128,11 +128,11 @@ def test_warper_update_stream_reads_agent_off_loop(monkeypatch):
             yield {"event": "done"}
 
     monkeypatch.setattr(warper, "SessionLocal", MagicMock)
-    monkeypatch.setattr(warper, "_admin_from_stream_token", lambda _t, _db: None)
+    monkeypatch.setattr(warper, "admin_from_stream_ticket", lambda _db, _t, _s: None)
     monkeypatch.setattr(warper, "get_active_adapter", lambda _db: Adapter())
 
     async def scenario():
-        response = await warper.warper_updates_stream(_Request(), token="t")
+        response = await warper.warper_updates_stream(_Request(), ticket="t")
         return await _first_chunks(response, 1)
 
     assert "done" in asyncio.run(scenario())[0]
@@ -150,13 +150,13 @@ def test_monitoring_stream_builds_overview_off_loop(monkeypatch):
 
     monkeypatch.setattr(monitoring, "SessionLocal", MagicMock)
     monkeypatch.setattr(
-        monitoring, "_user_from_access_token", lambda _t, _db: SimpleNamespace(role=SimpleNamespace(value="admin"))
+        monitoring, "admin_from_stream_ticket", lambda _db, _t, _s: SimpleNamespace(role=SimpleNamespace(value="admin"))
     )
     monkeypatch.setattr(monitoring, "_build_monitoring_overview", build)
     monkeypatch.setattr(monitoring, "_stream_interval_seconds", lambda: 0)
 
     async def scenario():
-        response = await monitoring.monitoring_stream(_Request(), token="t", scope="node", ha_mode="dedupe")
+        response = await monitoring.monitoring_stream(_Request(), ticket="t", scope="node", ha_mode="dedupe")
         return await _first_chunks(response, 2)
 
     chunks = asyncio.run(scenario())
@@ -193,9 +193,9 @@ def test_server_monitor_ws_reads_metrics_off_loop(monkeypatch):
 
     app = FastAPI()
     app.include_router(server_monitor.router)
-    token = create_access_token({"sub": "admin"})
+    monkeypatch.setattr(server_monitor, "admin_from_stream_ticket", lambda _db, _t, _s: None)
     try:
-        with TestClient(app).websocket_connect(f"/server-monitor/ws?token={token}") as ws:
+        with TestClient(app).websocket_connect("/server-monitor/ws?ticket=t") as ws:
             assert ws.receive_json()["cpu_percent"] == 1.0
     finally:
         engine.dispose()

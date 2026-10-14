@@ -161,6 +161,11 @@ def is_vpn_node(node: Node) -> bool:
     return _node_kind(node) == NODE_KIND_VPN
 
 
+def list_vpn_nodes(db: Session) -> list[Node]:
+    """All nodes that speak node_agent (OpenVPN/WG). Excludes proxy_agent cards."""
+    return [node for node in db.query(Node).order_by(Node.id.asc()).all() if is_vpn_node(node)]
+
+
 def proxy_is_not_vpn_message(node: Node) -> str:
     name = node.name or "без имени"
     return (
@@ -255,7 +260,7 @@ def _resolve_active_node(db: Session) -> Node:
 
 
 def _node_kind(node: Node) -> str:
-    return (node.node_kind or NODE_KIND_VPN).strip().lower()
+    return (getattr(node, "node_kind", None) or NODE_KIND_VPN).strip().lower()
 
 
 def _remote_http_endpoint(node: Node) -> tuple[str, int, bool]:

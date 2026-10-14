@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_tg_mini_user
 from app.database import get_db
-from app.models import User, VpnConfig
+from app.models import User, VpnConfig, VpnType
 from app.schemas import MessageResponse
 from app.services.node_manager import get_active_adapter, get_active_node
 from app.services.profile_delivery import profile_files_for_delivery

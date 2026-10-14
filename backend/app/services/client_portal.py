@@ -28,6 +28,7 @@ from app.models import (
     UserPortalToken,
     UserTrafficStatProtocol,
     VpnConfig,
+    VpnType,
     WgAccessPolicy,
 )
 from app.services.config_access import can_mutate_config

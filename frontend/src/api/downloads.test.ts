@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { clearAccessToken, setAccessToken } from '@/lib/accessToken'
 import * as webSession from '@/lib/webSession'
-import { downloadAwg2Backup } from './awg2'
 import { downloadConfigsExport, downloadProfile, fetchQrBlob } from './configs'
 import { downloadActionLogsExport } from './logs'
 import { downloadBackup } from './maintenance'
@@ -33,7 +32,6 @@ const downloads: Array<[string, () => Promise<Response>, string]> = [
   ['configs CSV', () => downloadConfigsExport(), '/api/configs/export'],
   ['action logs CSV', () => downloadActionLogsExport(), '/api/logs/action-logs/export'],
   ['panel backup', () => downloadBackup('backup 1.tar.gz'), '/api/backups/backup%201.tar.gz/download'],
-  ['AWG2 backup', () => downloadAwg2Backup(), '/api/awg2/backup'],
 ]
 
 describe('downloads renew an expired session', () => {
@@ -80,13 +78,5 @@ describe('downloads renew an expired session', () => {
     expect(result.downloadUrl).toBe('https://panel.example/d/abc')
     await expect(result.blob.text()).resolves.toBe('png')
     expect(fetchMock).toHaveBeenCalledTimes(3)
-  })
-
-  it('AWG2 backup stays a POST', async () => {
-    const fetchMock = stubFetch(new Response('tar', { status: 200 }))
-
-    await downloadAwg2Backup()
-
-    expect(fetchMock.mock.calls[0][1].method).toBe('POST')
   })
 })

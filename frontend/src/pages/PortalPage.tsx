@@ -427,7 +427,7 @@ function ProfileFileList({
 }
 
 function normalizePortalClients(data: PortalMetaResponse): PortalClientEntry[] {
-  if (data.kind === 'user') return data.clients
+  if (data.kind === 'user') return data.nodes.flatMap((node) => node.clients)
   return [
     {
       node_id: data.node_id,

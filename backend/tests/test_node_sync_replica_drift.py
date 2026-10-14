@@ -49,13 +49,13 @@ def test_awg2_partial_apply_raises_after_import():
     primary = MagicMock()
     replica = MagicMock()
     replica.get_awg2_health.return_value = {"installed": True}
-    primary.export_awg2_state_archive.return_value = b"tar"
-    replica.apply_awg2_runtime.return_value = {"success": False, "errors": ["awg0: syncconf failed"]}
+    primary.export_amneziawg2_client_profiles_archive.return_value = b"tar"
+    replica.apply_amneziawg2_runtime.return_value = {"success": False, "errors": ["awg0: syncconf failed"]}
 
     with pytest.raises(ReplicaRuntimeError, match="AZ-AWG2 на реплике не применён.*awg0: syncconf failed"):
         vpn_state_sync.sync_amneziawg2_state_from_primary(primary, replica)
 
-    replica.import_awg2_state_archive.assert_called_once_with(b"tar")
+    replica.import_amneziawg2_client_profiles_archive.assert_called_once_with(b"tar")
 
 
 def test_sync_all_finishes_openvpn_and_awg2_then_reports_runtime_failure(monkeypatch):

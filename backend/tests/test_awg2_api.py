@@ -30,6 +30,15 @@ class _QueryStub:
     def first(self):
         return self._result
 
+    def all(self):
+        return [] if self._result is None else [self._result]
+
+    def update(self, *_args, **_kwargs):
+        return 0
+
+    def delete(self, *_args, **_kwargs):
+        return 0
+
 
 class _FakeDb:
     def __init__(self, *, owner=None, existing=None):
@@ -39,6 +48,7 @@ class _FakeDb:
         self.commit = MagicMock()
         self.refresh = MagicMock()
         self.delete = MagicMock()
+        self.flush = MagicMock()
 
     def query(self, model):
         name = getattr(model, "__name__", str(model))

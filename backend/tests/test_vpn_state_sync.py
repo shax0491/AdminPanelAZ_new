@@ -239,7 +239,8 @@ def test_sync_amneziawg2_continues_when_runtime_apply_fails():
         "errors": [{"interface": "vpn2", "stderr": "sync failed"}],
     }
 
-    vpn_state_sync.sync_amneziawg2_state_from_primary(primary, replica)
+    with pytest.raises(vpn_state_sync.ReplicaRuntimeError, match="sync failed"):
+        vpn_state_sync.sync_amneziawg2_state_from_primary(primary, replica)
 
     replica.import_amneziawg2_client_profiles_archive.assert_called_once_with(b"fake-tar")
 

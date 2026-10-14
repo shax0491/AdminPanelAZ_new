@@ -35,6 +35,7 @@ export interface NodeTransportPreflightResult {
 export interface Node {
   id: number
   name: string
+  portal_label?: string | null
   host: string
   port: number
   status: NodeStatus
@@ -92,7 +93,13 @@ export interface NodeHaContext {
   sync_status: SyncStatus
 }
 
-export type SyncStatus = 'unknown' | 'synced' | 'pending' | 'failed'
+export type SyncStatus = 'unknown' | 'synced' | 'pending' | 'failed' | 'drift'
+
+export interface SelfServiceLimits {
+  quota_default: number
+  create_rate_max: number
+  create_rate_window_seconds: number
+}
 
 export interface NodeSyncMismatch {
   kind: string
@@ -801,6 +808,9 @@ export interface TelegramSettings {
   legacy_login_enabled: boolean
   auth_method: 'oidc' | 'legacy' | 'none'
   login_ready: boolean
+  bot_command_rate_max: number
+  bot_command_rate_window_seconds: number
+  bot_command_rate_limit_enabled: boolean
 }
 
 export interface TelegramLinkCode {
@@ -1780,6 +1790,7 @@ export interface SecuritySettings {
   qr_download_pin_set: boolean
   public_download_enabled: boolean
   portal_domain: string
+  portal_title: string
 }
 
 export interface SecretRotationItem {
