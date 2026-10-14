@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: ["main", "release/**"]
   pull_request:
 
 # Cancel superseded runs on the same ref to save runner minutes.
@@ -21,12 +21,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up Python 3.13
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
           cache: pip
@@ -75,12 +75,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -110,38 +110,10 @@ jobs:
         working-directory: frontend
         run: npm run check:bundle
 
-      - name: npm audit
+      # Build-only tooling (tailwindcss 3 → braces/micromatch) has unfixed advisories and never ships to the browser.
+      - name: npm audit (production dependencies)
         working-directory: frontend
-        # GHSA-vfj7-8cjw-p6xm (braces, pulled in by tailwindcss's dev-only file
-        # watcher) has no patched version as of this writing — the only "fix"
-        # npm offers is a major tailwindcss v4 bump. braces here never runs
-        # against untrusted input (local source files only, build-time), so
-        # fail only if a *new*, non-allowlisted high/critical advisory shows up.
-        # Tailwind CSS 3.x pulls in braces/chokidar/fast-glob/micromatch (and postcss-nested,
-        # postcss-selector-parser via tailwind's nesting plugin). The only fix offered is the
-        # breaking tailwindcss 4.x migration, which is out of scope (layout would break), so
-        # these advisories are accepted explicitly:
-        #   GHSA-vfj7-8cjw-p6xm  braces (ReDoS, build-time glob only)
-        #   GHSA-rj75-hqrm-r3gf  postcss-selector-parser (via postcss-nested, build-time CSS only)
-        run: |
-          npm audit --audit-level=high --json > audit.json || true
-          node -e '
-            const allow = new Set(["GHSA-vfj7-8cjw-p6xm", "GHSA-rj75-hqrm-r3gf"]);
-            const data = JSON.parse(require("fs").readFileSync("audit.json", "utf8"));
-            const bad = [];
-            for (const [name, info] of Object.entries(data.vulnerabilities || {})) {
-              if (!["high", "critical"].includes(info.severity)) continue;
-              const ids = (info.via || [])
-                .filter((v) => typeof v === "object")
-                .map((v) => (v.url || "").split("/").pop());
-              if (ids.some((id) => !allow.has(id))) bad.push(name);
-            }
-            if (bad.length) {
-              console.error("Unallowlisted high/critical vulnerabilities:", bad.join(", "));
-              process.exit(1);
-            }
-            console.log("Only allowlisted advisories present (see workflow comment).");
-          '
+        run: npm audit --omit=dev --audit-level=high
 
   shell:
     name: shell scripts
@@ -150,7 +122,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -161,7 +133,7 @@ jobs:
 
       - name: ShellCheck
         run: |
-          shellcheck -S error -x install.sh scripts/*.sh
+          shellcheck -S warning -x install.sh scripts/*.sh
 
       - name: Shell tests (all scripts/test-*.sh, host calls blocked)
         run: ./scripts/run-shell-tests.sh

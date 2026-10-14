@@ -24,7 +24,9 @@ from app.schemas import (
 )
 from app.services.self_service import build_quota_payload, enforce_user_can_create_config
 from app.services.user_subscription import apply_owner_access_until_to_config, replicate_inherited_access_until
+from app.services.client_portal import cleanup_deleted_client_records, revoke_client_portal_links
 from app.services.config_access import can_mutate_config, can_view_config, list_accessible_configs
+from app.services.client_names import validate_new_client_name
 from app.services.admin_notify import admin_notify_service
 from app.services.background_tasks import background_task_service
 from app.services.config_csv_ops import (
@@ -70,6 +72,7 @@ from app.services.profile_files import profile_files_batch_key
 from app.services.panel_publish_info import resolve_public_base_url
 from app.services.qr_download import QrDownloadService
 from app.services.qr_generator import generate_qr_png, prefers_download_link_qr
+from app.services.access_policy import forget_deleted_openvpn_client
 from app.services.awg2 import compute_expires_at
 from app.services.security import SecurityService
 from app.services.vpn_profile_visibility import (
@@ -96,10 +99,10 @@ def _local_ip_for_config(db: Session, config: VpnConfig, adapter: NodeAdapter | 
         mapping = build_client_local_ip_map(
             node_adapter,
             db,
-            node_id=active.id if active else None,
+            node_id=active.id,
             configs=[config],
         )
-        return mapping.get((config.client_name or "").strip().lower())
+        return mapping.get(config.client_name.strip().lower())
     except Exception:
         return None
 
@@ -375,7 +378,7 @@ def list_configs(
             local_ip_map = build_client_local_ip_map(
                 ip_adapter,
                 db,
-                node_id=active.id if active else None,
+                node_id=active.id,
                 configs=configs,
             )
         except Exception:
@@ -393,7 +396,7 @@ def list_configs(
                 ConfigTagResponse(id=t.id, name=t.name, color=t.color)
                 for t in tags_map.get(c.id, [])
             ],
-            local_ip=local_ip_map.get((c.client_name or "").strip().lower()),
+            local_ip=local_ip_map.get(c.client_name.strip().lower()),
         )
         for c in configs
     ]
@@ -543,6 +546,10 @@ def create_config(
     )
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Конфигурация уже существует")
+    try:
+        validate_new_client_name(db, node_id=node_id, client_name=payload.client_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     require_vpn_type(payload.vpn_type.value, service=get_feature_service())
     enforce_can_create_vpn_type(db, current_user, payload.vpn_type)
@@ -724,7 +731,10 @@ def update_config(
         owner = db.query(User).filter(User.id == payload.owner_id).first()
         if not owner:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Владелец не найден")
+        previous_owner_id = config.owner_id
         config.owner_id = payload.owner_id
+        if previous_owner_id != payload.owner_id:
+            revoke_client_portal_links(db, node_id=config.node_id, client_name=config.client_name)
         metadata_changed = True
     if payload.cert_expire_days is not None and config.vpn_type == VpnType.openvpn:
         adapter = get_active_adapter(db)
@@ -785,6 +795,7 @@ def delete_config(
     adapter = get_active_adapter(db)
     if config.vpn_type == VpnType.openvpn:
         adapter.delete_openvpn_client(config.client_name)
+        forget_deleted_openvpn_client(db, adapter, node_id=config.node_id, client_name=config.client_name)
     elif config.vpn_type == VpnType.amneziawg2:
         adapter.awg2_delete_client(config.client_name)
     elif config.vpn_type == VpnType.amneziawg3:
@@ -802,6 +813,7 @@ def delete_config(
 
     purge_ha_shadow_configs(db, config.id)
     db.delete(config)
+    cleanup_deleted_client_records(db, config)
     db.commit()
     admin_notify_service.send_config_delete(
         db,
@@ -875,6 +887,7 @@ def generate_qr(
             file_path=path,
             config_type=config.vpn_type.value,
             config_name=build_profile_download_filename(config.client_name, path=path),
+            node_id=config.node_id,
             creator_id=current_user.id,
             creator_username=current_user.username,
             remote_addr=request.client.host if request.client else None,
@@ -913,6 +926,7 @@ def create_one_time_link(
         file_path=path,
         config_type=config.vpn_type.value,
         config_name=build_profile_download_filename(config.client_name, path=path),
+        node_id=config.node_id,
         creator_id=current_user.id,
         creator_username=current_user.username,
         remote_addr=request.client.host if request.client else None,

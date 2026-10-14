@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -14,6 +15,9 @@ from app.models import AmneziaWg2AccessPolicy, AmneziaWg3AccessPolicy, Node, Ope
 from app.services import awg3_access
 from app.services.access_policy import AccessPolicyService
 from app.services.node_manager import get_adapter_for_node, node_metadata_dict
+from app.services.shared_helpers import as_utc as _as_utc
+
+logger = logging.getLogger(__name__)
 
 Protocol = Literal["openvpn", "wireguard", "amneziawg2", "amneziawg3"]
 
@@ -21,14 +25,6 @@ Protocol = Literal["openvpn", "wireguard", "amneziawg2", "amneziawg3"]
 def _deadline_column(protocol: Protocol):
     model = _policy_model(protocol)
     return model.expires_at if protocol == "wireguard" else model.access_until
-
-
-def _as_utc(dt: datetime | None) -> datetime | None:
-    if dt is None:
-        return None
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
 
 
 def _to_db_datetime(dt: datetime | None) -> datetime | None:
@@ -299,6 +295,9 @@ def apply_due_access_blocks(db: Session) -> dict[str, int]:
                 counts["skipped"] += 1
                 continue
         except Exception:
+            logger.exception(
+                "access expiry block failed protocol=%s node_id=%s client=%s", protocol, node_id, client_name
+            )
             counts["errors"] += 1
             continue
         counts[protocol] += 1

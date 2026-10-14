@@ -136,6 +136,7 @@ export default function NodesPage() {
   const [showDialog, setShowDialog] = useState(false)
   const [editing, setEditing] = useState<Node | null>(null)
   const [name, setName] = useState('')
+  const [portalLabel, setPortalLabel] = useState('')
   const [host, setHost] = useState('')
   const [port, setPort] = useState(VPN_DEFAULT_PORT)
   const [nodeKind, setNodeKind] = useState<NodeKind>('vpn')
@@ -258,6 +259,7 @@ export default function NodesPage() {
   const resetDialogForm = () => {
     setEditing(null)
     setName('')
+    setPortalLabel('')
     setHost('')
     setPort(VPN_DEFAULT_PORT)
     setNodeKind('vpn')
@@ -283,6 +285,7 @@ export default function NodesPage() {
   const openEdit = (node: Node) => {
     setEditing(node)
     setName(node.name)
+    setPortalLabel(node.portal_label ?? '')
     setHost(node.host)
     setPort(node.port)
     setNodeKind(isProxyNode(node) ? 'proxy' : 'vpn')
@@ -378,8 +381,12 @@ export default function NodesPage() {
         : undefined
 
       if (editing) {
+        const portalLabelValue = isProxyForm ? undefined : portalLabel.trim() || null
         if (editing.is_local) {
-          await updateNode(editing.id, { name: trimmedName })
+          await updateNode(editing.id, {
+            name: trimmedName,
+            ...(portalLabelValue !== undefined ? { portal_label: portalLabelValue } : {}),
+          })
         } else {
           const payload: {
             name: string
@@ -387,15 +394,17 @@ export default function NodesPage() {
             port: number
             api_key?: string
             linked_vpn_node_id?: number | null
+            portal_label?: string | null
           } = { name: trimmedName, host: trimmedHost, port }
           if (apiKey) payload.api_key = apiKey
           if (isProxyForm) payload.linked_vpn_node_id = linkedVpnNodeId ?? null
+          if (portalLabelValue !== undefined) payload.portal_label = portalLabelValue
           await updateNode(editing.id, payload)
         }
         closeDialog()
         await load()
         await refresh()
-        success(editing.is_local ? 'Имя узла обновлено' : 'Узел обновлён')
+        success('Узел обновлён')
       } else {
         const kind = proxyNodesEnabled && nodeKind === 'proxy' ? 'proxy' : 'vpn'
         const created = await createNode({
@@ -1353,6 +1362,22 @@ export default function NodesPage() {
                       }
                     />
                   </div>
+                  {editing && !isProxyNode(editing) && (
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="node-portal-label">Название в портале</Label>
+                      <Input
+                        id="node-portal-label"
+                        aria-describedby="node-portal-label-hint"
+                        value={portalLabel}
+                        maxLength={128}
+                        onChange={(e) => setPortalLabel(e.target.value)}
+                        placeholder={name.trim() || 'Нидерланды'}
+                      />
+                      <p id="node-portal-label-hint" className="text-xs text-muted-foreground">
+                        Так узел увидят клиенты. Если пусто — используется имя
+                      </p>
+                    </div>
+                  )}
                   {!editing?.is_local && (
                     <>
                       <div className="grid gap-3 sm:grid-cols-[1fr_7rem]">

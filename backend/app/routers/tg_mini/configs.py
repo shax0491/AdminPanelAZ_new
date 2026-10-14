@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_tg_mini_user
 from app.database import get_db
-from app.models import User, VpnConfig, VpnType
+from app.models import User, VpnConfig
 from app.schemas import MessageResponse
 from app.services.node_manager import get_active_adapter, get_active_node
 from app.services.profile_delivery import profile_files_for_delivery
@@ -124,6 +124,7 @@ def mini_qr_link(
         config_name=build_profile_download_filename(
             config.client_name, protocol=match.get("protocol", ""), variant=match.get("variant", ""), path=path,
         ),
+        node_id=config.node_id,
         creator_id=current_user.id,
         creator_username=current_user.username,
         remote_addr=request.client.host if request.client else None,

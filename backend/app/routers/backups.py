@@ -13,7 +13,8 @@ from app.auth import require_admin
 from app.config import get_settings
 from app.cidr_database import cidr_engine, resolve_cidr_db_path
 from app.database import engine, get_db, resolve_main_db_path
-from app.models import AppSetting, User
+from app.models import User
+from app.services.app_setting_store import _get_setting, _set_setting
 from app.services.action_log import log_action
 from app.services.ip_restriction import ip_restriction_service
 from app.schemas import (
@@ -121,19 +122,6 @@ def _get_backup_manager() -> BackupManager:
         cidr_db_path=cidr_db_path,
         env_path=app_root / ".env",
     )
-
-
-def _get_setting(db: Session, key: str, default: str = "") -> str:
-    row = db.query(AppSetting).filter(AppSetting.key == key).first()
-    return row.value if row else default
-
-
-def _set_setting(db: Session, key: str, value: str) -> None:
-    row = db.query(AppSetting).filter(AppSetting.key == key).first()
-    if row:
-        row.value = value
-    else:
-        db.add(AppSetting(key=key, value=value))
 
 
 @router.get("", response_model=list[BackupEntry])
@@ -360,9 +348,6 @@ def upload_backup(
 
     try:
         result = manager.import_uploaded_backup(tmp_path, original_name=original_name)
-    except Exception:
-        tmp_path.unlink(missing_ok=True)
-        raise
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -383,7 +368,7 @@ def upload_backup(
             components=result.get("components") or [],
             summary=result.get("summary") or "",
             restore_message=msg.message,
-            restore_detail=msg.detail if isinstance(msg.detail, dict) else None,
+            restore_detail=msg.detail,
         )
 
     admin_notify_service.send_settings_change(

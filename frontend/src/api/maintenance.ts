@@ -1,7 +1,6 @@
 import {
-  API_BASE,
   apiFetch,
-  getToken,
+  apiFetchResponse,
 } from './http'
 import type {
   BackupEntry,
@@ -185,6 +184,8 @@ export async function updateTelegramSettings(data: {
   oidc_client_id?: string
   oidc_client_secret?: string
   legacy_login_enabled?: boolean
+  bot_command_rate_max?: number
+  bot_command_rate_window_seconds?: number
 }) {
   return apiFetch<TelegramSettings>('/settings/telegram', {
     method: 'PATCH',
@@ -204,8 +205,11 @@ export async function deleteTelegramWebhook() {
   })
 }
 
-export async function getTelegramLinkCode() {
-  return apiFetch<TelegramLinkCode>('/telegram/link-code')
+export async function getTelegramLinkCode(currentPassword: string) {
+  return apiFetch<TelegramLinkCode>('/telegram/link-code', {
+    method: 'POST',
+    body: JSON.stringify({ current_password: currentPassword }),
+  })
 }
 
 export async function getTelegramBotInfo() {
@@ -347,7 +351,5 @@ export async function checkSystemUpdates() {
 }
 
 export function downloadBackup(fileName: string) {
-  const token = getToken()
-  const url = `${API_BASE}/backups/${encodeURIComponent(fileName)}/download`
-  return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  return apiFetchResponse(`/backups/${encodeURIComponent(fileName)}/download`)
 }

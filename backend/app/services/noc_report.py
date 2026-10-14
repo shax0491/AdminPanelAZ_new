@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import tempfile
 from collections import defaultdict
@@ -26,6 +27,8 @@ from app.models import (
     UserTrafficSample,
     WgAccessPolicy,
 )
+from app.services.app_setting_store import _get_setting
+from app.services.shared_helpers import as_utc as _as_utc
 from app.services.feature_guards import get_feature_service
 from app.services.feature_toggles import is_awg2_enabled, is_awg3_enabled
 from app.services.node_compare_metrics import get_traffic_totals_by_node
@@ -42,11 +45,6 @@ DAILY_REPORT_DAYS = 1
 DAILY_TOP_CLIENTS_LIMIT = 3
 WEEKLY_TOP_CLIENTS_LIMIT = 5
 _CIDR_OK_STATUSES = frozenset({"ok", "success"})
-
-
-def _get_setting(db: Session, key: str, default: str = "") -> str:
-    row = db.query(AppSetting).filter(AppSetting.key == key).first()
-    return row.value if row else default
 
 
 def _set_setting(db: Session, key: str, value: str) -> None:
@@ -227,15 +225,9 @@ def _awg_stats_from_connection_samples(
     if until_n <= since_n:
         return {}, {peak_key: 0}
 
-    filtered: list = []
-    for sample in samples:
-        created = getattr(sample, "created_at", None)
-        if created is None:
-            continue
-        created_n = _to_naive_utc(created) if isinstance(created, datetime) else created
-        if created_n < since_n or created_n >= until_n:
-            continue
-        filtered.append(sample)
+    filtered = [
+        sample for sample in samples if since_n <= _to_naive_utc(sample.created_at) < until_n
+    ]
 
     if not filtered:
         return {}, {peak_key: 0}
@@ -390,7 +382,7 @@ def build_noc_summary(db: Session) -> dict:
             {
                 "node_id": node.id,
                 "name": node.name,
-                "status": node.status.value if hasattr(node.status, "value") else str(node.status),
+                "status": node.status.value,
                 "openvpn": sessions["openvpn"],
                 "wireguard": sessions["wireguard"],
                 "amneziawg2": awg2_count,
@@ -781,7 +773,7 @@ def _format_incident_line(incident: dict, *, tz_name: str | None = None) -> str:
         tz = local.tzinfo
         suffix = _timezone_suffix(tz, local) if isinstance(tz, ZoneInfo) else "UTC"
         when = f"{local.strftime('%d.%m %H:%M')} {suffix}"
-    name = str(incident.get("name") or "Алерт")
+    name = html.escape(str(incident.get("name") or "Алерт"))
     return f"• {name} · {when}"
 
 
@@ -885,7 +877,7 @@ def format_noc_report_message(
         lines.append(f"🚫 Лимит трафика: {' · '.join(limit_parts)}")
 
     offline_nodes = [
-        node.get("name")
+        html.escape(str(node.get("name")))
         for node in summary.get("nodes") or []
         if node.get("status") != NodeStatus.online.value and node.get("name")
     ]
@@ -914,7 +906,7 @@ def format_noc_report_message(
         lines.append(f"<b>Топ клиентов ({traffic_window}):</b>")
         for idx, client in enumerate(top_clients, start=1):
             client_label = human_bytes(client.get("traffic_bytes")) or "0 B"
-            lines.append(f"{idx}. {client.get('common_name') or '—'} — {client_label}")
+            lines.append(f"{idx}. {html.escape(str(client.get('common_name') or '—'))} — {client_label}")
 
     nodes = summary.get("nodes") or []
     multi_node = int(summary.get("nodes_total") or 0) > 1
@@ -958,7 +950,7 @@ def format_noc_report_message(
             if node_period:
                 parts.append(f"{node_period}/{traffic_window}")
         lines.append(
-            f"{status_icon} <b>{node.get('name')}</b>, {average_label} · {' · '.join(parts)}"
+            f"{status_icon} <b>{html.escape(str(node.get('name')))}</b>, {average_label} · {' · '.join(parts)}"
         )
 
     return "\n".join(lines)
