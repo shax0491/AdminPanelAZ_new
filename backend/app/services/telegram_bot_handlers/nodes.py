@@ -11,6 +11,7 @@ from app.models import Node, NodeStatus
 from app.services.node_manager import (
     check_node_health,
     get_active_node_id,
+    is_vpn_node,
     node_metadata_dict,
     set_active_node_id,
     sync_local_node,
@@ -122,7 +123,8 @@ def _detail_keyboard(node: Node, *, active_id: int | None) -> dict:
     rows: list[list[dict]] = [
         [inline_button(i18n.BTN_NODES_HEALTH, callback_data=f"ndh:{node.id}")],
     ]
-    if active_id != node.id:
+    # Активным может быть только VPN-узел: прокси и «только MTProxy» сервер всё равно отклонит.
+    if active_id != node.id and is_vpn_node(node):
         rows.append([inline_button(i18n.BTN_NODES_ACTIVATE, callback_data=f"nda:{node.id}")])
     rows.append([inline_button(i18n.BTN_NODES_BACK, callback_data="nodes:0")])
     return inline_keyboard(rows)

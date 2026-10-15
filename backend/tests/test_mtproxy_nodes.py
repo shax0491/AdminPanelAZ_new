@@ -115,3 +115,15 @@ def test_proxy_agent_serves_mtproxy(monkeypatch):
     assert client.post("/mtproxy/action", json={"action": "restart"}, headers=headers).json()["ok"] is True
     assert client.get("/health", headers=headers).json()["mtproxyl"] is True
     assert client.get("/mtproxy/status", headers={"X-Node-Key": "wrong"}).status_code == 401
+
+
+def test_bot_offers_activate_only_for_vpn_nodes():
+    from app.services.telegram_bot_handlers.nodes import _detail_keyboard
+
+    def callbacks(node):
+        kb = _detail_keyboard(node, active_id=99)
+        return [b["callback_data"] for row in kb["inline_keyboard"] for b in row]
+
+    assert "nda:1" in callbacks(_node(1, "vpn"))
+    assert "nda:10" not in callbacks(_node(10, "mtproxy"))
+    assert "nda:5" not in callbacks(_node(5, "proxy"))
