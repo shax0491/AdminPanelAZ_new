@@ -2313,15 +2313,27 @@ print_post_install() {
   if install_proxy_selected; then
     echo
     ui_separator
-    ui_bold "Proxy agent (RU)"
-    echo
-    ui_info_box "" \
-      "systemctl start adminpanelaz-proxy" \
-      "systemctl status adminpanelaz-proxy" \
-      "journalctl -u adminpanelaz-proxy -f" \
-      "Порт: ${proxy_port}" \
-      "proxy.sh панель не ставит — AntiZapret на этом хосте вручную" \
-      "В панели: Модули → Прокси-узлы → Узлы → тип Прокси"
+    if [[ "${MTPROXY_ONLY:-false}" == true ]]; then
+      ui_bold "Proxy agent (узел «Только MTProxy»)"
+      echo
+      ui_info_box "" \
+        "systemctl start adminpanelaz-proxy" \
+        "systemctl status adminpanelaz-proxy" \
+        "journalctl -u adminpanelaz-proxy -f" \
+        "Порт: ${proxy_port}" \
+        "AntiZapret здесь не нужен: агент отдаёт панели только MTProxyL" \
+        "В панели: Узлы → Добавить → тип «Только MTProxy»"
+    else
+      ui_bold "Proxy agent (RU)"
+      echo
+      ui_info_box "" \
+        "systemctl start adminpanelaz-proxy" \
+        "systemctl status adminpanelaz-proxy" \
+        "journalctl -u adminpanelaz-proxy -f" \
+        "Порт: ${proxy_port}" \
+        "proxy.sh панель не ставит — AntiZapret на этом хосте вручную" \
+        "В панели: Модули → Прокси-узлы → Узлы → тип Прокси"
+    fi
   fi
 
   if [[ -n "$node_key" ]]; then
