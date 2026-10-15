@@ -171,7 +171,7 @@ export default function NodeSelector({ compact = false }: { compact?: boolean })
       </SelectTrigger>
       <SelectContent>
         {nodes
-          .filter((node) => (node.node_kind || 'vpn') !== 'proxy')
+          .filter((node) => (node.node_kind || 'vpn') === 'vpn')
           .map((node) => (
           <SelectItem key={node.id} value={String(node.id)}>
             <span className="flex items-center gap-2">

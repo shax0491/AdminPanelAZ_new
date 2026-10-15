@@ -60,7 +60,7 @@ def mtproxy_node_action(
 ):
     """Лимиты/вкл/выкл/ссылка пользователя, обнуление трафика или перезапуск MTProxyL на узле."""
     _require_enabled()
-    from app.services.node_manager import get_adapter_for_node, is_vpn_node
+    from app.services.node_manager import get_adapter_for_node, get_proxy_adapter, is_mtproxy_node, is_vpn_node
 
     try:
         if node_id == PANEL_NODE_ID:
@@ -71,10 +71,11 @@ def mtproxy_node_action(
             result = run_mtproxy_action(payload.model_dump(exclude_none=True))
         else:
             node = db.get(Node, node_id)
-            if node is None or not is_vpn_node(node):
+            if node is None or not (is_vpn_node(node) or is_mtproxy_node(node)):
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Узел не найден")
             node_name = node.name
-            result = get_adapter_for_node(node).mtproxy_action(payload.model_dump(exclude_none=True))
+            adapter = get_proxy_adapter(node) if is_mtproxy_node(node) else get_adapter_for_node(node)
+            result = adapter.mtproxy_action(payload.model_dump(exclude_none=True))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if not result.get("ok"):

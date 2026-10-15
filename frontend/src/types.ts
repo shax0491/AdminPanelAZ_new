@@ -1,7 +1,7 @@
 export type UserRole = 'admin' | 'user'
 export type VpnType = 'openvpn' | 'wireguard' | 'amneziawg2' | 'amneziawg3'
 export type NodeStatus = 'online' | 'offline' | 'unknown'
-export type NodeKind = 'vpn' | 'proxy'
+export type NodeKind = 'vpn' | 'proxy' | 'mtproxy'
 export type NodeTransportId = 'http' | 'mtls' | 'ssh'
 
 export interface NodeTransportOption {

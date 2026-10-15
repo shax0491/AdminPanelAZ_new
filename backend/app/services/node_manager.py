@@ -52,6 +52,10 @@ settings = get_settings()
 ACTIVE_NODE_KEY = "active_node_id"
 NODE_KIND_VPN = "vpn"
 NODE_KIND_PROXY = "proxy"
+# Сервер только с MTProxyL (без AntiZapret): тот же лёгкий proxy_agent, но без DESTINATION/iptables-прокси.
+NODE_KIND_MTPROXY = "mtproxy"
+# Узлы, к которым панель ходит через proxy_agent (не node_agent).
+PROXY_AGENT_KINDS = (NODE_KIND_PROXY, NODE_KIND_MTPROXY)
 
 
 def validate_node_host(host: str) -> str:
@@ -161,6 +165,16 @@ def is_vpn_node(node: Node) -> bool:
     return _node_kind(node) == NODE_KIND_VPN
 
 
+def is_mtproxy_node(node: Node) -> bool:
+    """Узел «только MTProxy»: proxy_agent + MTProxyL, AntiZapret на нём нет."""
+    return _node_kind(node) == NODE_KIND_MTPROXY
+
+
+def uses_proxy_agent(node: Node) -> bool:
+    """Панель говорит с узлом через proxy_agent (прокси-узел или узел «только MTProxy»)."""
+    return _node_kind(node) in PROXY_AGENT_KINDS
+
+
 def list_vpn_nodes(db: Session) -> list[Node]:
     """All nodes that speak node_agent (OpenVPN/WG). Excludes proxy_agent cards."""
     return [node for node in db.query(Node).order_by(Node.id.asc()).all() if is_vpn_node(node)]
@@ -168,6 +182,11 @@ def list_vpn_nodes(db: Session) -> list[Node]:
 
 def proxy_is_not_vpn_message(node: Node) -> str:
     name = node.name or "без имени"
+    if _node_kind(node) == NODE_KIND_MTPROXY:
+        return (
+            f"«{name}» — узел только с MTProxy (proxy_agent), а не VPN-сервер. "
+            "AntiZapret, OpenVPN и WireGuard на нём нет; управление — на странице MTProxy."
+        )
     return (
         f"«{name}» — прокси-узел (российский вход, proxy_agent), а не VPN-сервер. "
         "OpenVPN и WireGuard на нём не запускаются. "
@@ -284,8 +303,8 @@ def _remote_http_endpoint(node: Node) -> tuple[str, int, bool]:
 
 
 def get_proxy_adapter(node: Node, api_key_override: str | None = None) -> ProxyNodeAdapter:
-    """HTTP adapter for ``node_kind=proxy`` (proxy_agent). Not a NodeAdapter."""
-    if _node_kind(node) != NODE_KIND_PROXY:
+    """HTTP adapter for proxy_agent nodes (``node_kind`` proxy или mtproxy). Not a NodeAdapter."""
+    if _node_kind(node) not in PROXY_AGENT_KINDS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=vpn_is_not_proxy_message(node),
@@ -311,7 +330,7 @@ def get_proxy_adapter(node: Node, api_key_override: str | None = None) -> ProxyN
 
 
 def get_adapter_for_node(node: Node) -> NodeAdapter:
-    if _node_kind(node) == NODE_KIND_PROXY:
+    if _node_kind(node) in PROXY_AGENT_KINDS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=proxy_is_not_vpn_message(node),
@@ -476,7 +495,7 @@ def sync_local_node(db: Session) -> Node | None:
 
 def check_node_health(node: Node, api_key_override: str | None = None) -> dict:
     try:
-        if _node_kind(node) == NODE_KIND_PROXY:
+        if _node_kind(node) in PROXY_AGENT_KINDS:
             adapter = get_proxy_adapter(node, api_key_override=api_key_override)
             health = adapter.health()
             health["status"] = "online"

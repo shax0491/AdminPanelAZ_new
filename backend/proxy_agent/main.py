@@ -262,7 +262,36 @@ def health(_: None = Depends(verify_api_key)):
         "started_at": started.isoformat().replace("+00:00", "Z"),
         "uptime_sec": max(0, int((now - started).total_seconds())),
         "listen_tls": bool(_uvicorn_ssl_kwargs()),
+        "mtproxyl": _mtproxyl_present(),
     }
+
+
+def _mtproxyl_present() -> bool:
+    """Стоит ли на сервере MTProxyL (для узлов «только MTProxy»)."""
+    from app.services.mtproxy_monitor import _mtproxyl_cmd
+
+    return _mtproxyl_cmd() is not None
+
+
+# ---------- MTProxyL: для узлов «только MTProxy» (сервер без AntiZapret) ----------
+# Тот же формат, что у node_agent: панель показывает узел на вкладке MTProxy.
+
+
+@app.get("/mtproxy/status")
+def mtproxy_status(_: None = Depends(verify_api_key)):
+    from app.services.mtproxy_monitor import collect_mtproxy_status
+
+    return collect_mtproxy_status()
+
+
+@app.post("/mtproxy/action")
+def mtproxy_action(payload: dict, _: None = Depends(verify_api_key)):
+    from app.services.mtproxy_monitor import run_mtproxy_action
+
+    try:
+        return run_mtproxy_action(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @app.get("/proxy/status")

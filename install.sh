@@ -12,6 +12,8 @@
 #   --node-only         только агент узла для VPN-сервера (вместе с ним теперь
 #                       автоматически ставится и proxy_agent - см. --no-proxy-agent)
 #   --proxy-only        только proxy_agent для RU-прокси (без панели и без proxy.sh)
+#   --mtproxy-only      узел «только MTProxy»: proxy_agent для сервера с MTProxyL без AntiZapret
+#                       (в панели: Узлы -> Добавить -> тип «Только MTProxy», порт 9101)
 #   --no-proxy-agent    не ставить proxy_agent вместе с node_agent
 #   --with-systemd      автозапуск как системный сервис
 #   --reinstall         переустановка с сохранением backend/.env
@@ -125,6 +127,7 @@ WITH_SYSTEMD=false
 WITH_NODE_AGENT=false
 NODE_ONLY=false
 PROXY_ONLY=false
+MTPROXY_ONLY=false
 NO_PROXY_AGENT=false
 FORCE=false
 NON_INTERACTIVE=false
@@ -314,6 +317,7 @@ require_tty_or_explicit_intent() {
   sudo bash install.sh --non-interactive --with-systemd -y
   sudo bash install.sh --node-only --with-systemd -y
   sudo bash install.sh --proxy-only --with-systemd -y
+  sudo bash install.sh --mtproxy-only --with-systemd -y
 
 Либо (для ssh без tty) добавьте -t: ssh -t host 'curl -fsSL ... | sudo bash'
 
@@ -358,6 +362,12 @@ parse_args() {
         ;;
       --proxy-only)
         PROXY_ONLY=true
+        export WIZ_INSTALL_TYPE=proxy
+        ;;
+      --mtproxy-only)
+        # Тот же лёгкий proxy_agent (умеет /mtproxy/*), но узел в панели - тип «Только MTProxy».
+        PROXY_ONLY=true
+        MTPROXY_ONLY=true
         export WIZ_INSTALL_TYPE=proxy
         ;;
       --no-proxy-agent)
@@ -2336,7 +2346,14 @@ print_post_install() {
     else
       echo "  $proxy_key"
     fi
-    print_info "Укажите этот ключ и порт ${proxy_port} при добавлении прокси-узла в панели"
+    if [[ "${MTPROXY_ONLY:-false}" == true ]]; then
+      print_info "В панели: Узлы -> Добавить -> тип «Только MTProxy», порт ${proxy_port} и этот ключ"
+      if ! command -v mtproxyl >/dev/null 2>&1 && [[ ! -f /opt/mtproxyl/mtproxyl.sh ]]; then
+        warn "MTProxyL на сервере не найден - установите его, иначе на вкладке MTProxy узел будет пустым"
+      fi
+    else
+      print_info "Укажите этот ключ и порт ${proxy_port} при добавлении прокси-узла в панели"
+    fi
   fi
 
   if [[ "$WIZARD_RAN" == true ]]; then

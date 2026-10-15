@@ -451,7 +451,7 @@ export default function NodeSyncGroupSection({
   const [autoSetup, setAutoSetup] = useState(true)
 
   const onlineNodes = useMemo(
-    () => nodes.filter((n) => n.status === 'online' && (n.node_kind || 'vpn') !== 'proxy'),
+    () => nodes.filter((n) => n.status === 'online' && (n.node_kind || 'vpn') === 'vpn'),
     [nodes],
   )
   const prevSyncStatusRef = useRef<Map<number, SyncStatus>>(new Map())

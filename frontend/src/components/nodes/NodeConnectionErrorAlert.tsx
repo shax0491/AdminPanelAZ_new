@@ -2,7 +2,7 @@ import SettingsAlert from '@/components/settings/SettingsAlert'
 import DocsLink from '@/components/shared/DocsLink'
 import { DOCS } from '@/lib/docsUrls'
 import type { Node } from '@/types'
-import { isProxyNode } from './nodeKind'
+import { usesProxyAgent } from './nodeKind'
 import { isWrongVersionSslError } from './nodeHelpers'
 
 export default function NodeConnectionErrorAlert({
@@ -12,7 +12,7 @@ export default function NodeConnectionErrorAlert({
   node: Node
   lastError: string
 }) {
-  const isProxy = isProxyNode(node)
+  const isProxy = usesProxyAgent(node)
   if (isWrongVersionSslError(lastError)) {
     return (
       <SettingsAlert variant="warning" title="Несовпадение протокола (SSL)">

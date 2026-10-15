@@ -201,10 +201,11 @@ def node_mtproxy_status(node, *, max_age: float = CACHE_SECONDS) -> dict | None:
         cached = _cache.get(node.id)
         if cached and now - cached[0] < max_age:
             return cached[1]
-    from app.services.node_manager import get_adapter_for_node
+    from app.services.node_manager import get_adapter_for_node, get_proxy_adapter, is_mtproxy_node
 
     try:
-        data = get_adapter_for_node(node).get_mtproxy_status()
+        adapter = get_proxy_adapter(node) if is_mtproxy_node(node) else get_adapter_for_node(node)
+        data = adapter.get_mtproxy_status()
     except Exception as exc:  # агент недоступен или старый (нет /mtproxy/status)
         logger.debug("MTProxy status of node %s unavailable: %s", node.id, exc)
         data = None
@@ -255,7 +256,8 @@ def reset_cache() -> None:
 def _monitored_nodes(db, node_id: int | None):
     from app.models import Node, NodeStatus
 
-    query = db.query(Node).filter(Node.status == NodeStatus.online)
+    # VPN-узлы и узлы «только MTProxy»; прокси-узлы (RU-вход) MTProxyL не держат.
+    query = db.query(Node).filter(Node.status == NodeStatus.online, Node.node_kind.in_(("vpn", "mtproxy")))
     if node_id is not None:
         query = query.filter(Node.id == node_id)
     return query.order_by(Node.id.asc()).all()
@@ -319,19 +321,25 @@ def mtproxy_overview(db) -> list[dict]:
 
 
 def mtproxy_all_nodes(db) -> list[dict]:
-    """Все VPN-узлы для вкладки MTProxy панели: и без MTProxyL, и недоступные, чтобы было видно, где его нет."""
+    """Узлы для вкладки MTProxy: VPN-узлы с MTProxyL и узлы «только MTProxy» (в т.ч. недоступные).
+
+    VPN-узел, на котором MTProxyL точно нет (агент ответил installed=false), не показываем.
+    """
     from app.models import Node, NodeStatus
-    from app.services.node_manager import is_vpn_node
+    from app.services.node_manager import is_mtproxy_node, is_vpn_node
 
     rows: list[dict] = []
     for node in db.query(Node).order_by(Node.id.asc()).all():
-        if not is_vpn_node(node):
+        if not (is_vpn_node(node) or is_mtproxy_node(node)):
             continue
-        row: dict = {"node_id": node.id, "node_name": node.name, "node_online": node.status == NodeStatus.online}
+        row: dict = {"node_id": node.id, "node_name": node.name, "node_online": node.status == NodeStatus.online,
+                     "node_kind": node.node_kind or "vpn"}
         status = node_mtproxy_status(node) if row["node_online"] else None
         if status is None:
             row["installed"] = None  # агент не ответил или не умеет /mtproxy/status
         else:
+            if is_vpn_node(node) and status.get("installed") is False:
+                continue  # на VPN-узле MTProxyL нет - не засоряем вкладку
             row.update(status)
         rows.append(row)
     panel = panel_mtproxy_status(db)

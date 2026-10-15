@@ -199,7 +199,7 @@ export default function MaintenanceTab({ settings }: MaintenanceTabProps) {
   useEffect(() => {
     void getNodes()
       .then((list) => {
-        setNodes(list.filter((n) => (n.node_kind || 'vpn') !== 'proxy'))
+        setNodes(list.filter((n) => (n.node_kind || 'vpn') === 'vpn'))
       })
       .catch(() => setNodes([]))
   }, [])

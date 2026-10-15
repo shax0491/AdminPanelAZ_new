@@ -22,6 +22,8 @@ from app.services.proxy_node_adapter import ProxyNodeAdapter
 from app.services.ssh_tunnel_pool import get_ssh_tunnel_pool
 
 NODE_KIND_PROXY = "proxy"
+# proxy_agent обслуживает и прокси-узлы, и узлы «только MTProxy»
+PROXY_AGENT_KINDS = (NODE_KIND_PROXY, "mtproxy")
 
 
 @dataclass(frozen=True)
@@ -56,7 +58,7 @@ def _probe_direct(
     if not host or port <= 0:
         return False, "offline", "У узла не задан host/port"
     try:
-        if _node_kind(node) == NODE_KIND_PROXY:
+        if _node_kind(node) in PROXY_AGENT_KINDS:
             adapter = ProxyNodeAdapter(
                 host=host,
                 port=port,
@@ -170,7 +172,7 @@ def _probe_via_ssh(node: Node, body: NodeTransportUpdate, *, api_key: str) -> tu
         ensured = pool.ensure(probe_node)
         local_port = ensured.local_port if hasattr(ensured, "local_port") else int(ensured)
         try:
-            if _node_kind(node) == NODE_KIND_PROXY:
+            if _node_kind(node) in PROXY_AGENT_KINDS:
                 adapter = ProxyNodeAdapter(
                     host="127.0.0.1",
                     port=local_port,
@@ -297,7 +299,7 @@ def preflight_transport_switch(
         )
 
     # Proxy mTLS is flag-only — no live provision probe.
-    if wanted == TRANSPORT_MTLS and _node_kind(node) == NODE_KIND_PROXY:
+    if wanted == TRANSPORT_MTLS and _node_kind(node) in PROXY_AGENT_KINDS:
         return TransportPreflightResult(
             ok=True,
             current=current,

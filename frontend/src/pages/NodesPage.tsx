@@ -34,7 +34,7 @@ import NodeOfflineNotifyCard from '@/components/nodes/NodeOfflineNotifyCard'
 import NodeSyncGroupSection from '@/components/nodes/NodeSyncGroupSection'
 import { AZ_PROXY_SH_DOCS_URL } from '@/components/nodes/ProxyNodePanel'
 import { getSelectedNodes } from '@/components/nodes/nodeHelpers'
-import { isProxyNode, PROXY_DEFAULT_PORT, VPN_DEFAULT_PORT } from '@/components/nodes/nodeKind'
+import { isProxyNode, isVpnNode, usesProxyAgent, PROXY_DEFAULT_PORT, VPN_DEFAULT_PORT } from '@/components/nodes/nodeKind'
 import ProxyLinkSelect from '@/components/proxy/ProxyLinkSelect'
 import { NodeBadge, statusLabels } from '@/components/NodeSelector'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
@@ -276,7 +276,7 @@ export default function NodesPage() {
 
   const handleNodeKindChange = (kind: NodeKind) => {
     setNodeKind(kind)
-    setPort(kind === 'proxy' ? PROXY_DEFAULT_PORT : VPN_DEFAULT_PORT)
+    setPort(kind === 'vpn' ? VPN_DEFAULT_PORT : PROXY_DEFAULT_PORT)
     if (kind !== 'proxy') {
       setLinkSelectorValue(PROXY_LINK_NONE)
     }
@@ -288,7 +288,7 @@ export default function NodesPage() {
     setPortalLabel(node.portal_label ?? '')
     setHost(node.host)
     setPort(node.port)
-    setNodeKind(isProxyNode(node) ? 'proxy' : 'vpn')
+    setNodeKind(((node.node_kind || 'vpn') as NodeKind))
     setApiKey('')
     setLinkSelectorValue(
       isProxyNode(node)
@@ -406,7 +406,8 @@ export default function NodesPage() {
         await refresh()
         success('Узел обновлён')
       } else {
-        const kind = proxyNodesEnabled && nodeKind === 'proxy' ? 'proxy' : 'vpn'
+        const kind: NodeKind =
+          nodeKind === 'mtproxy' ? 'mtproxy' : proxyNodesEnabled && nodeKind === 'proxy' ? 'proxy' : 'vpn'
         const created = await createNode({
           name: trimmedName,
           host: trimmedHost,
@@ -423,14 +424,20 @@ export default function NodesPage() {
         if (created.status === 'offline') {
           const lastError =
             typeof created.metadata?.last_error === 'string' ? created.metadata.last_error : null
-          const agentLabel = kind === 'proxy' ? 'proxy_agent' : 'node agent'
+          const agentLabel = kind === 'vpn' ? 'node agent' : 'proxy_agent'
           warning(
             lastError
               ? `Узел добавлен, но агент недоступен: ${lastError}. Запустите ${agentLabel} на сервере и нажмите «Здоровье».`
               : `Узел добавлен, но агент недоступен. Запустите ${agentLabel} на сервере и нажмите «Здоровье».`,
           )
         } else {
-          success(kind === 'proxy' ? 'Прокси-узел добавлен и доступен' : 'Узел добавлен и доступен')
+          success(
+            kind === 'proxy'
+              ? 'Прокси-узел добавлен и доступен'
+              : kind === 'mtproxy'
+                ? 'Узел «только MTProxy» добавлен и доступен'
+                : 'Узел добавлен и доступен',
+          )
         }
       }
     } catch (err) {
@@ -603,7 +610,7 @@ export default function NodesPage() {
         await patchNodeTransport(target.id, 'mtls')
         closeConfirm()
         success(
-          isProxyNode(target)
+          usesProxyAgent(target)
             ? `Способ связи «${target.name}»: HTTPS + mTLS (сертификаты proxy_agent вручную)`
             : `Способ связи «${target.name}»: HTTPS + mTLS`,
         )
@@ -953,7 +960,7 @@ export default function NodesPage() {
   // look like part of that VPN node instead of an independent machine.
   const vpnNodesById = new Map<number, Node>()
   for (const n of nodes) {
-    if (!isProxyNode(n)) vpnNodesById.set(n.id, n)
+    if (isVpnNode(n)) vpnNodesById.set(n.id, n)
   }
   const proxyByVpnId = new Map<number, Node>()
   for (const n of nodes) {
@@ -1183,7 +1190,7 @@ export default function NodesPage() {
 
               <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2 2xl:grid-cols-3">
                 {topLevelNodes.map((node) => {
-                  const pairedProxyNode = isProxyNode(node) ? null : (proxyByVpnId.get(node.id) ?? null)
+                  const pairedProxyNode = isVpnNode(node) ? (proxyByVpnId.get(node.id) ?? null) : null
                   return (
                     <NodeCard
                       key={node.id}
@@ -1231,7 +1238,7 @@ export default function NodesPage() {
               {editing
                 ? editing.is_local
                   ? 'Только отображаемое имя'
-                  : isProxyNode(editing)
+                  : usesProxyAgent(editing)
                     ? 'Параметры proxy_agent'
                     : 'Параметры node agent'
                 : proxyNodesEnabled && nodeKind === 'proxy'
@@ -1246,10 +1253,10 @@ export default function NodesPage() {
                 <div
                   className={cn(
                     'grid gap-3',
-                    proxyNodesEnabled ? 'sm:grid-cols-2' : 'grid-cols-1',
+                    'sm:grid-cols-2',
                   )}
                 >
-                  {proxyNodesEnabled && (
+                  {(
                     <div className="grid gap-1.5">
                       <Label htmlFor="node-kind" className="text-xs text-muted-foreground">
                         Тип
@@ -1262,8 +1269,9 @@ export default function NodesPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="vpn">VPN</SelectItem>
-                          <SelectItem value="proxy">Прокси</SelectItem>
+                          <SelectItem value="vpn">VPN (AntiZapret)</SelectItem>
+                          {proxyNodesEnabled && <SelectItem value="proxy">Прокси</SelectItem>}
+                          <SelectItem value="mtproxy">Только MTProxy</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1362,7 +1370,7 @@ export default function NodesPage() {
                       }
                     />
                   </div>
-                  {editing && !isProxyNode(editing) && (
+                  {editing && isVpnNode(editing) && (
                     <div className="grid gap-1.5">
                       <Label htmlFor="node-portal-label">Название в портале</Label>
                       <Input
@@ -1669,7 +1677,7 @@ export default function NodesPage() {
             : confirmAction === 'rotate-key'
               ? 'Ротация API-ключа?'
               : confirmAction === 'enable-mtls'
-                ? confirmTarget && isProxyNode(confirmTarget)
+                ? confirmTarget && usesProxyAgent(confirmTarget)
                   ? 'Отметить mTLS?'
                   : 'Включить mTLS?'
                 : confirmAction === 'switch-http'
@@ -1794,7 +1802,7 @@ export default function NodesPage() {
                   getSelectedNodes(nodes, selectedNodeIds).filter(
                     (n) =>
                       !n.is_local &&
-                      !isProxyNode(n) &&
+                      !usesProxyAgent(n) &&
                       (n.transport || (n.mtls_enabled ? 'mtls' : 'http')) !== 'mtls',
                   ).length
                 } узл(ах)?`

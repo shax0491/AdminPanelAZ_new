@@ -59,7 +59,12 @@
 
 ### ✨ Added
 
+- **Узел «Только MTProxy»** (`node_kind=mtproxy`): сервер с MTProxyL без AntiZapret. Ставится `install.sh --mtproxy-only` (лёгкий `proxy_agent`, порт 9101), добавляется в «Узлы» с типом «Только MTProxy» и показывается на вкладке MTProxy со статусом, пользователями и действиями. Активным VPN-узлом, в синхронизации, WARP и отказоустойчивости такой узел не участвует.
+- `proxy_agent` 1.2.0: `GET /mtproxy/status`, `POST /mtproxy/action`; `/health` сообщает, стоит ли MTProxyL.
+
 ### 🔄 Changed
+
+- Вкладка MTProxy не показывает VPN-узлы, где MTProxyL нет (агент ответил `installed=false`).
 
 ### 🐛 Fixed
 
@@ -68,6 +73,8 @@
 ### 🔒 Security
 
 ### 🧪 Tests
+
+- `test_mtproxy_nodes.py`: тип узла, выбор адаптера, вкладка MTProxy, `/mtproxy/*` у proxy_agent.
 
 ---
 

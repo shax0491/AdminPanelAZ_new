@@ -86,6 +86,7 @@ from app.services.openvpn_remote_hosts import (
 
 NODE_KIND_VPN = "vpn"
 NODE_KIND_PROXY = "proxy"
+NODE_KIND_MTPROXY = "mtproxy"  # только MTProxyL, агент proxy_agent
 PROXY_DEFAULT_PORT = 9101
 VPN_DEFAULT_PORT = 9100
 
@@ -370,10 +371,10 @@ def create_node(
 ):
     _require_nodes_module(db)
     kind = (payload.node_kind or NODE_KIND_VPN).strip().lower()
-    if kind not in (NODE_KIND_VPN, NODE_KIND_PROXY):
+    if kind not in (NODE_KIND_VPN, NODE_KIND_PROXY, NODE_KIND_MTPROXY):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="node_kind должен быть vpn или proxy",
+            detail="node_kind должен быть vpn, proxy или mtproxy",
         )
     host = validate_node_host(payload.host)
     if not payload.api_key:
@@ -387,8 +388,8 @@ def create_node(
 
     if payload.port is not None:
         port = payload.port
-    elif kind == NODE_KIND_PROXY:
-        port = PROXY_DEFAULT_PORT
+    elif kind in (NODE_KIND_PROXY, NODE_KIND_MTPROXY):
+        port = PROXY_DEFAULT_PORT  # оба говорят через proxy_agent (9101)
     else:
         port = VPN_DEFAULT_PORT
 
@@ -434,7 +435,7 @@ def create_node(
         transport=TRANSPORT_HTTP,
         mtls_enabled=False,
         node_kind=kind,
-        destination_ip=(payload.destination_ip or None),
+        destination_ip=(payload.destination_ip or None) if kind == NODE_KIND_PROXY else None,
         linked_vpn_node_id=linked_vpn_node_id,
         status=NodeStatus.unknown,
         node_metadata="{}",
@@ -1156,6 +1157,11 @@ def activate_node(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Прокси-узел нельзя сделать активным для VPN",
+        )
+    if (node.node_kind or NODE_KIND_VPN) != NODE_KIND_VPN:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Узел «только MTProxy» нельзя сделать активным для VPN: на нём нет AntiZapret",
         )
 
     set_active_node_id(db, node.id)

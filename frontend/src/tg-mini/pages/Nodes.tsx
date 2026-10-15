@@ -148,8 +148,9 @@ interface MiniNodeCardProps {
   onActivate: () => void
 }
 
-function isProxyNode(node: TgMiniNode): boolean {
-  return (node.node_kind || 'vpn') === 'proxy'
+/** Активным может быть только VPN-узел (не прокси и не «только MTProxy»). */
+function isVpnNode(node: TgMiniNode): boolean {
+  return (node.node_kind || 'vpn') === 'vpn'
 }
 
 function MiniNodeCard({ node, isActive, busy, flash, onHealth, onActivate }: MiniNodeCardProps) {
@@ -157,7 +158,7 @@ function MiniNodeCard({ node, isActive, busy, flash, onHealth, onActivate }: Min
   const isBusy = busy?.id === node.id
   const healthBusy = isBusy && busy?.kind === 'health'
   const activateBusy = isBusy && busy?.kind === 'activate'
-  const canActivate = !isActive && !isProxyNode(node)
+  const canActivate = !isActive && isVpnNode(node)
 
   return (
     <Card

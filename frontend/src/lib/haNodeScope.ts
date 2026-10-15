@@ -65,7 +65,7 @@ export function buildHaSelectorOptions(nodes: Node[], syncGroups: NodeSyncGroup[
     .sort((a, b) => a.label.localeCompare(b.label, 'ru'))
 
   const standaloneOptions: HaSelectorOption[] = nodes
-    .filter((node) => !groupedNodeIds.has(node.id) && (node.node_kind || 'vpn') !== 'proxy')
+    .filter((node) => !groupedNodeIds.has(node.id) && (node.node_kind || 'vpn') === 'vpn')
     .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
     .map((node) => ({
       type: 'node' as const,

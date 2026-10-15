@@ -39,14 +39,14 @@ def _get_vpn_node_or_404(node_id: int, db: Session) -> Node:
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Узел не найден")
-    if (node.node_kind or "vpn") == NODE_KIND_PROXY:
+    if (node.node_kind or "vpn") != "vpn":  # прокси и «только MTProxy» - без AntiZapret/WARP
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Узел-прокси не имеет AntiZapret/WARP")
     return node
 
 
 @router.get("/nodes")
 def list_warp_geo_nodes(db: Session = Depends(get_db), _: User = Depends(require_admin)):
-    nodes = db.query(Node).filter(Node.node_kind != NODE_KIND_PROXY).order_by(Node.id).all()
+    nodes = [n for n in db.query(Node).order_by(Node.id).all() if (n.node_kind or "vpn") == "vpn"]
     return {"nodes": [{"id": n.id, "name": n.name, "status": n.status.value} for n in nodes]}
 
 

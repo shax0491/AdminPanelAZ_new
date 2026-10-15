@@ -11,7 +11,7 @@ import NodeActions from './NodeActions'
 import NodeConnectionErrorAlert from './NodeConnectionErrorAlert'
 import NodeTransportBadge from './NodeTransportBadge'
 import { formatLastSeen, getNodeMeta } from './nodeHelpers'
-import { isProxyNode } from './nodeKind'
+import { isMtproxyNode, isProxyNode, usesProxyAgent } from './nodeKind'
 
 export type NodeActionHandlers = {
   isActive: boolean
@@ -54,12 +54,18 @@ function NodeCardBody({
 }) {
   const meta = getNodeMeta(node)
   const isProxy = isProxyNode(node)
+  const isMtproxy = isMtproxyNode(node)
   const showProxyAffordance = showProxyUi && isProxy
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-        {isProxy ? (
+        {isMtproxy ? (
+          <div>
+            <p className="text-xs text-muted-foreground">Роль</p>
+            <p className="text-xs">Только MTProxy (proxy_agent, без AntiZapret). Пользователи и статус — на странице MTProxy.</p>
+          </div>
+        ) : isProxy ? (
           <div>
             <p className="text-xs text-muted-foreground">Назначение (destination)</p>
             <p className="font-mono text-xs">{node.destination_ip ?? '—'}</p>
@@ -141,7 +147,7 @@ function NodeCardBody({
       <NodeActions
         node={node}
         isActive={actions.isActive}
-        isProxy={isProxy}
+        isProxy={usesProxyAgent(node)}
         healthLoading={actions.healthLoading}
         activateLoading={actions.activateLoading}
         onActivate={actions.onActivate}
@@ -192,6 +198,7 @@ export default function NodeCard({
   const [pairedExpanded, setPairedExpanded] = useState(false)
   const lastSeen = formatLastSeen(node.last_seen_at)
   const isProxy = isProxyNode(node)
+  const isMtproxy = isMtproxyNode(node)
   const showProxyAffordance = showProxyUi && isProxy
 
   return (
@@ -235,6 +242,11 @@ export default function NodeCard({
                 title={frontPoolName ? `Сейчас активный фронт: ${frontPoolName}` : 'proxy_agent есть, но фронтом ни одного пула сейчас не назначен'}
               >
                 {frontPoolName ? `Фронт: ${frontPoolName}` : 'Прокси'}
+              </Badge>
+            )}
+            {isMtproxy && (
+              <Badge variant="outline" className="border-sky-500/40 text-[10px] text-sky-800 dark:text-sky-100">
+                MTProxy
               </Badge>
             )}
             {isProxy && !showProxyUi && (

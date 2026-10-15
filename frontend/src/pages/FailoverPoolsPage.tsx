@@ -582,7 +582,7 @@ function PoolCard({
   // отдельно ниже как front_node_id) - иначе список задваивался «сервер» +
   // «сервер (фронт)» и было не разобрать, что из этого реально добавлять.
   const availableNodes = nodes.filter(
-    (n) => (n.node_kind ?? 'vpn') !== 'proxy' && !pool.members.some((m) => m.node_id === n.id),
+    (n) => (n.node_kind ?? 'vpn') === 'vpn' && !pool.members.some((m) => m.node_id === n.id),
   )
   const activeMember = pool.members.find((m) => m.id === pool.active_member_id)
 

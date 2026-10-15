@@ -14,7 +14,7 @@ from app.models import Node, User
 from app.services.action_log import log_action
 from app.services.node_adapter import RemoteNodeAdapter
 from app.services.node_manager import (
-    NODE_KIND_PROXY,
+    PROXY_AGENT_KINDS,
     check_node_health,
     get_api_key_plain,
     node_metadata_dict,
@@ -93,7 +93,7 @@ def enable_mtls(db: Session, node: Node, actor: User) -> Node:
     if resolve_transport_id(node) == TRANSPORT_MTLS:
         raise ValueError("mTLS уже включён для этого узла")
 
-    if _node_kind(node) == NODE_KIND_PROXY:
+    if _node_kind(node) in PROXY_AGENT_KINDS:
         return _enable_proxy_mtls_flag(db, node, actor)
 
     api_key = get_api_key_plain(node)

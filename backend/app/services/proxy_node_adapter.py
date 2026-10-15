@@ -112,6 +112,14 @@ class ProxyNodeAdapter:
         """PUT /proxy/destination → updated status."""
         return self._request("PUT", "/proxy/destination", json={"destination_ip": ip})
 
+    def get_mtproxy_status(self) -> dict[str, Any]:
+        """GET /mtproxy/status — MTProxyL на узле (тот же формат, что у node_agent)."""
+        return self._request("GET", "/mtproxy/status", timeout=40.0)
+
+    def mtproxy_action(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """POST /mtproxy/action — лимиты/вкл/выкл/ссылка/сброс трафика/перезапуск."""
+        return self._request("POST", "/mtproxy/action", json=payload, timeout=150.0)
+
     def mappings(self) -> dict[str, Any]:
         """GET /proxy/mappings → { mappings: [...] }."""
         return self._request("GET", "/proxy/mappings")
