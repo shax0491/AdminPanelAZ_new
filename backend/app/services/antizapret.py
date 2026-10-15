@@ -44,7 +44,7 @@ NATIVE_AWG2_CLIENT_MTU = 1280
 NATIVE_AWG2_SERVER_INTERFACES = frozenset({"antizapret2", "vpn2"})
 
 
-def _parse_client_names_section(output: str, header: str) -> list[str]:
+def _parse_client_names_section(output: str, header: str | tuple[str, ...]) -> list[str]:
     """Extract client names listed under `header` in unified `client.sh 3` output.
 
     client.sh's option 3 prints three sections back to back (OpenVPN, then
@@ -261,7 +261,8 @@ class AntiZapretService:
 
     def list_amneziawg2_clients(self) -> list[str]:
         output = self._run_client_script("3")
-        return _parse_client_names_section(output, "AmneziaWG 2 client names:")
+        # AntiZapret 14.10.2026 renamed the header to "AmneziaWG 2.0 client names:"; older nodes still print the short form
+        return _parse_client_names_section(output, ("AmneziaWG 2.0 client names:", "AmneziaWG 2 client names:"))
 
     def get_amneziawg2_monitoring(self) -> dict[str, object]:
         from app.services.native_awg2_runtime import get_monitoring
