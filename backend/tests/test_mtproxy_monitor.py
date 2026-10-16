@@ -73,6 +73,23 @@ def test_availability_is_worst_node(fake_nodes):
     assert mtproxy_monitor.mtproxy_availability_value(None, 5) is None
 
 
+def test_availability_needs_two_bad_checks_in_a_row(monkeypatch):
+    """Одна неудачная проверка (минутный сбой) не роняет показатель; две подряд - роняют, и видно, какой узел."""
+    def st(*pcts):
+        recent = [{"percentage": p, "target": "cdn.example:443 (SNI: cdn.example)"} for p in pcts]
+        return {"installed": True, "running": True, "availability": recent[-1], "availability_recent": recent}
+
+    statuses = {1: st(100, 95, 0), 2: st(100, 0, 0), 3: st(100, 100, 95)}
+    nodes = [SimpleNamespace(id=i, name=f"DE{i}") for i in statuses]
+    monkeypatch.setattr(mtproxy_monitor, "_monitored_nodes", lambda db, node_id: [n for n in nodes if node_id in (None, n.id)])
+    monkeypatch.setattr(mtproxy_monitor, "node_mtproxy_status", lambda node, **kw: statuses[node.id])
+    assert mtproxy_monitor.mtproxy_availability_value(None, 1) == 95.0      # разовый провал - не тревога
+    assert mtproxy_monitor.mtproxy_availability_value(None, 2) == 0.0       # два подряд - тревога
+    assert mtproxy_monitor.mtproxy_availability_value(None, None) == 0.0    # худший узел
+    lines = mtproxy_monitor.mtproxy_availability_lines(None, None, 50.0)
+    assert lines == ["DE2 (cdn.example:443): 0% и 0% — 2 проверки подряд"]
+
+
 def test_overview_lists_only_installed(fake_nodes):
     rows = mtproxy_monitor.mtproxy_overview(None)
     assert [r["node_id"] for r in rows] == [1, 2, 5]

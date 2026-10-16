@@ -273,15 +273,42 @@ def mtproxy_down_value(db, node_id: int | None) -> float | None:
     return float(sum(1 for s in installed if not s.get("running") and s.get("status") != "unknown"))
 
 
+CONFIRM_CHECKS = 2  # узел считаем недоступным, только если столько последних проверок подряд плохие
+
+
+def _confirmed_availability(status: dict | None) -> tuple[float | None, list[float]]:
+    """Доступность узла с подтверждением: лучшая из последних CONFIRM_CHECKS проверок.
+
+    Одна неудачная проверка (минутный сбой сети, «моргание» маршрута из РФ) не роняет показатель,
+    две подряд - роняют. Возвращает (значение, проценты последних проверок)."""
+    if not status or not status.get("installed"):
+        return None, []
+    recent = [float(r["percentage"]) for r in (status.get("availability_recent") or []) if r.get("percentage") is not None]
+    if not recent:
+        last = (status.get("availability") or {}).get("percentage")
+        recent = [float(last)] if last is not None else []
+    tail = recent[-CONFIRM_CHECKS:]
+    return (max(tail) if tail else None), tail
+
+
 def mtproxy_availability_value(db, node_id: int | None) -> float | None:
-    """Доступность из России по последней проверке, %; по всем узлам - худший узел."""
-    values: list[float] = []
+    """Доступность из России, %: по узлу - лучшая из двух последних проверок; по всем узлам - худший узел."""
+    values = [v for node in _monitored_nodes(db, node_id) for v in [_confirmed_availability(node_mtproxy_status(node))[0]] if v is not None]
+    return min(values) if values else None
+
+
+def mtproxy_availability_lines(db, node_id: int | None, threshold: float) -> list[str]:
+    """Строки «узел (адрес): 0% и 0% подряд» для текста оповещения - какие именно узлы недоступны."""
+    lines: list[str] = []
     for node in _monitored_nodes(db, node_id):
         status = node_mtproxy_status(node)
-        availability = (status or {}).get("availability") or {}
-        if status and status.get("installed") and availability.get("percentage") is not None:
-            values.append(float(availability["percentage"]))
-    return min(values) if values else None
+        value, tail = _confirmed_availability(status)
+        if value is not None and value < threshold:
+            target = ((status or {}).get("availability") or {}).get("target") or (status or {}).get("domain") or ""
+            target = target.split(" (")[0]
+            checks = " и ".join("%g%%" % v for v in tail)
+            lines.append(f"{node.name}{f' ({target})' if target else ''}: {checks} — {len(tail)} проверки подряд")
+    return lines
 
 
 def mtproxy_quota_max_value(db, node_id: int | None) -> float | None:

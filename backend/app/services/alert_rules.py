@@ -23,7 +23,7 @@ ALERT_METRIC_LABELS: dict[str, str] = {
     AlertRuleMetric.node_offline_seconds.value: "Узел offline (сек)",
     AlertRuleMetric.traffic_collector_lag_seconds.value: "Задержка traffic collector (сек)",
     AlertRuleMetric.mtproxy_down.value: "MTProxy остановлен (узлов)",
-    AlertRuleMetric.mtproxy_availability_pct.value: "MTProxy: доступность из России, % (худший узел)",
+    AlertRuleMetric.mtproxy_availability_pct.value: "MTProxy: доступность из России, % (худший узел, 2 проверки подряд)",
     AlertRuleMetric.mtproxy_quota_pct.value: "MTProxy: расход квоты трафика, % (самый большой у пользователя)",
 }
 
@@ -211,6 +211,12 @@ def notify_rule_trigger(db: Session, rule: AlertRule, value: float) -> None:
         users = mtproxy_quota_users(db, rule.node_id, float(rule.threshold))
         if users:
             details += "\n" + "\n".join(users)
+    if metric_key == AlertRuleMetric.mtproxy_availability_pct.value:
+        from app.services.mtproxy_monitor import mtproxy_availability_lines
+
+        lines = mtproxy_availability_lines(db, rule.node_id, float(rule.threshold))
+        if lines:
+            details += "\n" + "\n".join(lines)
     admin_notify_service.send(
         db,
         "alert_rule",
