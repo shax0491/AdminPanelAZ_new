@@ -3,8 +3,8 @@
 Веб-панель для администрирования VPN-сервера [AntiZapret](https://github.com/shax0491/AntiZapret-VPN_new): клиенты, маршрутизация, мониторинг, бэкапы, Telegram.
 
 [![GitHub](https://img.shields.io/badge/GitHub-shax0491%2FAdminPanelAZ__new-181717?style=for-the-badge&logo=github)](https://github.com/shax0491/AdminPanelAZ_new)
-[![Version](https://img.shields.io/badge/Панель-2.26.3-blue?style=for-the-badge)](CHANGELOG.md)
-[![Node agent](https://img.shields.io/badge/Node_agent-1.11.1-555?style=for-the-badge)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Панель-2.49.0_(апстрим_2.26.5)-blue?style=for-the-badge)](CHANGELOG.md)
+[![Node agent](https://img.shields.io/badge/Node_agent-1.24.0-555?style=for-the-badge)](CHANGELOG.md)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](backend/)
 [![React](https://img.shields.io/badge/Frontend-React-61DAFB?style=for-the-badge&logo=react&logoColor=black)](frontend/)
 
@@ -305,7 +305,7 @@ sudo ./install.sh --uninstall  # удалить только сервисы па
 
 - **Health** — `GET /api/health`, `GET /api/health/deep`
 - **Метрики** — `GET /metrics` (Prometheus)
-- **Node agent** — **1.11.1** (для HA: ≥ 1.3.0; byte-copy `.ovpn` при Push full: ≥ 1.5.0; сроки сертификатов: ≥ 1.6.0; AZ-AWG2 / reboot: ≥ 1.7.0; uptime / `listen_tls` в `/health`: ≥ 1.8.0; AZ-WARP 1.5, файлы WARP/RPZ/Lua, OpenVPN Buffer Guard, `block-batch`: ≥ 1.11.0; без лишнего перезапуска OpenVPN после doall при multihome: ≥ 1.11.1)
+- **Node agent** — **1.24.0** (связь с Telegram через узел: ≥ 1.24.0 в этом форке; для HA: ≥ 1.3.0; byte-copy `.ovpn` при Push full: ≥ 1.5.0; сроки сертификатов: ≥ 1.6.0; AZ-AWG2 / reboot: ≥ 1.7.0; uptime / `listen_tls` в `/health`: ≥ 1.8.0; AZ-WARP 1.5, файлы WARP/RPZ/Lua, OpenVPN Buffer Guard, `block-batch`: ≥ 1.11.0; без лишнего перезапуска OpenVPN после doall при multihome: ≥ 1.11.1)
 
 ## AmneziaWG 2
 
@@ -349,12 +349,10 @@ sudo ./scripts/nginx-repair.sh             # восстановить nginx
 
 - **Пользователям и администраторам** — [docs/README.md](docs/README.md), инструкция по каждому разделу
 - **Разработчикам** — [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) · [docs/PROJECT_MAP.md](docs/PROJECT_MAP.md)
-- **История изменений** — [CHANGELOG.md](CHANGELOG.md), текущая версия панель **2.25.0** / node agent **1.8.0**
+- **История изменений** — [CHANGELOG.md](CHANGELOG.md), текущая версия панель **2.49.0** (апстрим 2.26.5) / node agent **1.24.0**
 - **Предыдущая версия на Flask** — [AdminAntizapret](https://github.com/Kirito0098/AdminAntizapret) (архив)
 
-**Текущая версия: панель 2.49.0 · node agent 1.23.0** (2026-10-09)
-
-**Текущая версия: панель 2.26.5 · node agent 1.13.0** (2026-10-14)
+**Текущая версия форка: панель 2.49.0 (апстрим Kirito0098 2.26.5 влит 22.10) · node agent 1.24.0** (2026-10-22). Нумерация агента в форке своя: апстримный агент 1.13.0 соответствует 1.24.0 здесь.
 
 > **В 2.26.5:** связь с Telegram через зарубежные VPN-узлы для панели в РФ (с переходом на следующий узел при отказе); смена пароля при первом входе, проверяемая сервером; экран «что изменится» перед полным обновлением; исправлены Mini App и окно unlock-ключа на телефоне; node agent 1.13.0 — [CHANGELOG 2.26.5](CHANGELOG.md#2265---2026-10-14)
 
