@@ -262,6 +262,13 @@ export interface VisibleVpnProfilesDefaultResponse {
   policy: VisibleVpnProfilesPolicy
 }
 
+export interface SelfServiceLimits {
+  quota_default: number
+  create_rate_max: number
+  create_rate_window_seconds: number
+  require_password_change: boolean
+}
+
 export interface EffectiveVisibleVpnProfilesResponse {
   policy: VisibleVpnProfilesPolicy
   inherited: boolean
@@ -787,6 +794,13 @@ export interface LatestChangelog {
   pending?: ChangelogBlock | null
 }
 
+export interface TelegramRelayCheck {
+  id: number
+  name: string
+  ok: boolean
+  error: string
+}
+
 export interface TelegramSettings {
   bot_token_set: boolean
   bot_username: string
@@ -811,6 +825,12 @@ export interface TelegramSettings {
   bot_command_rate_max: number
   bot_command_rate_window_seconds: number
   bot_command_rate_limit_enabled: boolean
+  relay_node_ids: number[]
+  relay_nodes: { id: number; name: string; unavailable_reason: string | null }[]
+  relay_last_ok_at: string
+  relay_last_error: string
+  relay_last_node: string
+  relay_check: TelegramRelayCheck[]
 }
 
 export interface TelegramLinkCode {
@@ -1550,6 +1570,28 @@ export interface BackgroundTaskAcceptedResponse extends BackgroundTask {
 }
 
 export type BackgroundTaskAccepted = BackgroundTaskAcceptedResponse
+
+export type ServerConfigSection = 'add' | 'change' | 'recheck' | 'keep' | 'remove' | 'effect'
+
+export interface ServerConfigDetail {
+  removed: string[]
+  added: string[]
+  why: string[]
+  info: string[]
+}
+
+export interface ServerConfigPreview {
+  sections: Record<ServerConfigSection, string[]>
+  details: Record<string, ServerConfigDetail>
+  pending: number
+}
+
+export interface ServerConfigRow {
+  step: string
+  label: string
+  status: 'ok' | 'пропущен' | 'ошибка'
+  detail: string
+}
 
 export interface ConfigCsvImportResponse {
   success: boolean
