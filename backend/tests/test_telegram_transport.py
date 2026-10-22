@@ -152,7 +152,7 @@ def test_old_agent_without_relay_gives_update_hint(monkeypatch):
 
     _use_nodes(monkeypatch, {1: SimpleNamespace(telegram_bot_api=relay, node_name="nl-1", close=lambda: None)})
 
-    with pytest.raises(telegram_transport.TelegramRelayError, match="1.13.0"):
+    with pytest.raises(telegram_transport.TelegramRelayError, match="1.24.0"):
         telegram_transport.bot_api_post_sync(TOKEN, "getMe")
 
 
@@ -224,5 +224,5 @@ def test_all_nodes_failed_reports_each(monkeypatch):
         },
     )
 
-    with pytest.raises(telegram_transport.TelegramRelayError, match="nl-1.*таймаут.*de-2.*1.13.0"):
+    with pytest.raises(telegram_transport.TelegramRelayError, match="nl-1.*таймаут.*de-2.*1.24.0"):
         telegram_transport.bot_api_post_sync(TOKEN, "getMe")
