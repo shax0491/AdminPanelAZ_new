@@ -66,6 +66,19 @@ def test_awg_sessions_do_not_inflate_openvpn_or_wireguard_counts(db, monkeypatch
     assert summary["total_wireguard"] == 1
 
 
+def test_summary_lists_ru_proxy_nodes_last(db, monkeypatch):
+    _node(db, 1, "de1")
+    proxy = _node(db, 2, "RU_DE2")
+    proxy.node_kind = "proxy"
+    _node(db, 3, "nl2")
+    db.commit()
+    _toggles(monkeypatch, awg2=False, awg3=False)
+
+    summary = nr.build_noc_summary(db)
+
+    assert [n["name"] for n in summary["nodes"]] == ["de1", "nl2", "RU_DE2"]
+
+
 def test_alert_rules_session_counts_skip_awg(db):
     _node(db)
     _session(db, 1, "vpn-udp", "ovpn1")

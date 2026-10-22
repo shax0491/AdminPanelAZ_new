@@ -329,7 +329,9 @@ def _format_session_count(value: float | int | None) -> str:
 
 def build_noc_summary(db: Session) -> dict:
     """Aggregate NOC metrics from DB without live node adapter calls."""
-    nodes = db.query(Node).order_by(Node.id.asc()).all()
+    # VPN-узлы и «только MTProxy» сверху, RU-прокси (relay) - в конце списка
+    nodes = sorted(db.query(Node).order_by(Node.id.asc()).all(),
+                   key=lambda n: ((n.node_kind or "").strip().lower() == "proxy", n.id))
     latest_metrics = get_latest_samples_by_node(db)
     traffic_totals = get_traffic_totals_by_node(db)
     awg2_enabled = is_awg2_enabled(db)
