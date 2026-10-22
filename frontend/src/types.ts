@@ -2260,6 +2260,7 @@ export interface WarpGeoCheckResponse {
   checked_fields?: number
   gemini_status?: 'ok' | 'blocked' | 'unknown'
   preview?: boolean
+  warp_disabled?: boolean
 }
 
 export interface WarpDnsResolver {

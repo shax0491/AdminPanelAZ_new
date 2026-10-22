@@ -558,6 +558,14 @@ def check_warp_geo(scope: GeoScope, antizapret_path: Path | None = None) -> dict
     interface = _SCOPE_INTERFACE[scope]
     result: dict[str, object] = {"scope": scope, "interface": interface}
 
+    # WARP/Proton для этой части выключен (ANTIZAPRET_WARP=1 / VPN_WARP=1): интерфейса нет, и трафик
+    # клиентов выходит с адреса сервера - проверяем его с явной пометкой, а не «интерфейс недоступен»
+    mode_key = {"antizapret": "ANTIZAPRET_WARP", "vpn": "VPN_WARP"}.get(scope)
+    if mode_key and antizapret_path is not None and _read_setup_file(antizapret_path).get(mode_key) == "1":
+        result.update(interface=None, warp_disabled=True)
+        result.update(_run_geo_checks(None))
+        return result
+
     if interface:
         result.update(_check_tunnel_matches_config(scope, interface, antizapret_path))
 

@@ -258,6 +258,11 @@ export default function WarpGeoPage() {
         <span className="text-destructive">{result.error}</span>
       ) : (
         <>
+          {result.warp_disabled && (
+            <Badge variant="secondary" title="ANTIZAPRET_WARP=1 / VPN_WARP=1 в setup: туннеля WARP/Proton нет, трафик клиентов идёт с адреса сервера">
+              WARP/Proton выключен — выход с IP сервера
+            </Badge>
+          )}
           {result.cloudflare_loc && (
             <Badge variant="outline" title="Геолокация по сервису Cloudflare (не провайдер трафика)">
               Гео-детект (Cloudflare): {result.cloudflare_loc} ({result.cloudflare_colo})

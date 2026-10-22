@@ -173,6 +173,30 @@ def test_check_warp_geo_interface_down_returns_error_not_raw_ip_geo(monkeypatch,
     assert "cloudflare_loc" not in result
 
 
+def test_check_warp_geo_warp_disabled_checks_server_ip_with_flag(monkeypatch, tmp_path):
+    # ANTIZAPRET_WARP=1: туннеля нет намеренно - проверяется выход сервера с пометкой, без ошибки
+    (tmp_path / "setup").write_text("WARP_PROVIDER=proton\nANTIZAPRET_WARP=1\nVPN_WARP=2\n", encoding="utf-8")
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        out = {"https://1.1.1.1/cdn-cgi/trace": "ip=5.6.7.8\nloc=DE\ncolo=FRA\n",
+               "https://www.youtube.com/": '{"GL":"DE"}'}.get(args[-1], "")
+        return SimpleNamespace(returncode=0 if out else 1, stdout=out, stderr="")
+
+    monkeypatch.setattr(warp_geo, "subprocess", SimpleNamespace(run=fake_run, TimeoutExpired=Exception))
+    monkeypatch.setattr(warp_geo.time, "sleep", lambda *_: None)
+
+    result = check_warp_geo("antizapret", tmp_path)
+
+    assert result["warp_disabled"] is True
+    assert result["interface"] is None
+    assert "error" not in result
+    assert result["cloudflare_loc"] == "DE"
+    assert result["youtube_gl"] == "DE"
+    assert not any("--interface" in a for a in calls)
+
+
 def test_check_warp_geo_rejects_unknown_scope_at_type_level():
     # scope is validated at the router layer (400 for anything outside the
     # three known values) - the service itself only maps known scopes.
