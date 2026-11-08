@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -10,7 +11,9 @@ from app.config import get_settings
 from app.models import Node, ReverseTunnelLink
 from app.services.crypto import encrypt_secret
 from app.services.node_manager import get_adapter_for_node, get_proxy_adapter
-from app.services.reverse_tunnel import generate_wg_keypair
+from app.services.reverse_tunnel import generate_wg_keypair, pick_direct_ipv4
+
+logger = logging.getLogger(__name__)
 
 
 def _link_for(db: Session, relay: Node) -> ReverseTunnelLink | None:
@@ -80,7 +83,10 @@ def provision_reverse_tunnel(db: Session, relay: Node) -> ReverseTunnelLink:
                 "allowed_ips": f"{relay_tunnel4}/32, {relay_tunnel6}/128",
             }
         )
-        direct_ipv4 = exit_node.ipv4_address or relay.destination_ip or exit_node.host
+        try:
+            direct_ipv4 = pick_direct_ipv4([exit_node.ipv4_address, relay.destination_ip, exit_node.host])
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
         relay_adapter.configure_reverse_watchdog(
             {
                 "link_id": relay.id,
@@ -136,3 +142,30 @@ def reverse_tunnel_status(db: Session, relay: Node) -> dict[str, Any]:
         "exit": get_adapter_for_node(exit_node).reverse_tunnel_status(relay.id),
         "watchdog": get_proxy_adapter(relay).reverse_watchdog_status(relay.id),
     }
+
+
+def teardown_reverse_links(db: Session, node_id: int) -> list[str]:
+    """Best-effort: гасит туннели узла на relay и exit до удаления записей из БД.
+    Возвращает список ошибок — каждая означает остаток на агенте, который нужно убрать вручную."""
+    problems: list[str] = []
+    links = (
+        db.query(ReverseTunnelLink)
+        .filter((ReverseTunnelLink.proxy_node_id == node_id) | (ReverseTunnelLink.exit_node_id == node_id))
+        .all()
+    )
+    for link in links:
+        for side, owner_id, getter in (
+            ("relay", link.proxy_node_id, get_proxy_adapter),
+            ("exit", link.exit_node_id, get_adapter_for_node),
+        ):
+            owner = db.query(Node).filter(Node.id == owner_id).first()
+            if owner is None:
+                continue
+            try:
+                # link_id в агентах = id proxy-узла (см. provision_reverse_tunnel)
+                getter(owner).teardown_reverse_tunnel(link.proxy_node_id)
+            except Exception as exc:  # агент мог быть недоступен/уже удалён — не блокируем удаление
+                problems.append(f"{side} node {owner_id} link {link.proxy_node_id}: {exc}")
+    for problem in problems:
+        logger.warning("Остаток Reverse Tunnel после удаления узла: %s", problem)
+    return problems

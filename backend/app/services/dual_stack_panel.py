@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Node, ReverseTunnelLink
 from app.services.node_manager import get_adapter_for_node, get_proxy_adapter
+from app.services.reverse_tunnel import pick_direct_ipv4
 
 TRANSPORT_MODES = {"auto", "force_ipv6", "force_ipv4", "reverse"}
 EGRESS_MODES = {"native", "proton", "warp", "ipv4_only", "ipv6_prefer"}
@@ -117,12 +118,26 @@ def set_node_transport_mode(db: Session, node: Node, mode: str) -> Node:
         return node
     if node.node_kind == "vpn":
         _adapter(node).set_dual_stack_transport(mode)
-    elif node.transport_mode == "reverse":
+    elif node.node_kind == "proxy":
+        if not node.linked_vpn_node_id:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Proxy-узел не связан с VPN-нодой")
+        exit_node = db.query(Node).filter(Node.id == node.linked_vpn_node_id).first()
+        if not exit_node:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Связанная VPN-нода не найдена")
         link = db.query(ReverseTunnelLink).filter(ReverseTunnelLink.proxy_node_id == node.id).first()
+        try:
+            direct_ipv4 = pick_direct_ipv4([exit_node.ipv4_address, node.destination_ip, exit_node.host])
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        # ключ watchdog = id proxy-узла: так же, как link_id в reverse_panel (relay.id)
+        get_proxy_adapter(node).set_dual_stack_transport(
+            mode,
+            link_id=node.id,
+            direct_ipv4=direct_ipv4,
+            direct_ipv6=exit_node.ipv6_address,
+            tunnel_ipv4=link.tunnel_ipv4 if link else None,
+        )
         if link:
-            exit_node = db.query(Node).filter(Node.id == link.exit_node_id).first()
-            direct_ipv4 = exit_node.ipv4_address or node.destination_ip or exit_node.host
-            get_proxy_adapter(node).set_destination(direct_ipv4)
             link.state = "standby"
             node.reverse_state = "standby"
             db.add(link)

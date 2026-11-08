@@ -112,8 +112,19 @@ class ProxyNodeAdapter:
             timeout=20.0,
         )
 
+    def set_dual_stack_transport(self, mode: str, **payload: Any) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            "/dual-stack/transport",
+            json={"mode": mode, **payload},
+            timeout=45.0,
+        )
+
     def configure_reverse_relay(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/reverse-tunnel/relay", json=payload, timeout=90.0)
+
+    def teardown_reverse_tunnel(self, link_id: int) -> dict[str, Any]:
+        return self._request("DELETE", f"/reverse-tunnel/{link_id}", timeout=30.0)
 
     def configure_reverse_watchdog(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("PUT", "/reverse-tunnel/watchdog", json=payload, timeout=30.0)

@@ -1462,6 +1462,9 @@ class RemoteNodeAdapter(NodeAdapter):
     def configure_reverse_exit(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/reverse-tunnel/exit", json=payload, timeout=90.0)
 
+    def teardown_reverse_tunnel(self, link_id: int) -> dict[str, Any]:
+        return self._request("DELETE", f"/reverse-tunnel/{link_id}", timeout=30.0)
+
     def reverse_tunnel_status(self, link_id: int) -> dict[str, Any]:
         return self._request("GET", f"/reverse-tunnel/{link_id}/status", timeout=15.0)
 

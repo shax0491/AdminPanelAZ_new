@@ -37,6 +37,9 @@ def node_main(monkeypatch):
     monkeypatch.setenv("NODE_AGENT_ALLOWED_IPS", "")
     import node_agent.main as module
 
+    monkeypatch.setattr(module, "NODE_AGENT_API_KEY", KEY)
+    monkeypatch.setattr(module, "NODE_AGENT_MODE", "dev")
+    monkeypatch.setattr(module, "NODE_AGENT_ALLOWED_IPS", [])
     runtime = FakeRuntime()
     monkeypatch.setattr(module, "dual_stack_runtime", runtime, raising=False)
     return module, runtime
@@ -49,6 +52,9 @@ def proxy_main(monkeypatch):
     monkeypatch.setenv("PROXY_AGENT_ALLOWED_IPS", "")
     import proxy_agent.main as module
 
+    monkeypatch.setattr(module, "PROXY_AGENT_API_KEY", KEY)
+    monkeypatch.setattr(module, "PROXY_AGENT_MODE", "dev")
+    monkeypatch.setattr(module, "PROXY_AGENT_ALLOWED_IPS", [])
     runtime = FakeRuntime()
     monkeypatch.setattr(module, "dual_stack_runtime", runtime, raising=False)
     return module, runtime
@@ -184,3 +190,26 @@ def test_proxy_agent_configures_relay_and_watchdog(proxy_main, monkeypatch):
     assert watchdog.status_code == 200
     assert watchdog.json()["reverse_active"] is False
     assert status.json()["reverse_active"] is True
+
+
+def test_proxy_agent_applies_dual_stack_transport(proxy_main, monkeypatch):
+    module, _runtime = proxy_main
+
+    class Watchdog:
+        def apply_transport(self, link):
+            return {"active_family": "ipv6", "enabled": link["enabled"], "mode": link["mode"]}
+
+    monkeypatch.setattr(module, "reverse_watchdog", Watchdog(), raising=False)
+    response = TestClient(module.app).post(
+        "/dual-stack/transport",
+        headers={"X-Node-Key": KEY},
+        json={
+            "link_id": 5,
+            "mode": "auto",
+            "direct_ipv4": "203.0.113.10",
+            "direct_ipv6": "2001:db8::10",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"active_family": "ipv6", "enabled": True, "mode": "auto"}

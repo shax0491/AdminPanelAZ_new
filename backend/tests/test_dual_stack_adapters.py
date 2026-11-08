@@ -36,12 +36,19 @@ def test_remote_adapter_dual_stack_operations_use_agent_api(monkeypatch):
 
 def test_proxy_adapter_dual_stack_operations_use_agent_api(monkeypatch):
     adapter = ProxyNodeAdapter("2001:db8::1", 9101, "k" * 32)
-    request = MagicMock(side_effect=[{"has_ipv6": True}, {"reachable": False}])
+    request = MagicMock(side_effect=[{"has_ipv6": True}, {"reachable": False}, {"active_family": "ipv6"}])
     monkeypatch.setattr(adapter, "_request", request)
 
     assert adapter.dual_stack_capabilities()["has_ipv6"] is True
     assert adapter.probe_dual_stack(4, "203.0.113.1")["reachable"] is False
+    assert adapter.set_dual_stack_transport("auto", link_id=5, direct_ipv4="203.0.113.1")["active_family"] == "ipv6"
     assert request.call_args_list[1].kwargs["params"] == {"family": 4, "target": "203.0.113.1"}
+    assert request.call_args_list[2].args == ("POST", "/dual-stack/transport")
+    assert request.call_args_list[2].kwargs["json"] == {
+        "mode": "auto",
+        "link_id": 5,
+        "direct_ipv4": "203.0.113.1",
+    }
 
 
 def test_remote_adapter_reverse_exit_and_status(monkeypatch):

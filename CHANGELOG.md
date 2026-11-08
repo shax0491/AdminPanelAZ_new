@@ -61,6 +61,8 @@
 
 ### ✨ Added
 
+- **Dual-Stack управление нодами:** аудит IPv4/IPv6, независимые probes, Xray/OpenVPN Dual-Stack, ротация внутри `/64`, Native/Proton/WARP egress controls, VLESS IPv6 и проверенные A+AAAA Dual-Stack варианты подписок.
+- **Reverse Tunnel и транспортное переключение:** WireGuard reverse relay/exit, watchdog с IPv6-priority/fallback и 60-секундным Reverse failover, generic и labeled IPv4/IPv6 DNAT. Node agent `1.25.0`, proxy agent `1.3.0`.
 - **Апстрим 2.26.5 влит в форк (22.10):** связь с Telegram через узел, смена пароля при первом входе, экран «что изменится» перед `install.sh --update`, проверка работы и настройки сервера из веба. Агент поднят до 1.24.0 (в нём эндпоинты `/telegram/*`); обновление агента на узле — `git pull` в `/opt/AdminPanelAZ` и перезапуск `adminpanelaz-node` / `adminpanelaz-proxy` (или «Обновить» в карточке узла).
 - **Узел «Только MTProxy»** (`node_kind=mtproxy`): сервер с MTProxyL без AntiZapret. Ставится `install.sh --mtproxy-only` (лёгкий `proxy_agent`, порт 9101), добавляется в «Узлы» с типом «Только MTProxy» и показывается на вкладке MTProxy со статусом, пользователями и действиями. Активным VPN-узлом, в синхронизации, WARP и отказоустойчивости такой узел не участвует.
 - `proxy_agent` 1.2.0: `GET /mtproxy/status`, `POST /mtproxy/action`; `/health` сообщает, стоит ли MTProxyL.

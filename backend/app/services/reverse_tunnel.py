@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat, PublicFormat
 
 from app.services.dual_stack import build_reverse_wg_config, endpoint
+from app.services.dual_stack_runtime import NetworkOperationError
 
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -32,6 +33,31 @@ def _validate_interface(link_id: int) -> str:
     if not 1 <= link_id <= 999999:
         raise ValueError("Недопустимый link_id")
     return f"azr{link_id}"
+
+
+def pick_direct_ipv4(candidates: list[str | None], *, resolve_timeout: float = 3.0) -> str:
+    """Первый кандидат, который является IPv4; hostname резолвится (с таймаутом). Иначе ValueError."""
+    import concurrent.futures
+    import socket
+
+    for value in candidates:
+        value = (value or "").strip()
+        if not value:
+            continue
+        try:
+            return str(ipaddress.IPv4Address(value))
+        except ValueError:
+            pass
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
+            answers = pool.submit(socket.getaddrinfo, value, None, socket.AF_INET).result(timeout=resolve_timeout)
+            if answers:
+                return str(ipaddress.IPv4Address(answers[0][4][0]))
+        except (OSError, concurrent.futures.TimeoutError, ValueError):
+            continue
+        finally:
+            pool.shutdown(wait=False)
+    raise ValueError("Не удалось определить IPv4-адрес выхода: выполните сетевой аудит или укажите ipv4_address")
 
 
 def _validate_ip(value: str, family: int | None = None) -> str:
@@ -148,6 +174,13 @@ class ReverseTunnelRuntime:
         self._run(["systemctl", "enable", "--now", f"wg-quick@{interface}"], timeout=45)
         self._run(["systemctl", "restart", f"wg-quick@{interface}"], timeout=45)
         return {"interface": interface, "active": True, "listen_port": listen_port}
+
+    def teardown(self, link_id: int) -> dict[str, Any]:
+        """Гасит wg-интерфейс связи и удаляет его конфиг; идемпотентно (нет интерфейса — не ошибка)."""
+        interface = _validate_interface(link_id)
+        self._runner(["systemctl", "disable", "--now", f"wg-quick@{interface}"], timeout=45)
+        (self.config_dir / f"{interface}.conf").unlink(missing_ok=True)
+        return {"interface": interface, "removed": True}
 
     def status(self, link_id: int) -> dict[str, Any]:
         interface = _validate_interface(link_id)
@@ -281,7 +314,8 @@ class ReverseWatchdog:
         link_id = str(int(link["link_id"]))
         direct4 = _validate_ip(str(link["direct_ipv4"]), 4)
         direct6 = _validate_ip(str(link["direct_ipv6"]), 6) if link.get("direct_ipv6") else None
-        tunnel = _validate_ip(str(link["tunnel_ipv4"]), 4)
+        tunnel = _validate_ip(str(link["tunnel_ipv4"]), 4) if link.get("tunnel_ipv4") else None
+        previous = self.links.get(link_id)
         self.links[link_id] = {
             "link_id": int(link_id),
             "enabled": bool(link.get("enabled", True)),
@@ -291,6 +325,7 @@ class ReverseWatchdog:
             "failover_label": str(link.get("failover_label") or ""),
             "failover_port": int(link.get("failover_port") or 0),
             "backend_port": int(link.get("backend_port") or 0),
+            "prefer_ipv6": bool(link.get("prefer_ipv6", False)),
             "down_since": None,
             "up_since": None,
             "recovery_family": None,
@@ -298,8 +333,14 @@ class ReverseWatchdog:
             "ipv4_reachable": None,
             "ipv6_reachable": None,
             "reverse_active": False,
+            "forced": bool(link.get("forced", False)),
+            "degraded": False,
             "last_error": None,
         }
+        if previous and previous.get("reverse_active") and tunnel:
+            # DNAT уже смотрит в туннель: повторная настройка не должна «забыть» это
+            for key in ("reverse_active", "active_family", "down_since", "up_since", "recovery_family"):
+                self.links[link_id][key] = previous.get(key)
         self._save()
         return self.public_status(int(link_id))
 
@@ -309,6 +350,9 @@ class ReverseWatchdog:
         link.setdefault("active_family", "reverse" if link.get("reverse_active") else "ipv4")
         link.setdefault("ipv4_reachable", None)
         link.setdefault("ipv6_reachable", None)
+        link.setdefault("prefer_ipv6", False)
+        link.setdefault("forced", False)
+        link.setdefault("degraded", False)
         return {key: value for key, value in link.items() if key != "last_error"}
 
     def _probe(self, family: int, target: str) -> bool:
@@ -336,8 +380,55 @@ class ReverseWatchdog:
         link["down_since"] = None
         self._reset_recovery(link)
 
+    def apply_transport(self, link: dict[str, Any]) -> dict[str, Any]:
+        mode = str(link.get("mode") or "auto")
+        if mode not in {"auto", "force_ipv6", "force_ipv4"}:
+            raise ValueError("Недопустимый режим транспорта")
+        configured = dict(link)
+        configured["enabled"] = mode == "auto"
+        configured["prefer_ipv6"] = mode != "force_ipv4"
+        configured["forced"] = mode != "auto"
+        self.configure(configured)
+        if mode == "auto":
+            return self.check(int(link["link_id"]))
+        family = "ipv6" if mode == "force_ipv6" else "ipv4"
+        target = self.links[str(link["link_id"])][f"direct_{family}"]
+        if not target:
+            raise ValueError(f"Для {mode} не задан адрес {family}")
+        if not self._probe(6 if family == "ipv6" else 4, target):
+            raise NetworkOperationError(f"Выбранный {family} endpoint недоступен; переключение отменено")
+        current = self.links[str(link["link_id"])]
+        self._activate_direct(current, family)
+        current["enabled"] = False  # автопереключение выключено, пассивный мониторинг идёт через forced
+        self._save()
+        return self.public_status(int(link["link_id"]))
+
+    def remove(self, link_id: int) -> dict[str, Any]:
+        """Убирает связь из watchdog; если DNAT смотрит в туннель — сначала возвращает на direct IPv4."""
+        link = self.links.get(str(int(link_id)))
+        if link is None:
+            return {"removed": False}
+        if link.get("reverse_active") and link.get("direct_ipv4"):
+            self._switch(link, link["direct_ipv4"])
+        del self.links[str(int(link_id))]
+        self._save()
+        return {"removed": True}
+
+    def _monitor_forced(self, link: dict[str, Any]) -> dict[str, Any]:
+        """Принудительный режим: не переключаем, только фиксируем деградацию выбранного адреса."""
+        family = link.get("active_family") if link.get("active_family") in {"ipv4", "ipv6"} else "ipv4"
+        target = link.get(f"direct_{family}")
+        ok = bool(target) and self._probe(6 if family == "ipv6" else 4, target)
+        link[f"{family}_reachable"] = ok
+        link["degraded"] = not ok
+        link["last_error"] = None if ok else f"Принудительный {family} endpoint {target} недоступен (автопереключение выключено)"
+        self._save()
+        return self.public_status(int(link["link_id"]))
+
     def check(self, link_id: int, *, now: float | None = None) -> dict[str, Any]:
         link = self.links[str(link_id)]
+        if link.get("forced"):
+            return self._monitor_forced(link)
         if not link["enabled"]:
             return self.public_status(link_id)
         timestamp = time.time() if now is None else now
@@ -346,11 +437,12 @@ class ReverseWatchdog:
         link["ipv4_reachable"] = ipv4_ok
         link["ipv6_reachable"] = ipv6_ok
         link.setdefault("active_family", "reverse" if link["reverse_active"] else "ipv4")
+        link.setdefault("prefer_ipv6", False)
 
         if link["reverse_active"]:
             if ipv4_ok or ipv6_ok:
                 link["down_since"] = None
-                family = "ipv4" if ipv4_ok else "ipv6"
+                family = "ipv6" if link["prefer_ipv6"] and ipv6_ok else ("ipv4" if ipv4_ok else "ipv6")
                 self._start_recovery(link, family, timestamp)
                 if timestamp - link["up_since"] >= 30:
                     self._activate_direct(link, family)
@@ -366,7 +458,7 @@ class ReverseWatchdog:
             self._activate_direct(link, "ipv4")
         elif active_family == "ipv6" and ipv6_ok:
             link["down_since"] = None
-            if ipv4_ok:
+            if ipv4_ok and not link["prefer_ipv6"]:
                 self._start_recovery(link, "ipv4", timestamp)
                 if timestamp - link["up_since"] >= 30:
                     self._activate_direct(link, "ipv4")
@@ -374,7 +466,12 @@ class ReverseWatchdog:
                 self._reset_recovery(link)
         elif active_family == "ipv4" and ipv4_ok:
             link["down_since"] = None
-            self._reset_recovery(link)
+            if link["prefer_ipv6"] and ipv6_ok:
+                self._start_recovery(link, "ipv6", timestamp)
+                if timestamp - link["up_since"] >= 30:
+                    self._activate_direct(link, "ipv6")
+            else:
+                self._reset_recovery(link)
         elif ipv6_ok:
             self._activate_direct(link, "ipv6")
         else:
@@ -382,9 +479,12 @@ class ReverseWatchdog:
             if link["down_since"] is None:
                 link["down_since"] = timestamp
             if timestamp - link["down_since"] >= 60:
-                self._switch(link, link["tunnel_ipv4"])
-                link["reverse_active"] = True
-                link["active_family"] = "reverse"
+                if link["tunnel_ipv4"]:
+                    self._switch(link, link["tunnel_ipv4"])
+                    link["reverse_active"] = True
+                    link["active_family"] = "reverse"
+                else:
+                    link["last_error"] = "Оба direct endpoint недоступны, Reverse Tunnel не настроен"
                 self._reset_recovery(link)
         self._save()
         return self.public_status(link_id)

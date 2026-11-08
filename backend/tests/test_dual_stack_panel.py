@@ -88,6 +88,7 @@ def test_node_response_exposes_dual_stack_health_and_modes(db):
     node.ipv6_latency_ms = 21.2
     node.transport_mode = "force_ipv6"
     node.egress_mode = "warp"
+    node.last_network_audit_at = datetime.utcnow()
 
     response = _to_response(node)
 
@@ -247,3 +248,131 @@ def test_relay_probe_measures_rf_to_exit_for_both_families(db, monkeypatch):
     assert relay.ipv6_probe_status == "online"
     assert relay.ipv6_latency_ms == 35.5
     assert relay.last_network_audit_at is not None
+
+
+def test_proxy_transport_change_applies_real_exit_destination(db, monkeypatch):
+    from app.services import dual_stack_panel
+
+    exit_node = make_node(db)
+    exit_node.ipv4_address = "198.51.100.10"
+    exit_node.ipv6_address = "2001:db8::1"
+    relay = make_node(db, kind="proxy")
+    relay.linked_vpn_node_id = exit_node.id
+
+    class RelayAdapter:
+        def __init__(self):
+            self.payload = None
+
+        def set_dual_stack_transport(self, mode, **payload):
+            self.payload = {"mode": mode, **payload}
+            return {"active_family": "ipv6"}
+
+    adapter = RelayAdapter()
+    monkeypatch.setattr(dual_stack_panel, "get_proxy_adapter", lambda _node: adapter)
+
+    result = dual_stack_panel.set_node_transport_mode(db, relay, "auto")
+
+    assert result.transport_mode == "auto"
+    assert adapter.payload == {
+        "mode": "auto",
+        "link_id": relay.id,
+        "direct_ipv4": "198.51.100.10",
+        "direct_ipv6": "2001:db8::1",
+        "tunnel_ipv4": None,
+    }
+
+
+class ProxyCapture:
+    def __init__(self):
+        self.calls = []
+        self.torn = []
+
+    def set_dual_stack_transport(self, mode, **payload):
+        self.calls.append((mode, payload))
+        return {}
+
+    def teardown_reverse_tunnel(self, link_id):
+        self.torn.append(link_id)
+        return {}
+
+
+def _pair(db):
+    exit_node = make_node(db)
+    exit_node.ipv4_address = "198.51.100.10"
+    relay = Node(
+        name="RU_DE1", host="203.0.113.50", port=9101, api_key_hash="h", api_key_encrypted="e", is_local=False,
+        transport="http", node_kind="proxy", status=NodeStatus.online, node_metadata="{}",
+        linked_vpn_node_id=exit_node.id, created_at=datetime.utcnow(), updated_at=datetime.utcnow(),
+    )
+    db.add(relay)
+    db.commit()
+    db.refresh(relay)
+    return exit_node, relay
+
+
+def test_proxy_transport_uses_relay_node_id_as_link_id(db, monkeypatch):
+    from app.services import dual_stack_panel
+
+    exit_node, relay = _pair(db)
+    proxy = ProxyCapture()
+    monkeypatch.setattr(dual_stack_panel, "get_proxy_adapter", lambda _node: proxy)
+
+    dual_stack_panel.set_node_transport_mode(db, relay, "force_ipv4")
+
+    mode, payload = proxy.calls[0]
+    assert payload["link_id"] == relay.id  # тот же ключ, что reverse_panel передаёт агенту (relay.id)
+    assert payload["direct_ipv4"] == "198.51.100.10"
+
+
+def test_proxy_transport_rejects_non_ip_exit_before_calling_agent(db, monkeypatch):
+    from app.services import dual_stack_panel
+
+    exit_node, relay = _pair(db)
+    exit_node.ipv4_address = None
+    exit_node.host = "vpn.invalid"
+    db.commit()
+    proxy = ProxyCapture()
+    monkeypatch.setattr(dual_stack_panel, "get_proxy_adapter", lambda _node: proxy)
+
+    def nxdomain(*args, **kwargs):
+        raise OSError("nxdomain")
+
+    monkeypatch.setattr("socket.getaddrinfo", nxdomain)
+
+    with pytest.raises(HTTPException) as caught:
+        dual_stack_panel.set_node_transport_mode(db, relay, "force_ipv4")
+
+    assert caught.value.status_code == 409
+    assert proxy.calls == []
+
+
+def test_teardown_reverse_links_reaches_both_agents_and_collects_failures(db, monkeypatch):
+    from app.models import ReverseTunnelLink
+    from app.services import reverse_panel
+
+    exit_node, relay = _pair(db)
+    db.add(ReverseTunnelLink(proxy_node_id=relay.id, exit_node_id=exit_node.id, listen_port=52002, tunnel_ipv4="10.77.0.4", tunnel_ipv6="fd77::2:2"))
+    db.commit()
+    proxy, vpn = ProxyCapture(), ProxyCapture()
+    monkeypatch.setattr(reverse_panel, "get_proxy_adapter", lambda _node: proxy)
+    monkeypatch.setattr(reverse_panel, "get_adapter_for_node", lambda _node: vpn)
+
+    assert reverse_panel.teardown_reverse_links(db, relay.id) == []
+    assert proxy.torn == [relay.id] and vpn.torn == [relay.id]
+
+    def boom(_link_id):
+        raise RuntimeError("agent down")
+
+    vpn.teardown_reverse_tunnel = boom
+    problems = reverse_panel.teardown_reverse_links(db, exit_node.id)
+    assert len(problems) == 1 and "agent down" in problems[0]
+
+
+def test_node_without_audit_reports_no_telemetry_instead_of_defaults(db):
+    from app.routers.nodes import _to_response
+
+    response = _to_response(make_node(db))
+
+    assert response.dual_stack_telemetry is False
+    assert response.has_ipv4 is None and response.has_ipv6 is None
+    assert response.ipv6_rotation_supported is None

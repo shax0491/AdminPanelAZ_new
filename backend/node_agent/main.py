@@ -317,6 +317,11 @@ def reverse_tunnel_exit(payload: ReverseExitRequest, _: None = Depends(verify_ap
     return _reverse_call(reverse_tunnel_runtime.configure_exit, **payload.model_dump())
 
 
+@app.delete("/reverse-tunnel/{link_id}")
+def reverse_tunnel_teardown(link_id: int, _: None = Depends(verify_api_key)):
+    return _reverse_call(reverse_tunnel_runtime.teardown, link_id)
+
+
 @app.get("/reverse-tunnel/{link_id}/status")
 def reverse_tunnel_status(link_id: int, _: None = Depends(verify_api_key)):
     return _reverse_call(reverse_tunnel_runtime.status, link_id)

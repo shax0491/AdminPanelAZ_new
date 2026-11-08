@@ -63,6 +63,7 @@ def test_rotation_verifies_new_source_and_atomically_updates_xray(tmp_path: Path
         xray_config_path=config,
         xray_binary=Path("/xray"),
         state_dir=tmp_path / "etc",
+        profile_root=tmp_path / "client",
         systemd_dir=tmp_path / "systemd",
         rotation_script=tmp_path / "rotation.sh",
     )
@@ -83,7 +84,7 @@ def test_failed_rotation_probe_removes_new_address_without_touching_xray(tmp_pat
     config = tmp_path / "config.json"
     config.write_text(json.dumps(original))
     runner = FakeRunner(snapshots(), rotation_probe_ok=False)
-    runtime = DualStackRuntime(runner=runner, xray_config_path=config, xray_binary=Path("/xray"))
+    runtime = DualStackRuntime(runner=runner, xray_config_path=config, xray_binary=Path("/xray"), profile_root=tmp_path / "client")
 
     with pytest.raises(NetworkOperationError, match="исходящ"):
         runtime.rotate_ipv6()
@@ -143,7 +144,7 @@ def test_rotation_xray_failure_removes_new_address_and_keeps_old(tmp_path: Path)
             return super().__call__(args, timeout=timeout)
 
     runner = XrayFailureRunner(snapshots())
-    runtime = DualStackRuntime(runner=runner, xray_config_path=config, xray_binary=Path("/xray"))
+    runtime = DualStackRuntime(runner=runner, xray_config_path=config, xray_binary=Path("/xray"), profile_root=tmp_path / "client")
 
     with pytest.raises(NetworkOperationError, match="xray restart failed"):
         runtime.rotate_ipv6()

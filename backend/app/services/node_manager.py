@@ -30,6 +30,7 @@ from app.models import (
     OpenVpnAccessPolicy,
     OpenVpnBufferGuardEvent,
     OpenVpnBufferGuardSettings,
+    ReverseTunnelLink,
     TrafficLimitNotifyState,
     TrafficSessionState,
     UnlockCodeRedemption,
@@ -428,6 +429,12 @@ def purge_node_related(db: Session, node_id: int) -> None:
     ):
         db.query(model).filter(model.node_id == node_id).delete(synchronize_session=False)
 
+    from app.services.reverse_panel import teardown_reverse_links
+
+    teardown_reverse_links(db, node_id)
+    db.query(ReverseTunnelLink).filter(
+        (ReverseTunnelLink.proxy_node_id == node_id) | (ReverseTunnelLink.exit_node_id == node_id)
+    ).delete(synchronize_session=False)
     db.query(FailoverClientLink).filter(FailoverClientLink.primary_node_id == node_id).delete(
         synchronize_session=False
     )

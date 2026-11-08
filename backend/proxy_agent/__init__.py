@@ -1,3 +1,3 @@
 """AntiZapret proxy_agent — thin FastAPI service for RU proxy hosts."""
 
-PROXY_AGENT_VERSION = "1.2.0"
+PROXY_AGENT_VERSION = "1.3.0"

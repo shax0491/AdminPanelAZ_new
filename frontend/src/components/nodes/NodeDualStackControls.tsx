@@ -45,6 +45,7 @@ export default function NodeDualStackControls({
     <div className="space-y-3 rounded-md border border-border/60 bg-muted/10 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-medium">Dual-Stack</span>
+        {node.dual_stack_telemetry === false && <Badge variant="outline">Нет данных (аудит не выполнялся)</Badge>}
         <Badge variant={node.ipv4_probe_status === 'online' ? 'default' : 'outline'}>
           IPv4: {familyLabel(node.ipv4_probe_status, node.ipv4_latency_ms)}
         </Badge>

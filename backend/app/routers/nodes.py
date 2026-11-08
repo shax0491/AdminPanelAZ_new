@@ -169,6 +169,13 @@ def _node_transport_value(node: Node) -> str:
         return TRANSPORT_HTTP
 
 
+def _audited_bool(node: Node, field: str) -> bool | None:
+    """None, если Dual-Stack аудита не было: дефолт False в БД не должен выглядеть как реальный ответ узла."""
+    if getattr(node, "last_network_audit_at", None) is None:
+        return None
+    return bool(getattr(node, field, False))
+
+
 def _to_response(node: Node) -> NodeResponse:
     transport = _node_transport_value(node)
     return NodeResponse(
@@ -190,22 +197,23 @@ def _to_response(node: Node) -> NodeResponse:
         destination_ip=getattr(node, "destination_ip", None),
         linked_vpn_node_id=getattr(node, "linked_vpn_node_id", None),
         portal_label=getattr(node, "portal_label", None),
-        has_ipv4=node.has_ipv4,
-        has_ipv6=node.has_ipv6,
+        dual_stack_telemetry=getattr(node, "last_network_audit_at", None) is not None,
+        has_ipv4=_audited_bool(node, "has_ipv4"),
+        has_ipv6=_audited_bool(node, "has_ipv6"),
         ipv4_address=node.ipv4_address,
         ipv6_address=node.ipv6_address,
         ipv6_subnet_prefix=node.ipv6_subnet_prefix,
         ipv6_network=node.ipv6_network,
         ipv6_gateway=node.ipv6_gateway,
         network_interface=node.network_interface,
-        ipv6_rotation_supported=node.ipv6_rotation_supported,
-        ipv4_probe_status=node.ipv4_probe_status,
-        ipv6_probe_status=node.ipv6_probe_status,
+        ipv6_rotation_supported=_audited_bool(node, "ipv6_rotation_supported"),
+        ipv4_probe_status=getattr(node, "ipv4_probe_status", None) or "unknown",
+        ipv6_probe_status=getattr(node, "ipv6_probe_status", None) or "unknown",
         ipv4_latency_ms=node.ipv4_latency_ms,
         ipv6_latency_ms=node.ipv6_latency_ms,
-        transport_mode=node.transport_mode,
-        egress_mode=node.egress_mode,
-        reverse_state=node.reverse_state,
+        transport_mode=getattr(node, "transport_mode", None),
+        egress_mode=getattr(node, "egress_mode", None),
+        reverse_state=getattr(node, "reverse_state", None),
         last_network_audit_at=node.last_network_audit_at,
         last_seen_at=node.last_seen_at,
         metadata=node_metadata_dict(node),

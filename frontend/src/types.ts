@@ -51,15 +51,16 @@ export interface Node {
   node_kind?: NodeKind | string
   destination_ip?: string | null
   linked_vpn_node_id?: number | null
-  has_ipv4?: boolean
-  has_ipv6?: boolean
+  dual_stack_telemetry?: boolean
+  has_ipv4?: boolean | null
+  has_ipv6?: boolean | null
   ipv4_address?: string | null
   ipv6_address?: string | null
   ipv6_subnet_prefix?: string | null
   ipv6_network?: string | null
   ipv6_gateway?: string | null
   network_interface?: string | null
-  ipv6_rotation_supported?: boolean
+  ipv6_rotation_supported?: boolean | null
   ipv4_probe_status?: 'online' | 'offline' | 'unknown' | string
   ipv6_probe_status?: 'online' | 'offline' | 'unknown' | string
   ipv4_latency_ms?: number | null

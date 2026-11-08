@@ -87,8 +87,10 @@ async def _reverse_watchdog_loop():
     while True:
         for link_id in list(reverse_watchdog.links):
             try:
-                if reverse_watchdog.links[link_id].get("enabled"):
-                    await asyncio.to_thread(reverse_watchdog.check, int(link_id))
+                if reverse_watchdog.links[link_id].get("enabled") or reverse_watchdog.links[link_id].get("forced"):
+                    status = await asyncio.to_thread(reverse_watchdog.check, int(link_id))
+                    if status.get("degraded"):
+                        logger.warning("Reverse watchdog link %s: принудительный endpoint недоступен", link_id)
             except Exception as exc:
                 reverse_watchdog.links[link_id]["last_error"] = str(exc)
                 logger.warning("Reverse watchdog link %s: %s", link_id, exc)
@@ -173,6 +175,24 @@ def dual_stack_probe(
     return _dual_stack_call(dual_stack_runtime.probe, family, target)
 
 
+class DualStackTransportRequest(BaseModel):
+    link_id: int = Field(ge=1, le=999999)
+    mode: str = Field(pattern="^(auto|force_ipv6|force_ipv4)$")
+    direct_ipv4: str = Field(min_length=7, max_length=64)
+    direct_ipv6: str | None = Field(default=None, max_length=64)
+    tunnel_ipv4: str | None = Field(default=None, max_length=64)
+    failover_label: str = ""
+    failover_port: int = 0
+    backend_port: int = 0
+
+
+@app.post("/dual-stack/transport")
+def dual_stack_transport(payload: DualStackTransportRequest, _: None = Depends(verify_api_key)):
+    link = payload.model_dump()
+    link["enabled"] = payload.mode == "auto"
+    return _reverse_call(reverse_watchdog.apply_transport, link)
+
+
 class ReverseRelayRequest(BaseModel):
     link_id: int = Field(ge=1, le=999999)
     private_key: str = Field(min_length=1, max_length=128)
@@ -204,6 +224,12 @@ def _reverse_call(fn, *args, **kwargs):
 @app.post("/reverse-tunnel/relay")
 def reverse_tunnel_relay(payload: ReverseRelayRequest, _: None = Depends(verify_api_key)):
     return _reverse_call(reverse_tunnel_runtime.configure_relay, **payload.model_dump())
+
+
+@app.delete("/reverse-tunnel/{link_id}")
+def reverse_tunnel_teardown(link_id: int, _: None = Depends(verify_api_key)):
+    removed = _reverse_call(reverse_watchdog.remove, link_id)
+    return {**removed, **_reverse_call(reverse_tunnel_runtime.teardown, link_id)}
 
 
 @app.put("/reverse-tunnel/watchdog")
