@@ -24,6 +24,11 @@ from app.services.antizapret_backup import resolve_backup_archive
 from app.services.antizapret_settings import build_schema, filter_known_keys, read_antizapret_settings, update_antizapret_settings
 from app.services.cidr.service import CidrRoutingService
 from app.services.node_health import NODE_AGENT_VERSION, build_health_payload
+from app.services.dual_stack_runtime import DualStackRuntime, NetworkOperationError
+from app.services.reverse_tunnel import ReverseTunnelRuntime
+
+dual_stack_runtime = DualStackRuntime()
+reverse_tunnel_runtime = ReverseTunnelRuntime()
 from app.services.node_agent_provision import provision_mtls
 from app.services.node_agent_env import resolve_node_agent_env_file
 from app.services.node_update import (
@@ -250,6 +255,71 @@ def _persist_api_key(new_key: str) -> None:
         lines.append(f"NODE_AGENT_API_KEY={new_key}")
     atomic_write_text(NODE_AGENT_ENV_FILE, "\n".join(lines) + "\n")
     NODE_AGENT_API_KEY = new_key
+
+
+class DualStackTransportRequest(BaseModel):
+    mode: str = Field(pattern="^(auto|force_ipv6|force_ipv4)$")
+
+
+class ReverseExitRequest(BaseModel):
+    link_id: int = Field(ge=1, le=999999)
+    private_key: str = Field(min_length=1, max_length=128)
+    address4: str = Field(max_length=64)
+    address6: str = Field(max_length=64)
+    peer_public_key: str = Field(min_length=1, max_length=128)
+    relay_host: str = Field(min_length=1, max_length=255)
+    listen_port: int = Field(ge=1, le=65535)
+    allowed_ips: str = Field(min_length=1, max_length=256)
+
+
+def _reverse_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except (ValueError, RuntimeError, OSError) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+def _dual_stack_call(fn, *args):
+    try:
+        return fn(*args)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except NetworkOperationError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@app.get("/dual-stack/capabilities")
+def dual_stack_capabilities(_: None = Depends(verify_api_key)):
+    return _dual_stack_call(dual_stack_runtime.audit)
+
+
+@app.get("/dual-stack/probe")
+def dual_stack_probe(
+    family: int = Query(..., ge=4, le=6),
+    target: str = Query(..., min_length=2, max_length=64),
+    _: None = Depends(verify_api_key),
+):
+    return _dual_stack_call(dual_stack_runtime.probe, family, target)
+
+
+@app.post("/dual-stack/transport")
+def dual_stack_transport(payload: DualStackTransportRequest, _: None = Depends(verify_api_key)):
+    return _dual_stack_call(dual_stack_runtime.apply_transport, payload.mode)
+
+
+@app.post("/dual-stack/rotate-ipv6")
+def dual_stack_rotate_ipv6(_: None = Depends(verify_api_key)):
+    return _dual_stack_call(dual_stack_runtime.rotate_ipv6)
+
+
+@app.post("/reverse-tunnel/exit")
+def reverse_tunnel_exit(payload: ReverseExitRequest, _: None = Depends(verify_api_key)):
+    return _reverse_call(reverse_tunnel_runtime.configure_exit, **payload.model_dump())
+
+
+@app.get("/reverse-tunnel/{link_id}/status")
+def reverse_tunnel_status(link_id: int, _: None = Depends(verify_api_key)):
+    return _reverse_call(reverse_tunnel_runtime.status, link_id)
 
 
 @app.get("/health")

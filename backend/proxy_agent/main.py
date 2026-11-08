@@ -5,7 +5,9 @@ Never installs or runs proxy.sh. DESTINATION edits use iptables only.
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
+import logging
 import os
 import secrets
 import subprocess
@@ -17,7 +19,14 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.services.dual_stack_runtime import DualStackRuntime, NetworkOperationError
+from app.services.reverse_tunnel import ReverseTunnelRuntime, ReverseWatchdog
 from proxy_agent import PROXY_AGENT_VERSION
+
+dual_stack_runtime = DualStackRuntime()
+reverse_tunnel_runtime = ReverseTunnelRuntime()
+reverse_watchdog = ReverseWatchdog()
+logger = logging.getLogger(__name__)
 from proxy_agent.conntrack_maps import parse_conntrack_mappings
 from proxy_agent.iptables_dest import (
     AWG3_PORT_FIRST,
@@ -74,6 +83,18 @@ def _validate_api_key_or_exit() -> None:
 
 _validate_api_key_or_exit()
 
+async def _reverse_watchdog_loop():
+    while True:
+        for link_id in list(reverse_watchdog.links):
+            try:
+                if reverse_watchdog.links[link_id].get("enabled"):
+                    await asyncio.to_thread(reverse_watchdog.check, int(link_id))
+            except Exception as exc:
+                reverse_watchdog.links[link_id]["last_error"] = str(exc)
+                logger.warning("Reverse watchdog link %s: %s", link_id, exc)
+        await asyncio.sleep(15)
+
+
 @asynccontextmanager
 async def _proxy_agent_lifespan(_: FastAPI):
     try:
@@ -83,7 +104,15 @@ async def _proxy_agent_lifespan(_: FastAPI):
         migrate_stale_systemd_units_on_startup(resolve_repo_root(), panel=False, node=False, proxy=True)
     except Exception:
         pass
-    yield
+    watchdog_task = asyncio.create_task(_reverse_watchdog_loop())
+    try:
+        yield
+    finally:
+        watchdog_task.cancel()
+        try:
+            await watchdog_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="AntiZapret Proxy Agent", version=PROXY_AGENT_VERSION, lifespan=_proxy_agent_lifespan)
@@ -119,6 +148,72 @@ def verify_api_key(x_node_key: str = Header(..., alias="X-Node-Key")) -> None:
     """Auth header name matches node_agent; value checked against PROXY_AGENT_API_KEY."""
     if not x_node_key or not secrets.compare_digest(x_node_key, PROXY_AGENT_API_KEY):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный API-ключ узла")
+
+
+def _dual_stack_call(fn, *args):
+    try:
+        return fn(*args)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except NetworkOperationError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@app.get("/dual-stack/capabilities")
+def dual_stack_capabilities(_: None = Depends(verify_api_key)):
+    return _dual_stack_call(dual_stack_runtime.audit)
+
+
+@app.get("/dual-stack/probe")
+def dual_stack_probe(
+    family: int,
+    target: str,
+    _: None = Depends(verify_api_key),
+):
+    return _dual_stack_call(dual_stack_runtime.probe, family, target)
+
+
+class ReverseRelayRequest(BaseModel):
+    link_id: int = Field(ge=1, le=999999)
+    private_key: str = Field(min_length=1, max_length=128)
+    address4: str = Field(max_length=64)
+    address6: str = Field(max_length=64)
+    listen_port: int = Field(ge=1, le=65535)
+    peer_public_key: str = Field(min_length=1, max_length=128)
+    peer_allowed_ips: str = Field(min_length=1, max_length=256)
+
+
+class ReverseWatchdogRequest(BaseModel):
+    link_id: int = Field(ge=1, le=999999)
+    enabled: bool = True
+    direct_ipv4: str = Field(min_length=7, max_length=64)
+    direct_ipv6: str | None = Field(default=None, max_length=64)
+    tunnel_ipv4: str = Field(min_length=7, max_length=64)
+    failover_label: str = ""
+    failover_port: int = 0
+    backend_port: int = 0
+
+
+def _reverse_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except (ValueError, RuntimeError, OSError) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@app.post("/reverse-tunnel/relay")
+def reverse_tunnel_relay(payload: ReverseRelayRequest, _: None = Depends(verify_api_key)):
+    return _reverse_call(reverse_tunnel_runtime.configure_relay, **payload.model_dump())
+
+
+@app.put("/reverse-tunnel/watchdog")
+def reverse_tunnel_watchdog_configure(payload: ReverseWatchdogRequest, _: None = Depends(verify_api_key)):
+    return _reverse_call(reverse_watchdog.configure, payload.model_dump())
+
+
+@app.get("/reverse-tunnel/watchdog/{link_id}")
+def reverse_tunnel_watchdog_status(link_id: int, _: None = Depends(verify_api_key)):
+    return _reverse_call(reverse_watchdog.public_status, link_id)
 
 
 class DestinationBody(BaseModel):

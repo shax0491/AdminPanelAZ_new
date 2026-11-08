@@ -16,6 +16,7 @@ from app.services.runtime_peer_batch import CLIENTS_PER_REQUEST
 from app.schemas import MonitoringService, OpenVpnClient, WireGuardPeer
 from app.config import get_settings
 from app.paths import get_cidr_list_dir
+from app.services.dual_stack import endpoint
 from app.services.node_mtls import build_node_agent_ssl_context, node_agent_base_scheme
 from app.services.node_mtls_certs import MtlsProvisionBundle
 from app.services.antizapret import AntiZapretService
@@ -1362,7 +1363,7 @@ class RemoteNodeAdapter(NodeAdapter):
     ):
         self._mtls_enabled = mtls_enabled
         scheme = node_agent_base_scheme(mtls_enabled=mtls_enabled)
-        self.base_url = f"{scheme}://{host}:{port}"
+        self.base_url = f"{scheme}://{endpoint(host, port)}"
         self.api_key = api_key
         self._verify = build_node_agent_ssl_context(mtls_enabled=mtls_enabled)
         self._overview_cache_key = monitoring_overview_cache_key(host, port)
@@ -1440,6 +1441,29 @@ class RemoteNodeAdapter(NodeAdapter):
         if response.status_code == 204 or not response.content:
             return None
         return response.json()
+
+    def dual_stack_capabilities(self) -> dict[str, Any]:
+        return self._request("GET", "/dual-stack/capabilities", timeout=30.0)
+
+    def probe_dual_stack(self, family: int, target: str) -> dict[str, Any]:
+        return self._request(
+            "GET",
+            "/dual-stack/probe",
+            params={"family": family, "target": target},
+            timeout=20.0,
+        )
+
+    def set_dual_stack_transport(self, mode: str) -> dict[str, Any]:
+        return self._request("POST", "/dual-stack/transport", json={"mode": mode}, timeout=120.0)
+
+    def rotate_ipv6(self) -> dict[str, Any]:
+        return self._request("POST", "/dual-stack/rotate-ipv6", timeout=120.0)
+
+    def configure_reverse_exit(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/reverse-tunnel/exit", json=payload, timeout=90.0)
+
+    def reverse_tunnel_status(self, link_id: int) -> dict[str, Any]:
+        return self._request("GET", f"/reverse-tunnel/{link_id}/status", timeout=15.0)
 
     def telegram_bot_api(
         self, token: str, method: str, body: bytes, content_type: str, *, timeout: httpx.Timeout

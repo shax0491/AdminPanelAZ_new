@@ -307,6 +307,23 @@ class Node(Base):
         Integer, ForeignKey("nodes.id"), nullable=True, default=None, index=True
     )
     node_metadata: Mapped[str] = mapped_column(Text, default="{}")
+    has_ipv4: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_ipv6: Mapped[bool] = mapped_column(Boolean, default=False)
+    ipv4_address: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
+    ipv6_address: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
+    ipv6_subnet_prefix: Mapped[str | None] = mapped_column(String(8), nullable=True, default=None)
+    ipv6_network: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
+    ipv6_gateway: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
+    network_interface: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
+    ipv6_rotation_supported: Mapped[bool] = mapped_column(Boolean, default=False)
+    ipv4_probe_status: Mapped[str] = mapped_column(String(16), default="unknown")
+    ipv6_probe_status: Mapped[str] = mapped_column(String(16), default="unknown")
+    ipv4_latency_ms: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    ipv6_latency_ms: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    transport_mode: Mapped[str] = mapped_column(String(24), default="auto")
+    egress_mode: Mapped[str] = mapped_column(String(32), default="native")
+    reverse_state: Mapped[str] = mapped_column(String(24), default="disabled")
+    last_network_audit_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     openvpn_remote_hosts: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     # When True, saving remotes also writes hosts[0] to WIREGUARD_HOST (GubernievS proxy.sh).
     wireguard_use_first_remote: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -317,6 +334,25 @@ class Node(Base):
     client_templates_seeded: Mapped[bool] = mapped_column(Boolean, default=False)
     # Key age for automatic rotation; updated_at moves on every health check.
     api_key_rotated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ReverseTunnelLink(Base):
+    __tablename__ = "reverse_tunnel_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    proxy_node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), unique=True, index=True)
+    exit_node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), index=True)
+    listen_port: Mapped[int] = mapped_column(Integer)
+    tunnel_ipv4: Mapped[str] = mapped_column(String(64))
+    tunnel_ipv6: Mapped[str] = mapped_column(String(64))
+    relay_public_key: Mapped[str] = mapped_column(String(64), default="")
+    exit_public_key: Mapped[str] = mapped_column(String(64), default="")
+    relay_private_key_encrypted: Mapped[str] = mapped_column(Text, default="")
+    exit_private_key_encrypted: Mapped[str] = mapped_column(Text, default="")
+    state: Mapped[str] = mapped_column(String(24), default="provisioning")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

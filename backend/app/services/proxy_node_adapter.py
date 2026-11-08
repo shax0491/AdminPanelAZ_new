@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 
+from app.services.dual_stack import endpoint
 from app.services.node_mtls import (
     build_node_agent_ssl_context,
     node_agent_base_scheme,
@@ -31,7 +32,7 @@ class ProxyNodeAdapter:
     ):
         self._mtls_enabled = mtls_enabled
         scheme = node_agent_base_scheme(mtls_enabled=mtls_enabled)
-        self.base_url = f"{scheme}://{host}:{port}"
+        self.base_url = f"{scheme}://{endpoint(host, port)}"
         self.api_key = api_key
         self._verify = build_node_agent_ssl_context(mtls_enabled=mtls_enabled)
         self._http_client: httpx.Client | None = None
@@ -99,6 +100,26 @@ class ProxyNodeAdapter:
             return None
         return response.json()
 
+
+    def dual_stack_capabilities(self) -> dict[str, Any]:
+        return self._request("GET", "/dual-stack/capabilities", timeout=30.0)
+
+    def probe_dual_stack(self, family: int, target: str) -> dict[str, Any]:
+        return self._request(
+            "GET",
+            "/dual-stack/probe",
+            params={"family": family, "target": target},
+            timeout=20.0,
+        )
+
+    def configure_reverse_relay(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/reverse-tunnel/relay", json=payload, timeout=90.0)
+
+    def configure_reverse_watchdog(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._request("PUT", "/reverse-tunnel/watchdog", json=payload, timeout=30.0)
+
+    def reverse_watchdog_status(self, link_id: int) -> dict[str, Any]:
+        return self._request("GET", f"/reverse-tunnel/watchdog/{link_id}", timeout=15.0)
 
     def health(self) -> dict[str, Any]:
         """GET /health → { ok, version }."""

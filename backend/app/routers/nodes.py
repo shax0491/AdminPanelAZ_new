@@ -16,6 +16,8 @@ from app.schemas import (
     NodeCreate,
     NodeHaContext,
     NodeHealthResponse,
+    NodeDualStackTransportUpdate,
+    NodeEgressUpdate,
     NodeMtlsStatusResponse,
     NodeOpenVpnMultihomeBody,
     NodeOpenVpnMultihomeResponse,
@@ -36,6 +38,7 @@ from app.schemas import (
     ProxyStatusResponse,
     ResourceHistoryPoint,
     ResourceHistoryResponse,
+    ReverseTunnelResponse,
 )
 from app.services.resource_metrics import VALID_PERIODS, query_history
 from app.services.node_key_rotation import rotate_node_api_key
@@ -187,6 +190,23 @@ def _to_response(node: Node) -> NodeResponse:
         destination_ip=getattr(node, "destination_ip", None),
         linked_vpn_node_id=getattr(node, "linked_vpn_node_id", None),
         portal_label=getattr(node, "portal_label", None),
+        has_ipv4=node.has_ipv4,
+        has_ipv6=node.has_ipv6,
+        ipv4_address=node.ipv4_address,
+        ipv6_address=node.ipv6_address,
+        ipv6_subnet_prefix=node.ipv6_subnet_prefix,
+        ipv6_network=node.ipv6_network,
+        ipv6_gateway=node.ipv6_gateway,
+        network_interface=node.network_interface,
+        ipv6_rotation_supported=node.ipv6_rotation_supported,
+        ipv4_probe_status=node.ipv4_probe_status,
+        ipv6_probe_status=node.ipv6_probe_status,
+        ipv4_latency_ms=node.ipv4_latency_ms,
+        ipv6_latency_ms=node.ipv6_latency_ms,
+        transport_mode=node.transport_mode,
+        egress_mode=node.egress_mode,
+        reverse_state=node.reverse_state,
+        last_network_audit_at=node.last_network_audit_at,
         last_seen_at=node.last_seen_at,
         metadata=node_metadata_dict(node),
         created_at=node.created_at,
@@ -545,6 +565,81 @@ def node_mtls_status(_: User = Depends(require_admin)):
 @router.get("/transports", response_model=NodeTransportsResponse)
 def list_node_transports(_: User = Depends(require_admin)):
     return NodeTransportsResponse(items=list_transports())
+
+
+def _node_for_dual_stack(node_id: int, db: Session) -> Node:
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Узел не найден")
+    return node
+
+
+@router.post("/{node_id}/reverse-tunnel/provision", response_model=ReverseTunnelResponse)
+def provision_node_reverse_tunnel(node_id: int, _: User = Depends(require_admin), db: Session = Depends(get_db)):
+    from app.services.reverse_panel import provision_reverse_tunnel
+
+    _require_nodes_module(db)
+    return provision_reverse_tunnel(db, _node_for_dual_stack(node_id, db))
+
+
+@router.post("/{node_id}/reverse-tunnel/activate", response_model=ReverseTunnelResponse)
+def activate_node_reverse_tunnel(node_id: int, _: User = Depends(require_admin), db: Session = Depends(get_db)):
+    from app.services.reverse_panel import activate_reverse_tunnel
+
+    _require_nodes_module(db)
+    return activate_reverse_tunnel(db, _node_for_dual_stack(node_id, db))
+
+
+@router.get("/{node_id}/reverse-tunnel/status")
+def node_reverse_tunnel_status(node_id: int, _: User = Depends(require_admin), db: Session = Depends(get_db)):
+    from app.services.reverse_panel import reverse_tunnel_status
+
+    _require_nodes_module(db)
+    return reverse_tunnel_status(db, _node_for_dual_stack(node_id, db))
+
+
+@router.post("/{node_id}/dual-stack/audit")
+def audit_dual_stack(node_id: int, _: User = Depends(require_admin), db: Session = Depends(get_db)):
+    from app.services.dual_stack_panel import audit_node_network
+
+    _require_nodes_module(db)
+    return audit_node_network(db, _node_for_dual_stack(node_id, db))
+
+
+@router.post("/{node_id}/dual-stack/transport", response_model=NodeResponse)
+def set_dual_stack_transport(
+    node_id: int,
+    payload: NodeDualStackTransportUpdate,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from app.services.dual_stack_panel import set_node_transport_mode
+
+    _require_nodes_module(db)
+    node = set_node_transport_mode(db, _node_for_dual_stack(node_id, db), payload.mode)
+    return _to_response(node)
+
+
+@router.post("/{node_id}/dual-stack/rotate-ipv6")
+def rotate_dual_stack_ipv6(node_id: int, _: User = Depends(require_admin), db: Session = Depends(get_db)):
+    from app.services.dual_stack_panel import rotate_node_ipv6
+
+    _require_nodes_module(db)
+    return rotate_node_ipv6(db, _node_for_dual_stack(node_id, db))
+
+
+@router.patch("/{node_id}/egress", response_model=NodeResponse)
+def set_node_egress(
+    node_id: int,
+    payload: NodeEgressUpdate,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from app.services.dual_stack_panel import set_node_egress_mode
+
+    _require_nodes_module(db)
+    node = set_node_egress_mode(db, _node_for_dual_stack(node_id, db), payload.mode)
+    return _to_response(node)
 
 
 @router.get("/{node_id}", response_model=NodeResponse)

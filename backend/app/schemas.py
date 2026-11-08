@@ -1684,8 +1684,50 @@ class NodeResponse(NodeBase):
     destination_ip: str | None = None
     linked_vpn_node_id: int | None = None
     portal_label: str | None = None
+    has_ipv4: bool = False
+    has_ipv6: bool = False
+    ipv4_address: str | None = None
+    ipv6_address: str | None = None
+    ipv6_subnet_prefix: str | None = None
+    ipv6_network: str | None = None
+    ipv6_gateway: str | None = None
+    network_interface: str | None = None
+    ipv6_rotation_supported: bool = False
+    ipv4_probe_status: str = "unknown"
+    ipv6_probe_status: str = "unknown"
+    ipv4_latency_ms: float | None = None
+    ipv6_latency_ms: float | None = None
+    transport_mode: str = "auto"
+    egress_mode: str = "native"
+    reverse_state: str = "disabled"
+    last_network_audit_at: datetime | None = None
     last_seen_at: datetime | None = None
     metadata: dict[str, Any] = {}
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class NodeDualStackTransportUpdate(BaseModel):
+    mode: str = Field(pattern="^(auto|force_ipv6|force_ipv4|reverse)$")
+
+
+class NodeEgressUpdate(BaseModel):
+    mode: str = Field(pattern="^(native|proton|warp|ipv4_only|ipv6_prefer)$")
+
+
+class ReverseTunnelResponse(BaseModel):
+    id: int
+    proxy_node_id: int
+    exit_node_id: int
+    listen_port: int
+    tunnel_ipv4: str
+    tunnel_ipv6: str
+    relay_public_key: str
+    exit_public_key: str
+    state: str
+    last_error: str | None = None
     created_at: datetime
     updated_at: datetime
 

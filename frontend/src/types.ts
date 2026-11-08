@@ -51,6 +51,23 @@ export interface Node {
   node_kind?: NodeKind | string
   destination_ip?: string | null
   linked_vpn_node_id?: number | null
+  has_ipv4?: boolean
+  has_ipv6?: boolean
+  ipv4_address?: string | null
+  ipv6_address?: string | null
+  ipv6_subnet_prefix?: string | null
+  ipv6_network?: string | null
+  ipv6_gateway?: string | null
+  network_interface?: string | null
+  ipv6_rotation_supported?: boolean
+  ipv4_probe_status?: 'online' | 'offline' | 'unknown' | string
+  ipv6_probe_status?: 'online' | 'offline' | 'unknown' | string
+  ipv4_latency_ms?: number | null
+  ipv6_latency_ms?: number | null
+  transport_mode?: 'auto' | 'force_ipv6' | 'force_ipv4' | 'reverse' | string
+  egress_mode?: 'native' | 'proton' | 'warp' | 'ipv4_only' | 'ipv6_prefer' | string
+  reverse_state?: string
+  last_network_audit_at?: string | null
   last_seen_at?: string | null
   metadata: Record<string, unknown>
   created_at: string

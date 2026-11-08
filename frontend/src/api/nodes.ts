@@ -17,6 +17,31 @@ import type {
   NodeSyncVerifyResult,
 } from '../types'
 
+export async function auditNodeDualStack(nodeId: number) {
+  return apiFetch<Record<string, unknown>>(`/nodes/${nodeId}/dual-stack/audit`, { method: 'POST' })
+}
+
+export async function setNodeTransportMode(nodeId: number, mode: string) {
+  return apiFetch<Node>(`/nodes/${nodeId}/dual-stack/transport`, {
+    method: 'POST',
+    body: JSON.stringify({ mode }),
+  })
+}
+
+export async function setNodeEgressMode(nodeId: number, mode: string) {
+  return apiFetch<Node>(`/nodes/${nodeId}/egress`, {
+    method: 'PATCH',
+    body: JSON.stringify({ mode }),
+  })
+}
+
+export async function rotateNodeIpv6(nodeId: number) {
+  return apiFetch<{ ipv6_address: string; old_ipv6_address?: string }>(
+    `/nodes/${nodeId}/dual-stack/rotate-ipv6`,
+    { method: 'POST' },
+  )
+}
+
 export async function rotateNodeApiKey(nodeId: number) {
   return apiFetch<{ message: string; node_id: number }>(`/nodes/${nodeId}/rotate-key`, {
     method: 'POST',

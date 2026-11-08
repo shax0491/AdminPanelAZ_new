@@ -8,6 +8,7 @@ from app.database import SessionLocal
 from app.models import Node
 from app.services.node_key_rotation import complete_pending_key_rotation
 from app.services.node_manager import check_node_health, update_node_from_health
+from app.services.dual_stack_panel import audit_node_network, probe_relay_link
 from app.services.background_gate import run_background_step
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,9 @@ def _poll_all_nodes():
                 ):
                     health = _finish_key_rotation(db, node, health)
                 update_node_from_health(node, health, db)
+                if health.get("status") == "online":
+                    audit_node_network(db, node)
+                    probe_relay_link(db, node)
             except Exception as exc:
                 logger.debug("Node health poll failed for %s: %s", node.name, exc)
     finally:

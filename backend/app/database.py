@@ -1631,10 +1631,32 @@ def _migrate_nodes_columns() -> None:
     inspector = inspect(engine)
     if "nodes" in inspector.get_table_names():
         existing = {col["name"] for col in inspector.get_columns("nodes")}
-        if "api_key_rotated_at" not in existing:
+        dual_stack_columns = {
+            "api_key_rotated_at": "DATETIME",
+            "has_ipv4": "BOOLEAN DEFAULT 0",
+            "has_ipv6": "BOOLEAN DEFAULT 0",
+            "ipv4_address": "VARCHAR(64)",
+            "ipv6_address": "VARCHAR(64)",
+            "ipv6_subnet_prefix": "VARCHAR(8)",
+            "ipv6_network": "VARCHAR(64)",
+            "ipv6_gateway": "VARCHAR(64)",
+            "network_interface": "VARCHAR(64)",
+            "ipv6_rotation_supported": "BOOLEAN DEFAULT 0",
+            "ipv4_probe_status": "VARCHAR(16) DEFAULT 'unknown'",
+            "ipv6_probe_status": "VARCHAR(16) DEFAULT 'unknown'",
+            "ipv4_latency_ms": "FLOAT",
+            "ipv6_latency_ms": "FLOAT",
+            "transport_mode": "VARCHAR(24) DEFAULT 'auto'",
+            "egress_mode": "VARCHAR(32) DEFAULT 'native'",
+            "reverse_state": "VARCHAR(24) DEFAULT 'disabled'",
+            "last_network_audit_at": "DATETIME",
+        }
+        missing = [(name, sql_type) for name, sql_type in dual_stack_columns.items() if name not in existing]
+        if missing:
             with _migration_transaction() as conn:
-                conn.execute(text("ALTER TABLE nodes ADD COLUMN api_key_rotated_at DATETIME"))
-            logger.info("DB migration: added nodes.api_key_rotated_at")
+                for name, sql_type in missing:
+                    conn.execute(text(f"ALTER TABLE nodes ADD COLUMN {name} {sql_type}"))
+            logger.info("DB migration: added nodes columns: %s", ", ".join(name for name, _ in missing))
     _migrate_nodes_mtls_enabled()
     _migrate_nodes_transport()
     _migrate_nodes_ssh_fields()
@@ -1722,8 +1744,13 @@ def _migrate_seed_mtproxy_quota_rules() -> None:
     logger.info("DB migration: MTProxy quota alert rules seeded")
 
 
+def _migrate_reverse_tunnel_table() -> None:
+    Base.metadata.tables["reverse_tunnel_links"].create(bind=engine, checkfirst=True)
+
+
 def _run_db_migrations() -> None:
     _migrate_nodes_columns()
+    _migrate_reverse_tunnel_table()
     _migrate_alert_rules_table()
     _migrate_seed_mtproxy_alert_rules()
     _migrate_seed_mtproxy_quota_rules()
