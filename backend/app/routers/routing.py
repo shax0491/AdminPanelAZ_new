@@ -17,6 +17,7 @@ from app.schemas import (
     AntizapretSettingsUpdateResponse,
     RoutingOverview,
 )
+from app.services.antizapret_params import needs_antizapret_restart
 from app.services.antizapret_settings import (
     VERIFIED_WRITE_TYPES,
     az_host_updates_conflict_with_panel_domain,
@@ -229,6 +230,44 @@ def put_antizapret_settings(
         if warning not in warnings:
             warnings.append(warning)
     result["warnings"] = warnings
+
+    # up.sh читает firewall/WARP-ключи только при старте службы: без рестарта правила не меняются.
+    if needs_antizapret_restart(filtered) and result.get("changes"):
+        try:
+            adapter.restart_service("antizapret")
+            result["antizapret_restarted"] = True
+        except Exception as exc:  # noqa: BLE001 — настройки уже сохранены, отдаём предупреждение
+            detail = getattr(exc, "detail", str(exc))
+            logger.warning("antizapret restart failed after settings save: %s", detail)
+            result["warnings"].append(
+                f"Служба antizapret не перезапустилась, правила остались прежними: {detail}. "
+                "На удалённом узле нужен node agent 1.15.0 или новее (Узлы → Обновить)."
+            )
+
+    # Подсети клиентов и fake-IP: setup.sh и update.sh эти файлы не переписывают из setup,
+    # поэтому панель правит kresd.conf / proxy.py / services.env сама (только локальный узел).
+    if {"alternative_client_ip", "alternative_fake_ip"} & set(filtered) and result.get("changes"):
+        apply_subnets = getattr(adapter, "apply_client_subnets", None)
+        if apply_subnets is None:
+            result["warnings"].append(
+                "Подсети клиентов переключаются только на узле с локальным кодом панели: "
+                "обновите node agent на этом узле"
+            )
+        else:
+            try:
+                current = adapter.get_antizapret_settings()
+                outcome = apply_subnets(
+                    alternative_client_ip=current.get("alternative_client_ip", "y") == "y",
+                    alternative_fake_ip=current.get("alternative_fake_ip", "y") == "y",
+                )
+                result["warnings"].extend(outcome.get("warnings") or [])
+                result["restarted"] = [*(result.get("restarted") or []), *(outcome.get("restarted") or [])]
+            except Exception as exc:  # noqa: BLE001 — setup уже сохранён, файлы правим best-effort
+                detail = getattr(exc, "detail", str(exc))
+                logger.warning("client subnet change failed: %s", detail)
+                result["warnings"].append(
+                    f"Подсети клиентов не применены к kresd.conf / proxy.py: {detail}"
+                )
 
     active_node = get_active_node(db)
     group = find_sync_group_for_primary(db, active_node.id)

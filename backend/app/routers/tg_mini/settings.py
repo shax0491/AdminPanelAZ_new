@@ -57,8 +57,9 @@ def _mini_notify_settings_response(db: Session, user: User) -> AdminNotifySettin
     return AdminNotifySettingsResponse(
         telegram_id=response.telegram_id,
         recipient_user_ids=[],
-        notify_enabled=response.notify_enabled,
-        bot_token_set=response.bot_token_set,
+        # C6: global admin notify / bot / grace are admin-only.
+        notify_enabled=False,
+        bot_token_set=False,
         events=[
             AdminNotifyEventItem(
                 key=key,
@@ -76,7 +77,7 @@ def _mini_notify_settings_response(db: Session, user: User) -> AdminNotifySettin
                 keys=list(PERSONAL_OWNER_NOTIFY_KEY_ORDER),
             )
         ],
-        node_offline_grace_seconds=response.node_offline_grace_seconds,
+        node_offline_grace_seconds=0,
     )
 
 
@@ -90,12 +91,18 @@ def mini_settings(db: Session = Depends(get_db), current_user: User = Depends(ge
     policy = resolve_effective_visible_vpn_profiles(db, current_user)
     return {
         "server_ip": adapter.get_server_ip() if is_admin else "",
-        "bot_configured": bool(token),
+        # Состояние бота — админская информация; бейдж в Mini App и так скрыт у пользователя.
+        "bot_configured": bool(token) if is_admin else False,
         "user_id": current_user.id,
         "username": current_user.username,
         "role": current_user.role.value,
         "theme": current_user.theme,
         "visible_vpn_profiles": policy,
+        "can_manage_configs": (
+            True
+            if current_user.role == UserRole.admin
+            else bool(getattr(current_user, "can_manage_configs", False))
+        ),
     }
 
 

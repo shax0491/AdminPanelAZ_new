@@ -1,16 +1,20 @@
-import { useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { getMessageUnreadCount } from '@/api/messages'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { LogOut, Menu, Moon, Radio, Shield, Sun, User } from 'lucide-react'
 import NodeSelector from '@/components/NodeSelector'
+import NotificationBell from '@/components/notifications/NotificationBell'
 import ActiveNodeChangedBanner from '@/components/ActiveNodeChangedBanner'
 import HaScopeEnforcer from '@/components/HaScopeEnforcer'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import { DOCS } from '@/lib/docsUrls'
 import { useAuth } from '@/context/AuthContext'
 import { useFeatureModules } from '@/context/FeatureModulesContext'
+import { useNotificationCenter } from '@/context/NotificationCenterContext'
 import { useTheme } from '@/context/ThemeContext'
 import {
   getVisibleSidebarNavGroups,
@@ -70,6 +74,11 @@ function SidebarNavLink({
             <Icon size={17} strokeWidth={2} />
           </span>
           <span className="min-w-0 truncate leading-snug">{item.label}</span>
+          {item.badge != null && item.badge > 0 ? (
+            <Badge variant="destructive" className="text-[10px] shrink-0">
+              {item.badge > 9 ? '9+' : item.badge}
+            </Badge>
+          ) : null}
         </>
       )}
     </NavLink>
@@ -80,6 +89,30 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuth()
   const { isEnabled } = useFeatureModules()
   const { theme, toggleTheme } = useTheme()
+  // Живой счётчик из общего SSE-потока: не застывает до перезагрузки страницы.
+  const { pendingRequestsCount } = useNotificationCenter()
+  const navigate = useNavigate()
+  const [messagesUnread, setMessagesUnread] = useState(0)
+  useEffect(() => {
+    // Счётчик админский: обычным пользователям не опрашиваем (иначе 403 каждую минуту).
+    if (user?.role !== 'admin' || !isEnabled('user_messaging')) return
+    let cancelled = false
+    const tick = async () => {
+      if (document.hidden) return
+      try {
+        const { count } = await getMessageUnreadCount()
+        if (!cancelled) setMessagesUnread(count)
+      } catch {
+        // Счётчик не критичен: страница «Сообщения» работает и без него.
+      }
+    }
+    void tick()
+    const timer = window.setInterval(() => void tick(), 60_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [isEnabled, user?.role])
   const initials = user?.username?.slice(0, 2).toUpperCase() ?? '?'
   const isAdmin = user?.role === 'admin'
   const profileItem: SidebarNavItem = {
@@ -92,15 +125,16 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   }
   let visibleGroups = getVisibleSidebarNavGroups(user?.role, isEnabled)
 
+  visibleGroups = visibleGroups.map((group) => ({
+    ...group,
+    items: group.items.map((item) =>
+      item.to === '/messages' ? { ...item, badge: messagesUnread } : item,
+    ),
+  }))
+
   if (!isAdmin) {
-    const panelIndex = visibleGroups.findIndex((group) => group.label === 'Панель')
-    if (panelIndex >= 0) {
-      visibleGroups = visibleGroups.map((group, index) =>
-        index === panelIndex ? { ...group, items: [...group.items, profileItem] } : group,
-      )
-    } else {
-      visibleGroups = [...visibleGroups, { label: 'Панель', items: [profileItem] }]
-    }
+    // Группы с adminOnly-пунктами не-админу не достаются, поэтому «Мой профиль» — отдельная группа.
+    visibleGroups = [...visibleGroups, { label: 'Профиль', items: [profileItem] }]
   }
 
   const themeToggle = (
@@ -150,6 +184,22 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
               {group.items.map((item) => (
                 <li key={item.to}>
                   <SidebarNavLink item={item} onNavigate={onNavigate} />
+                  {item.to === '/users' && pendingRequestsCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigate('/users?requests=1')
+                        onNavigate?.()
+                      }}
+                      title="Заявки ждут решения"
+                      className="mt-0.5 flex w-full items-center gap-2 rounded-lg py-1 pl-11 pr-2 text-left text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+                    >
+                      <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+                        {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}
+                      </span>
+                      Заявки ждут решения
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -248,19 +298,25 @@ export default function Layout() {
             <p className="orientation-compact-header-subtitle text-xs text-muted-foreground">Network Operations Center</p>
             <h1 className="truncate text-sm font-semibold leading-tight">AntiZapret VPN</h1>
           </div>
-          <div className="shrink-0 sm:hidden">
-            <NodeSelector compact />
-          </div>
-          <div className="hidden items-center gap-3 sm:flex">
-            <NodeSelector />
-            <span className="mono text-xs text-muted-foreground">SESS · {user?.username?.toUpperCase()}</span>
-            <span className="orientation-compact-header-subtitle">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <div className="sm:hidden">
+              <NodeSelector compact />
+            </div>
+            <div className="hidden sm:block">
+              <NodeSelector />
+            </div>
+            {/* Один экземпляр: два колокола давали дубли тостов и SSE. */}
+            <NotificationBell />
+            <span className="mono hidden text-xs text-muted-foreground sm:inline">
+              SESS · {user?.username?.toUpperCase()}
+            </span>
+            <span className="orientation-compact-header-subtitle hidden sm:inline">
               <LiveClock />
             </span>
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-4 lg:p-6">
+        <main className="flex-1 p-4 lg:p-6">
           <ActiveNodeChangedBanner />
           <Outlet />
         </main>

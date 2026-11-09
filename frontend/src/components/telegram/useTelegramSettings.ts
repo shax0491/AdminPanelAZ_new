@@ -40,9 +40,12 @@ export function useTelegramSettings() {
   const [notifyOnBackup, setNotifyOnBackup] = useState(false)
   const [interactiveEnabled, setInteractiveEnabled] = useState(false)
   const [eventToggles, setEventToggles] = useState<Record<string, boolean>>({})
+  const [acceptAccessRequests, setAcceptAccessRequests] = useState(false)
+  const [pendingRequestCap, setPendingRequestCap] = useState(50)
   const [nodeOfflineGraceMinutes, setNodeOfflineGraceMinutes] = useState('3')
   const [saving, setSaving] = useState(false)
   const [savingInteractive, setSavingInteractive] = useState(false)
+  const [savingAccessRequests, setSavingAccessRequests] = useState(false)
   const [savingNotify, setSavingNotify] = useState(false)
   const [loading, setLoading] = useState(true)
   const [testing, setTesting] = useState(false)
@@ -80,6 +83,8 @@ export function useTelegramSettings() {
       setNotifyEnabled(tg.notify_enabled)
       setNotifyOnBackup(tg.notify_on_backup)
       setInteractiveEnabled(tg.interactive_enabled)
+      setAcceptAccessRequests(Boolean(tg.accept_access_requests))
+      setPendingRequestCap(tg.pending_request_cap ?? 50)
       setAdminNotify(notify)
       setTelegramId(notify.telegram_id)
       setNotifyRecipientIds(notify.recipient_user_ids ?? [])
@@ -108,6 +113,11 @@ export function useTelegramSettings() {
   )
   const miniAppReady = Boolean(settings?.mini_app_url)
   const webhookReady = Boolean(settings?.webhook_registered)
+  const relayEnabled = Boolean(settings?.relay_node_ids.length)
+  const relayError = relayEnabled ? (settings?.relay_last_error ?? '') : ''
+  // Через узел панель сама опрашивает Telegram (getUpdates), webhook при этом не регистрируется.
+  const commandsConnected = webhookReady || relayEnabled
+  const commandsReady = commandsConnected && !relayError
   const notifyEventsEnabled = useMemo(
     () => Object.values(eventToggles).filter(Boolean).length,
     [eventToggles],
@@ -127,6 +137,8 @@ export function useTelegramSettings() {
         auth_max_age_seconds: authMethod === 'legacy' && Number.isFinite(maxAge) ? maxAge : undefined,
         oidc_client_id: authMethod === 'oidc' ? oidcClientId.trim() || undefined : undefined,
         oidc_client_secret: authMethod === 'oidc' && oidcClientSecret ? oidcClientSecret : undefined,
+        accept_access_requests: acceptAccessRequests,
+        pending_request_cap: pendingRequestCap,
       })
       setSettings(updated)
       setBotUsername(updated.bot_username)
@@ -135,6 +147,8 @@ export function useTelegramSettings() {
       setOidcClientId(updated.oidc_client_id || '')
       setOidcClientSecret('')
       setBotToken('')
+      setAcceptAccessRequests(Boolean(updated.accept_access_requests))
+      setPendingRequestCap(updated.pending_request_cap ?? 50)
       success('Настройки бота сохранены')
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : 'Ошибка сохранения')
@@ -200,6 +214,37 @@ export function useTelegramSettings() {
       setInteractiveEnabled(settings?.interactive_enabled ?? false)
     } finally {
       setSavingInteractive(false)
+    }
+  }
+
+  const handleSaveAcceptRequests = async (enabled: boolean) => {
+    setSavingAccessRequests(true)
+    try {
+      const updated = await updateTelegramSettings({ accept_access_requests: enabled })
+      setSettings(updated)
+      setAcceptAccessRequests(Boolean(updated.accept_access_requests))
+      success(enabled ? 'Приём заявок включён' : 'Приём заявок выключен')
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : 'Ошибка сохранения')
+      setAcceptAccessRequests(Boolean(settings?.accept_access_requests))
+    } finally {
+      setSavingAccessRequests(false)
+    }
+  }
+
+  const handleSavePendingRequestCap = async (value: number) => {
+    if (value === (settings?.pending_request_cap ?? 50)) return
+    setSavingAccessRequests(true)
+    try {
+      const updated = await updateTelegramSettings({ pending_request_cap: value })
+      setSettings(updated)
+      setPendingRequestCap(updated.pending_request_cap ?? 50)
+      success('Лимит ожидающих заявок сохранён')
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : 'Ошибка сохранения')
+      setPendingRequestCap(settings?.pending_request_cap ?? 50)
+    } finally {
+      setSavingAccessRequests(false)
     }
   }
 
@@ -386,12 +431,23 @@ export function useTelegramSettings() {
     linkedAdmins,
     linkedAccounts,
     unlinkingUserId,
+    acceptAccessRequests,
+    setAcceptAccessRequests,
+    pendingRequestCap,
+    setPendingRequestCap,
+    savingAccessRequests,
+    handleSaveAcceptRequests,
+    handleSavePendingRequestCap,
     load,
     loginConfigured,
     oidcLoginReady,
     legacyLoginReady,
     miniAppReady,
     webhookReady,
+    relayEnabled,
+    relayError,
+    commandsConnected,
+    commandsReady,
     notifyEventsEnabled,
     handleSaveBot,
     handleCopyMiniAppUrl,

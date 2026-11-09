@@ -7,6 +7,8 @@ const START_PARAM_ROUTES: Record<string, string> = {
   cidr: '/cidr',
   nodes: '/nodes',
   configs: '/configs',
+  clients: '/clients',
+  requests: '/requests',
   settings: '/settings',
   'unlock-codes': '/unlock-codes',
 }

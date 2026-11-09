@@ -73,6 +73,7 @@ interface ConfigCardsSectionProps {
   visibilityPolicy: VisibleVpnProfilesPolicy | null
   userRole: UserRole
   currentUserId?: number
+  canManageConfigs: boolean
   ownerCandidates?: User[]
   connectionMap?: ClientConnectionMap | null
   filesLoading?: boolean
@@ -110,6 +111,7 @@ export default function ConfigCardsSection({
   visibilityPolicy,
   userRole,
   currentUserId,
+  canManageConfigs,
   ownerCandidates = [],
   connectionMap = null,
   filesLoading = false,
@@ -787,7 +789,11 @@ export default function ConfigCardsSection({
                         onUnblock={isAdmin && !haReplicaReadonly ? () => openConfirm('unblock', config) : undefined}
                         onDelete={
                           !haReplicaReadonly &&
-                          (isAdmin || (userRole === 'user' && currentUserId != null && config.owner_id === currentUserId))
+                          (isAdmin ||
+                            (userRole === 'user' &&
+                              currentUserId != null &&
+                              config.owner_id === currentUserId &&
+                              canManageConfigs))
                             ? () => openConfirm('delete', config)
                             : undefined
                         }
@@ -818,6 +824,7 @@ export default function ConfigCardsSection({
         allConfigs={configs}
         userRole={userRole}
         currentUserId={currentUserId}
+        canManageConfigs={canManageConfigs}
         ownerCandidates={ownerCandidates}
         allTags={allTags}
         open={!!selectedConfig}

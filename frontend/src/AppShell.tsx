@@ -7,6 +7,7 @@ import LazyPage from './components/LazyPage'
 import { useAuth } from './context/AuthContext'
 import { FeatureModulesProvider } from './context/FeatureModulesContext'
 import { NodeProvider } from './context/NodeContext'
+import { NotificationCenterProvider } from './context/NotificationCenterContext'
 import { ProgressProvider } from './context/ProgressContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { TimezoneProvider } from './context/TimezoneContext'
@@ -29,6 +30,8 @@ const TrafficHubPage = lazyWithRetry(() => import('./pages/TrafficHubPage'))
 const EditFilesPage = lazyWithRetry(() => import('./pages/EditFilesPage'))
 const LogsPage = lazyWithRetry(() => import('./pages/LogsPage'))
 const ServerMonitorPage = lazyWithRetry(() => import('./pages/ServerMonitorPage'))
+const UsersPage = lazyWithRetry(() => import('./pages/UsersPage'))
+const MessagesPage = lazyWithRetry(() => import('./pages/MessagesPage'))
 
 /** Everything behind login; loaded only once a session exists. */
 export default function AppShell() {

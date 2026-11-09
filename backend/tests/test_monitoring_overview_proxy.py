@@ -224,6 +224,8 @@ def test_build_overview_toggle_off_no_proxy_adapter(monkeypatch):
 
 
 def test_build_overview_resolved_and_geo_uses_home(monkeypatch):
+    # db здесь MagicMock: сессии трафика (db-fallback апстрима) в этом тесте не нужны
+    monkeypatch.setattr(mo, "_openvpn_clients_from_sessions", lambda *_a, **_k: [])
     monkeypatch.setattr(mo, "is_proxy_nodes_enabled", lambda _db: True)
     proxy = _proxy_node()
     query = MagicMock()
@@ -276,6 +278,8 @@ def test_build_overview_resolved_and_geo_uses_home(monkeypatch):
 
 
 def test_build_overview_agent_failure_does_not_mark_via_proxy(monkeypatch):
+    # db здесь MagicMock: сессии трафика (db-fallback апстрима) в этом тесте не нужны
+    monkeypatch.setattr(mo, "_openvpn_clients_from_sessions", lambda *_a, **_k: [])
     monkeypatch.setattr(mo, "is_proxy_nodes_enabled", lambda _db: True)
     proxy = _proxy_node()
     query = MagicMock()

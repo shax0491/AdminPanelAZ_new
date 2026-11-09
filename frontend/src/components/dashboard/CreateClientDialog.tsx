@@ -21,6 +21,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import DatePickerField from '@/components/ui/DatePickerField'
+import { endOfDayIso } from '@/lib/datetime'
 import { panelToday } from '@/lib/trafficPeriod'
 import { cn } from '@/lib/utils'
 import type { User, VpnType } from '@/types'
@@ -39,14 +40,6 @@ function vpnHint(type: VpnType): string {
   if (type === 'wireguard') return 'WG / AWG профиль'
   if (type === 'amneziawg3') return 'AWG 3 peer'
   return 'AWG 2 peer'
-}
-
-function dateInputToIso(value: string): string | null {
-  if (!value) return null
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
-  if (!match) return null
-  const next = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 23, 59, 59, 999)
-  return next.toISOString()
 }
 
 async function setTrafficLimitForProtocol(
@@ -82,6 +75,7 @@ interface CreateClientDialogProps {
   onSuccess: (message: string) => void
   onError: (message: string) => void
   onWarning: (message: string) => void
+  onInfo?: (message: string) => void
   withProgress: <T>(fn: () => Promise<T>, label: string) => Promise<T>
 }
 
@@ -100,6 +94,7 @@ export default function CreateClientDialog({
   onSuccess,
   onError,
   onWarning,
+  onInfo,
   withProgress,
 }: CreateClientDialogProps) {
   const availableProtocols = useMemo(
@@ -112,6 +107,8 @@ export default function CreateClientDialog({
       }),
     [openvpnEnabled, wireguardEnabled, awg2CreateEnabled, awg3CreateEnabled],
   )
+
+  const showAwg2MissingHint = false // в форке AWG2 нативный: create включён только при установленном модуле
 
   const [clientName, setClientName] = useState('')
   const [description, setDescription] = useState('')
@@ -157,7 +154,7 @@ export default function CreateClientDialog({
 
   const applyAccessUntil = async (name: string, protocol: VpnType, dateValue: string) => {
     if (!isAdmin || !dateValue) return
-    const iso = dateInputToIso(dateValue)
+    const iso = endOfDayIso(dateValue)
     if (!iso) {
       onWarning(`Клиент «${name}» создан, но дата доступа некорректна — задайте её в карточке`)
       return
@@ -219,6 +216,7 @@ export default function CreateClientDialog({
       return
     }
     if (
+      isAdmin &&
       selectedProtocols.includes('openvpn') &&
       (!Number.isFinite(certDays) || certDays < 1 || certDays > 3650)
     ) {
@@ -243,6 +241,7 @@ export default function CreateClientDialog({
     const accessDateSnapshot = accessUntilDate
     const created: VpnType[] = []
     let lastHaWarning: string | undefined
+    let haSyncQueued = false
     let trafficWarning: string | null = null
 
     try {
@@ -259,6 +258,7 @@ export default function CreateClientDialog({
             })
             created.push(vpnType)
             if (result.ha_replicate_warning) lastHaWarning = result.ha_replicate_warning
+            if (result.ha_sync_task_id) haSyncQueued = true
             await applyAccessUntil(trimmedName, vpnType, accessDateSnapshot)
           } catch (err) {
             if (created.length === 0) {
@@ -301,6 +301,9 @@ export default function CreateClientDialog({
         onWarning(`Профиль создан, но ${trafficWarning}`)
       }
       if (lastHaWarning) onWarning(lastHaWarning)
+      else if (haSyncQueued) {
+        ;(onInfo ?? onSuccess)('HA-синхронизация запущена в фоне')
+      }
     } catch (err) {
       onError(err instanceof ApiError ? err.message : 'Ошибка создания клиента')
     } finally {
@@ -398,6 +401,9 @@ export default function CreateClientDialog({
                   )
                 })}
               </div>
+              {showAwg2MissingHint && (
+                <p className={hintClass}>AZ-AWG2 не установлен на активном узле.</p>
+              )}
               {availableProtocols.length === 0 && (
                 <p className="text-xs text-destructive lg:text-sm">Нет доступных протоколов на этом узле.</p>
               )}

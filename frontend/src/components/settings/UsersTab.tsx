@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
+  CalendarDays,
   Gauge,
   MoreHorizontal,
   Pencil,
@@ -14,11 +15,13 @@ import {
   EyeOff,
   X,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { ApiError, getConfigs, getUserConfigAccess, getUserVpnVisibilityDefault, setUserConfigAccess, setUserVpnVisibilityDefault, updateUser } from '@/api/client'
 import AppDialog from '@/components/shared/AppDialog'
 import ResponsiveDataView from '@/components/shared/ResponsiveDataView'
 import PasswordChangePolicyRow from '@/components/settings/PasswordChangePolicyRow'
 import SelfServiceLimitsSection from '@/components/settings/SelfServiceLimitsSection'
+import UserGraceSection from '@/components/settings/UserGraceSection'
 import VpnVisibilityPolicyEditor, {
   copyVisibleVpnPolicy,
   FULL_VISIBLE_VPN_POLICY,
@@ -50,6 +53,8 @@ import {
 } from '@/components/ui/table'
 import { dateInputToIso, isoToDateInput } from '@/lib/accessUntil'
 import { useNotifications } from '@/context/NotificationContext'
+import { useFeatureModules } from '@/context/FeatureModulesContext'
+import SettingsAlert from '@/components/settings/SettingsAlert'
 import { SettingsCollapsible, SettingsToolbar } from '@/components/settings/SettingsChrome'
 import { ROLE_HINTS, ROLE_LABELS } from '@/components/settings/settingsLabels'
 import { formatDate } from '@/lib/datetime'
@@ -116,6 +121,7 @@ function UserAvatar({ username, size = 'md' }: { username: string; size?: 'sm' |
 function UserMetaLine({ user }: { user: PanelUser }) {
   const bits: string[] = [`ID ${user.id}`]
   if (user.role === 'user' && user.can_create_configs === false) bits.push('Создание выкл.')
+  if (user.role === 'user' && user.can_manage_configs === false) bits.push('Управление выкл.')
   if (user.role === 'user' && user.config_quota != null && user.config_quota > 0) {
     bits.push(`Квота ${user.config_quota}`)
   }
@@ -199,6 +205,8 @@ export default function UsersTab({
   onDeleteUser,
 }: UsersTabProps) {
   const { success, error: notifyError } = useNotifications()
+  const { isEnabled } = useFeatureModules()
+  const provisioningOn = isEnabled('user_provisioning')
   const [configs, setConfigs] = useState<VpnConfig[]>([])
   const [configsLoading, setConfigsLoading] = useState(true)
   const [draftGroups, setDraftGroups] = useState<string[]>([])
@@ -208,22 +216,20 @@ export default function UsersTab({
   const [createOpen, setCreateOpen] = useState(false)
   const [policyOpen, setPolicyOpen] = useState(false)
   const [limitsOpen, setLimitsOpen] = useState(false)
+  const [graceOpen, setGraceOpen] = useState(false)
   const [ownerFilter, setOwnerFilter] = useState<string>('all')
   const [activeEditor, setActiveEditor] = useState<PanelUser | null>(null)
   const [draftRole, setDraftRole] = useState<UserRole>('user')
   const [draftTelegramId, setDraftTelegramId] = useState('')
   const [draftConfigQuota, setDraftConfigQuota] = useState('')
   const [draftCanCreate, setDraftCanCreate] = useState(true)
+  const [draftCanManage, setDraftCanManage] = useState(false)
   const [draftAccessUntil, setDraftAccessUntil] = useState('')
   const [savingUser, setSavingUser] = useState(false)
   const [usersList, setUsersList] = useState(users)
   const [defaultPolicy, setDefaultPolicy] = useState<VisibleVpnProfilesPolicy>(FULL_VISIBLE_VPN_POLICY)
   const [defaultPolicyLoading, setDefaultPolicyLoading] = useState(true)
   const [savingDefaultPolicy, setSavingDefaultPolicy] = useState(false)
-  const [draftUseCustomVisibility, setDraftUseCustomVisibility] = useState(false)
-  const [draftVisibilityPolicy, setDraftVisibilityPolicy] =
-    useState<VisibleVpnProfilesPolicy>(FULL_VISIBLE_VPN_POLICY)
-
   useEffect(() => {
     setUsersList(users)
   }, [users])
@@ -248,20 +254,29 @@ export default function UsersTab({
     }
   }, [notifyError])
 
+  const displayedUsers = useMemo(() => {
+    if (!provisioningOn) return usersList
+    return usersList.filter(
+      (u) =>
+        u.role === 'admin' ||
+        (u.role === 'user' && u.provision_state === 'unmanaged' && !u.client_base_name),
+    )
+  }, [usersList, provisioningOn])
+
   const stats = useMemo(
     () => ({
-      total: usersList.length,
-      admins: usersList.filter((u) => u.role === 'admin').length,
-      regular: usersList.filter((u) => u.role === 'user').length,
-      active: usersList.filter((u) => u.is_active).length,
+      total: displayedUsers.length,
+      admins: displayedUsers.filter((u) => u.role === 'admin').length,
+      regular: displayedUsers.filter((u) => u.role === 'user').length,
+      active: displayedUsers.filter((u) => u.is_active).length,
     }),
-    [usersList],
+    [displayedUsers],
   )
 
   const filteredUsers = useMemo(() => {
     const q = userQuery.trim().toLowerCase()
-    if (!q) return usersList
-    return usersList.filter((u) => {
+    if (!q) return displayedUsers
+    return displayedUsers.filter((u) => {
       const tg = (u.telegram_id || '').toLowerCase()
       const role = (ROLE_LABELS[u.role] || u.role).toLowerCase()
       return (
@@ -370,12 +385,8 @@ export default function UsersTab({
       user.config_quota != null && user.config_quota > 0 ? String(user.config_quota) : '',
     )
     setDraftCanCreate(user.can_create_configs !== false)
+    setDraftCanManage(user.can_manage_configs === true)
     setDraftAccessUntil(isoToDateInput(user.access_until))
-    const hasOverride = user.visible_vpn_profiles != null
-    setDraftUseCustomVisibility(hasOverride)
-    setDraftVisibilityPolicy(
-      copyVisibleVpnPolicy(hasOverride ? user.visible_vpn_profiles : defaultPolicy),
-    )
     setDraftGroups([])
     setSearch('')
     setOwnerFilter('all')
@@ -421,6 +432,7 @@ export default function UsersTab({
       }
       if (draftRole === 'user') {
         payload.can_create_configs = draftCanCreate
+        payload.can_manage_configs = draftCanManage
         // Отправляем срок только при реальной правке даты — иначе сохранение
         // Telegram ID / квоты пересинхронизировало бы сроки всех профилей.
         if (draftAccessUntil !== isoToDateInput(activeEditor.access_until)) {
@@ -432,9 +444,6 @@ export default function UsersTab({
           notifyError('Квота: целое число ≥ 0 (0 = без лимита по умолчанию)')
           return
         }
-        payload.visible_vpn_profiles = draftUseCustomVisibility
-          ? draftVisibilityPolicy
-          : null
       }
       const updated = await updateUser(activeEditor.id, payload)
       if (draftRole === 'user') {
@@ -456,6 +465,15 @@ export default function UsersTab({
 
   return (
     <div className="space-y-4">
+      {provisioningOn && (
+        <SettingsAlert variant="info">
+          Абоненты VPN перенесены в раздел{' '}
+          <Link to="/users" className="underline underline-offset-4 hover:text-primary transition-colors">
+            Пользователи
+          </Link>
+          .
+        </SettingsAlert>
+      )}
       <SettingsToolbar
         title="Учётные записи"
         count={stats.total}
@@ -693,7 +711,7 @@ export default function UsersTab({
         open={policyOpen}
         onOpenChange={setPolicyOpen}
         title="Видимость VPN-профилей по умолчанию"
-        description="Что видят обычные пользователи без персонального исключения"
+        description="Что видят обычные пользователи без персонального исключения (исключение — в карточке абонента, вкладка «Аккаунт»)"
         icon={<EyeOff size={16} />}
       >
         {defaultPolicyLoading ? (
@@ -731,13 +749,23 @@ export default function UsersTab({
         {limitsOpen ? <SelfServiceLimitsSection /> : null}
       </SettingsCollapsible>
 
+      <SettingsCollapsible
+        open={graceOpen}
+        onOpenChange={setGraceOpen}
+        title="Удержание после истечения доступа"
+        description="Сколько месяцев держать конфиги истёкшего абонента до ручной очистки"
+        icon={<CalendarDays size={16} />}
+      >
+        {graceOpen ? <UserGraceSection /> : null}
+      </SettingsCollapsible>
+
       <AppDialog
         open={activeEditor !== null}
         onOpenChange={(open) => {
           if (!open && !savingUser) setActiveEditor(null)
         }}
         title={activeEditor ? `Пользователь: ${activeEditor.username}` : 'Пользователь'}
-        description="Роль, права доступа, квота и видимость VPN-профилей"
+        description="Роль, права доступа и квота"
         icon={Users}
         size="xl"
         bodyClassName="px-5 py-4"
@@ -815,6 +843,15 @@ export default function UsersTab({
                   </div>
                   <Switch id="editCanCreate" checked={draftCanCreate} onCheckedChange={setDraftCanCreate} />
                 </div>
+                <div className="flex items-center justify-between gap-3 rounded-xl border bg-muted/20 p-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="editCanManage">Может управлять конфигурациями</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Выкл. — только получение и скачивание. Срок доступа — поле «Доступ до».
+                    </p>
+                  </div>
+                  <Switch id="editCanManage" checked={draftCanManage} onCheckedChange={setDraftCanManage} />
+                </div>
                 <div className="space-y-1.5 rounded-xl border bg-muted/20 p-3">
                   <Label htmlFor="editConfigQuota">Квота конфигов</Label>
                   <Input
@@ -842,56 +879,8 @@ export default function UsersTab({
                     disabled={savingUser}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Пусто — бессрочно. При сохранении срок синхронизируется на все клиентские профили этого пользователя.
+                    Пусто — бессрочно. При сохранении срок синхронизируется на все клиентские профили этого пользователя. При создании конфигов пользователем сюда копируется срок блокировки; сертификат OpenVPN у пользователя всегда максимальный.
                   </p>
-                </div>
-                <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
-                  <div>
-                    <Label>Видимость VPN-профилей</Label>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Исключение полностью заменяет глобальное умолчание.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDraftUseCustomVisibility(false)
-                        setDraftVisibilityPolicy(copyVisibleVpnPolicy(defaultPolicy))
-                      }}
-                      className={cn(
-                        'rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
-                        !draftUseCustomVisibility
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'hover:bg-muted/50',
-                      )}
-                    >
-                      Как умолчание
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDraftUseCustomVisibility(true)
-                        if (!draftUseCustomVisibility) {
-                          setDraftVisibilityPolicy(copyVisibleVpnPolicy(defaultPolicy))
-                        }
-                      }}
-                      className={cn(
-                        'rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
-                        draftUseCustomVisibility
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'hover:bg-muted/50',
-                      )}
-                    >
-                      Своя политика
-                    </button>
-                  </div>
-                  {draftUseCustomVisibility && (
-                    <VpnVisibilityPolicyEditor
-                      value={draftVisibilityPolicy}
-                      onChange={setDraftVisibilityPolicy}
-                    />
-                  )}
                 </div>
               </div>
 

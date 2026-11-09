@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronRight, FileKey, Plus, Search } from 'lucide-react'
+import { ChevronRight, FileKey, KeyRound, Plus, Search } from 'lucide-react'
 import { ApiError } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import ConfigActionDialog, { type ConfigFeedback } from '@/tg-mini/components/ConfigActionDialog'
 import CreateConfigDialog from '@/tg-mini/components/CreateConfigDialog'
 import { splitProfileFilesByRoute } from '@/tg-mini/lib/profileFiles'
@@ -20,14 +21,31 @@ import {
 } from '@/tg-mini/lib/vpnVisibility'
 import { useTgAuth } from '@/tg-mini/context/TgAuthContext'
 import {
+  createTgMePlanConfig,
   getTgConfigFiles,
   getTgConfigQuota,
-  getTgConfigs,
+  getTgMeConfigs,
   getTgQrLink,
+  redeemTgMeCode,
   sendTgConfig,
 } from '@/tg-mini/api'
+import { closedAccessCopy } from '@/lib/closedAccess'
+import { formatDate } from '@/lib/datetime'
+import { formatBytes } from '@/lib/trafficFormat'
+import { cn } from '@/lib/utils'
 import { copyText, openExternalLink, shareViaTelegram } from '@/tg-mini/lib/shareDownloadLink'
-import type { InstallPlatform, SelfServiceQuota, TgMiniConfig, TgMiniConfigFile, TgMiniQrLink } from '@/types'
+import AdminConfigs from '@/tg-mini/pages/AdminConfigs'
+import type {
+  ClosedAccessView,
+  InstallPlatform,
+  SelfServiceQuota,
+  TgMeConfig,
+  TgMeConfigNode,
+  TgMeStatus,
+  TgMiniConfigFile,
+  TgMiniQrLink,
+} from '@/types'
+import { Badge } from '@/components/ui/badge'
 
 const canShareInTelegram = typeof window.Telegram?.WebApp?.shareUrl === 'function'
 
@@ -43,22 +61,24 @@ function ConfigsSkeleton() {
   )
 }
 
-function ownerLabel(config: TgMiniConfig): string | null {
-  if (config.is_mine !== false) return null
-  return config.owner_username ? `@${config.owner_username}` : 'другой пользователь'
+export default function Configs() {
+  const { isAdmin } = useTgAuth()
+  return isAdmin ? <AdminConfigs /> : <UserConfigs />
 }
 
-export default function Configs() {
+function UserConfigs() {
   const { isAdmin, settings, features } = useTgAuth()
-  const [configs, setConfigs] = useState<TgMiniConfig[]>([])
+  const [configs, setConfigs] = useState<TgMeConfig[]>([])
+  const [closedAccess, setClosedAccess] = useState<ClosedAccessView | null>(null)
   const [quota, setQuota] = useState<SelfServiceQuota | null>(null)
+  const [status, setStatus] = useState<TgMeStatus | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [protocol, setProtocol] = useState<ProtocolFilter>('all')
-  const [activeConfig, setActiveConfig] = useState<TgMiniConfig | null>(null)
+  const [activeConfig, setActiveConfig] = useState<TgMeConfigNode & { clientName: string } | null>(null)
   const [files, setFiles] = useState<TgMiniConfigFile[]>([])
   const [selectedPath, setSelectedPath] = useState('')
   const [sheetLoading, setSheetLoading] = useState(false)
@@ -66,6 +86,9 @@ export default function Configs() {
   const [feedback, setFeedback] = useState<ConfigFeedback | null>(null)
   const [downloadLink, setDownloadLink] = useState<TgMiniQrLink | null>(null)
   const [platform, setPlatform] = useState<InstallPlatform>(() => guessInstallPlatform())
+  const [planAdding, setPlanAdding] = useState(false)
+  const [redeemCode, setRedeemCode] = useState('')
+  const [redeeming, setRedeeming] = useState(false)
 
   const load = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false
@@ -76,8 +99,10 @@ export default function Configs() {
     }
     setError(null)
     try {
-      const [data, quotaData] = await Promise.all([getTgConfigs(), getTgConfigQuota()])
+      const [data, quotaData] = await Promise.all([getTgMeConfigs(), getTgConfigQuota()])
       setConfigs(data.configs)
+      setClosedAccess(data.closed_access ?? null)
+      setStatus(data.status ?? null)
       setQuota(quotaData)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Ошибка загрузки')
@@ -89,8 +114,6 @@ export default function Configs() {
 
   const { openvpnEnabled, wireguardEnabled, awg2Enabled, awg3Enabled } = useMemo(() => {
     const policy = settings?.visible_vpn_profiles
-    // Missing keys (features fetch failed) keep default-on VPN modules available;
-    // awg2 stays opt-in (default off).
     const allowOpenvpn =
       Boolean(features.openvpn ?? true) &&
       isVpnTypeVisibleInPolicy('openvpn', policy, isAdmin)
@@ -124,38 +147,39 @@ export default function Configs() {
     }
   }, [protocol, protocolOptions])
 
-  const visibleConfigs = useMemo(
-    () =>
-      configs.filter((config) =>
-        isVpnTypeVisibleInPolicy(config.vpn_type, settings?.visible_vpn_profiles, isAdmin),
-      ),
-    [configs, isAdmin, settings?.visible_vpn_profiles],
-  )
+  const visibleGroups = useMemo(() => {
+    return configs.filter((group) =>
+      group.nodes.some((n) => isVpnTypeVisibleInPolicy(n.vpn_type, settings?.visible_vpn_profiles, isAdmin)),
+    )
+  }, [configs, isAdmin, settings?.visible_vpn_profiles])
 
   const protocolCounts = useMemo(
     () => ({
-      all: visibleConfigs.length,
-      openvpn: visibleConfigs.filter((c) => c.vpn_type === 'openvpn').length,
-      wireguard: visibleConfigs.filter((c) => c.vpn_type === 'wireguard').length,
-      amneziawg2: visibleConfigs.filter((c) => c.vpn_type === 'amneziawg2').length,
-      amneziawg3: visibleConfigs.filter((c) => c.vpn_type === 'amneziawg3').length,
+      all: visibleGroups.reduce((s, g) => s + g.nodes.length, 0),
+      openvpn: visibleGroups.reduce((s, g) => s + g.nodes.filter((n) => n.vpn_type === 'openvpn').length, 0),
+      wireguard: visibleGroups.reduce((s, g) => s + g.nodes.filter((n) => n.vpn_type === 'wireguard').length, 0),
+      amneziawg2: visibleGroups.reduce((s, g) => s + g.nodes.filter((n) => n.vpn_type === 'amneziawg2').length, 0),
+      amneziawg3: visibleGroups.reduce((s, g) => s + g.nodes.filter((n) => n.vpn_type === 'amneziawg3').length, 0),
     }),
-    [visibleConfigs],
+    [visibleGroups],
   )
 
-  const filteredConfigs = useMemo(
+  const allNodes = useMemo(
     () =>
-      visibleConfigs.filter((config) => {
-        if (!matchesProtocolFilter(config.vpn_type, protocol)) return false
-        const q = search.trim()
-        if (!q) return true
-        return (
-          matchesSearchQuery(config.client_name, q) ||
-          matchesSearchQuery(config.owner_username || '', q)
-        )
-      }),
-    [visibleConfigs, protocol, search],
+      visibleGroups.flatMap((g) =>
+        g.nodes.map((n) => ({ ...n, clientName: g.name })),
+      ),
+    [visibleGroups],
   )
+
+  const filteredNodes = useMemo(() => {
+    const q = search.trim()
+    return allNodes.filter((n) => {
+      if (protocol !== 'all' && !matchesProtocolFilter(n.vpn_type, protocol)) return false
+      if (!q) return true
+      return matchesSearchQuery(n.clientName, q)
+    })
+  }, [allNodes, protocol, search])
 
   const resetFilters = () => {
     setSearch('')
@@ -163,20 +187,24 @@ export default function Configs() {
   }
 
   const hasActiveFilters = search.trim().length > 0 || protocol !== 'all'
-  const isForeignConfig = Boolean(activeConfig && activeConfig.is_mine === false)
+  const used = quota?.used ?? 0
+  const limit = quota?.limit
+  const unlimited = quota?.unlimited ?? false
+  const quotaReached = limit != null && used >= limit
+  const createDisabledByAdmin = quota ? !quota.can_create && !quotaReached : false
+  const anyProtocolEnabled = openvpnEnabled || wireguardEnabled || awg2Enabled
   const canCreate =
     (openvpnEnabled || wireguardEnabled || awg2Enabled || awg3Enabled) &&
     (quota?.can_create ?? true)
-  const canManageConfig = (config: TgMiniConfig) => isAdmin || config.is_mine !== false
 
-  const openActions = async (config: TgMiniConfig) => {
-    setActiveConfig(config)
+  const openActions = async (entry: TgMeConfigNode & { clientName: string }) => {
+    setActiveConfig(entry)
     setFeedback(null)
     setDownloadLink(null)
     setPlatform(guessInstallPlatform())
     setSheetLoading(true)
     try {
-      const data = await getTgConfigFiles(config.id)
+      const data = await getTgConfigFiles(entry.config_id)
       setFiles(data.files)
       const { vpn, antizapret } = splitProfileFilesByRoute(data.files)
       const defaultFile = vpn[0] ?? antizapret[0] ?? data.files[0]
@@ -211,7 +239,7 @@ export default function Configs() {
     setActionLoading(true)
     setFeedback(null)
     try {
-      const result = await sendTgConfig(activeConfig.id, {
+      const result = await sendTgConfig(activeConfig.config_id, {
         path: selectedPath,
         destination,
         platform,
@@ -233,7 +261,7 @@ export default function Configs() {
     setFeedback(null)
     setDownloadLink(null)
     try {
-      const link = await getTgQrLink(activeConfig.id, selectedPath)
+      const link = await getTgQrLink(activeConfig.config_id, selectedPath)
       setDownloadLink(link)
       const copied = await copyText(link.url)
       setFeedback({
@@ -264,7 +292,7 @@ export default function Configs() {
 
   const handleShareDownloadLink = async () => {
     if (!downloadLink) return
-    if (shareViaTelegram(downloadLink.url, `VPN-конфиг: ${activeConfig?.client_name ?? ''}`)) {
+    if (shareViaTelegram(downloadLink.url, `VPN-конфиг: ${activeConfig?.clientName ?? ''}`)) {
       setFeedback({ tone: 'info', text: 'Выберите чат, куда отправить ссылку' })
       return
     }
@@ -286,6 +314,18 @@ export default function Configs() {
     })
   }
 
+  const handlePlanAdd = async () => {
+    setPlanAdding(true)
+    try {
+      await createTgMePlanConfig()
+      void load({ silent: true })
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Ошибка добавления конфига')
+    } finally {
+      setPlanAdding(false)
+    }
+  }
+
   const handleConfigDeleted = () => {
     closeSheet()
     void load({ silent: true })
@@ -295,45 +335,216 @@ export default function Configs() {
     void load({ silent: true })
   }
 
+  const handleRedeem = async () => {
+    const code = redeemCode.trim()
+    if (!code || redeeming) return
+    setRedeeming(true)
+    setFeedback(null)
+    try {
+      const result = await redeemTgMeCode(code)
+      setRedeemCode('')
+      setFeedback({
+        tone: 'success',
+        text: `Ключ принят: доступ продлён на ${result.grant_days} дн.`,
+      })
+      void load({ silent: true })
+    } catch (err) {
+      setFeedback({
+        tone: 'error',
+        text: err instanceof ApiError ? err.message : 'Не удалось активировать ключ',
+      })
+    } finally {
+      setRedeeming(false)
+    }
+  }
+
   if (loading && configs.length === 0) {
     return <ConfigsSkeleton />
   }
+
+  const nodeCount = allNodes.length
+  const groupCount = visibleGroups.length
+  const accessCopy = closedAccessCopy(closedAccess)
+  // t.me-ссылка на бота: открываем через Telegram WebApp API (в WebView обычный <a> не работает).
+  const contactUrl = closedAccess?.contact_url ?? null
+  // Deep-link в бота: ?start=chat включает режим переписки, ?start=pay создаёт заявку с чеком.
+  const chatUrl = contactUrl ? `${contactUrl}?start=chat` : null
+  const payUrl = contactUrl ? `${contactUrl}?start=pay` : null
+
+  const statusAccessLabel = !status
+    ? null
+    : status.suspended
+      ? 'Приостановлен'
+      : status.access_expired
+        ? `Истёк${status.access_until ? ` ${formatDate(status.access_until)}` : ''}`
+        : status.access_until
+          ? `до ${formatDate(status.access_until)} · осталось ${status.access_days_left ?? 0} дн.`
+          : 'Бессрочно'
+  const statusAccessTone =
+    status && (status.suspended || status.access_expired)
+      ? 'text-destructive'
+      : status && status.access_days_left != null && status.access_days_left <= 7
+        ? 'text-amber-600 dark:text-amber-400'
+        : ''
+  const trafficLimit = status?.traffic_limit_bytes ?? null
+  const trafficConsumed = status?.traffic_consumed_bytes ?? 0
+  const trafficLeft = status?.traffic_bytes_left ?? null
+  const trafficPercent =
+    trafficLimit && trafficLimit > 0 ? Math.min((trafficConsumed / trafficLimit) * 100, 100) : 0
+  const statusTrafficLabel = !status
+    ? null
+    : trafficLimit
+      ? `${formatBytes(trafficConsumed)} из ${formatBytes(trafficLimit)}${
+          trafficLeft != null ? ` · осталось ${formatBytes(trafficLeft)}` : ''
+        }`
+      : 'Без лимита'
+  const statusTrafficBarClass = status?.traffic_limit_exceeded
+    ? 'bg-destructive'
+    : trafficPercent >= 80
+      ? 'bg-amber-500'
+      : 'bg-primary'
 
   return (
     <div className="tg-mini-dashboard space-y-3">
       <MiniPageHeader
         title="Конфиги"
         subtitle={
-          visibleConfigs.length > 0
-            ? `${visibleConfigs.length} ${visibleConfigs.length === 1 ? 'конфиг' : visibleConfigs.length < 5 ? 'конфига' : 'конфигов'}`
-            : 'Создайте или получите VPN-профиль'
+          nodeCount > 0
+            ? `${nodeCount} конфиг${nodeCount === 1 ? '' : 'а'} на ${groupCount} имени${
+                groupCount !== 1 ? 'ах' : ''
+              }`
+            : 'Создайте или получите конфиг'
         }
         onRefresh={() => void load({ silent: true })}
         refreshing={refreshing}
       />
 
-      {canCreate && (
+      {status && (
+        <Card>
+          <CardContent className="space-y-2 p-3">
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <span className="text-muted-foreground">Доступ</span>
+              <span className={cn('font-medium', statusAccessTone)}>{statusAccessLabel}</span>
+            </div>
+            {status.suspend_reason ? (
+              <p className="text-xs text-muted-foreground">Причина: {status.suspend_reason}</p>
+            ) : null}
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <span className="text-muted-foreground">Трафик</span>
+              <span className="font-medium">{statusTrafficLabel}</span>
+            </div>
+            {trafficLimit ? (
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className={cn('h-full rounded-full', statusTrafficBarClass)}
+                  style={{ width: `${trafficPercent}%` }}
+                />
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      )}
+
+      {accessCopy && closedAccess && (
+        <div
+          className={cn(
+            'tg-mini-feedback',
+            accessCopy.tone === 'danger' ? 'is-error' : 'is-info',
+          )}
+          role="status"
+        >
+          <KeyRound size={18} className="shrink-0" aria-hidden />
+          <div className="min-w-0 flex-1 space-y-2">
+            <p className="text-sm font-medium leading-snug">{accessCopy.title}</p>
+            {accessCopy.description && (
+              <p className="text-xs leading-snug text-muted-foreground">{accessCopy.description}</p>
+            )}
+            {accessCopy.canRedeem && (
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  value={redeemCode}
+                  onChange={(e) => setRedeemCode(e.target.value)}
+                  placeholder="Введите unlock-ключ"
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-label="Unlock-ключ продления"
+                />
+                <Button type="button" onClick={handleRedeem} disabled={redeeming || !redeemCode.trim()}>
+                  {redeeming ? 'Проверка…' : 'Продлить'}
+                </Button>
+              </div>
+            )}
+            {accessCopy.canContact && chatUrl && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => openExternalLink(chatUrl)}
+              >
+                Написать администратору
+              </Button>
+            )}
+            {accessCopy.canPay && payUrl && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => openExternalLink(payUrl)}
+              >
+                Оплатить и прислать чек
+              </Button>
+            )}
+            {accessCopy.canRequest && chatUrl && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => openExternalLink(chatUrl)}
+              >
+                Запросить продление
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Админ создаёт конфиги напрямую, без плана и тарифа; абонент — именем из своего плана. */}
+      {isAdmin && anyProtocolEnabled && (
         <Button type="button" className="w-full gap-2" onClick={() => setShowCreate(true)}>
           <Plus size={18} aria-hidden />
-          Новый конфиг
+          Создать конфиг
         </Button>
       )}
 
-      {quota && !quota.unlimited && (
+      {!isAdmin && canCreate && (
+        <Button type="button" className="w-full gap-2" onClick={handlePlanAdd} disabled={planAdding}>
+          <Plus size={18} aria-hidden />
+          {planAdding ? 'Добавление…' : 'Добавить конфиг'}
+        </Button>
+      )}
+
+      {!isAdmin && !canCreate && (
         <p className="text-xs text-muted-foreground">
-          Лимит: {quota.used} из {quota.limit}
-          {!quota.can_create ? ' — достигнут' : ''}
+          {createDisabledByAdmin
+            ? 'Создание новых конфигов отключено администратором.'
+            : 'Запросите ещё конфиг у администратора.'}
+        </p>
+      )}
+
+      {quota && !unlimited && (
+        <p className="text-xs text-muted-foreground">
+          Лимит: {used} из {limit} имён{quotaReached ? ' — лимит достигнут' : ''}
         </p>
       )}
 
       {error && <p className="text-destructive text-sm">{error}</p>}
 
-      {visibleConfigs.length > 0 && (
+      {allNodes.length > 0 && (
         <>
           <MiniListToolbar
             search={search}
             onSearchChange={setSearch}
-            searchPlaceholder={isAdmin ? 'Поиск по имени или владельцу…' : 'Поиск по имени…'}
+            searchPlaceholder={isAdmin ? 'Поиск по имени…' : 'Поиск по имени…'}
             protocol={protocol}
             onProtocolChange={setProtocol}
             protocolCounts={protocolCounts}
@@ -342,22 +553,22 @@ export default function Configs() {
 
           {hasActiveFilters && (
             <p className="tg-mini-results-meta">
-              Показано {filteredConfigs.length}
-              {filteredConfigs.length !== visibleConfigs.length ? ` из ${visibleConfigs.length}` : ''}
+              Показано {filteredNodes.length}
+              {filteredNodes.length !== allNodes.length ? ` из ${allNodes.length}` : ''}
             </p>
           )}
         </>
       )}
 
-      {visibleConfigs.length === 0 ? (
+      {visibleGroups.length === 0 ? (
         <div className="tg-mini-filter-empty">
           <FileKey size={22} className="text-muted-foreground" aria-hidden />
           <p className="text-sm font-medium">Нет конфигов</p>
           <p className="text-xs text-muted-foreground">
-            {canCreate ? 'Создайте первый профиль кнопкой выше' : 'Профили появятся после создания в панели'}
+            {canCreate ? 'Добавьте первый конфиг кнопкой выше' : 'Конфиги появятся после создания в панели'}
           </p>
         </div>
-      ) : filteredConfigs.length === 0 ? (
+      ) : filteredNodes.length === 0 ? (
         <div className="tg-mini-filter-empty">
           <Search size={20} className="text-muted-foreground" aria-hidden />
           <p className="text-sm font-medium">Ничего не найдено</p>
@@ -367,37 +578,70 @@ export default function Configs() {
           </Button>
         </div>
       ) : (
-        filteredConfigs.map((config) => {
-          const owner = ownerLabel(config)
-          return (
-            <Card key={config.id} className="tg-mini-config-card">
-              <CardContent className="p-0">
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between gap-3 p-4 text-left"
-                  onClick={() => void openActions(config)}
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="truncate font-medium">{config.client_name}</span>
-                      <span className={`tg-mini-protocol-badge ${vpnTypeBadgeClass(config.vpn_type)}`}>
-                        {vpnTypeLabel(config.vpn_type)}
-                      </span>
+        <>
+          {visibleGroups.map((group) => {
+            const visibleNodes = group.nodes.filter((n) =>
+              protocol === 'all' || matchesProtocolFilter(n.vpn_type, protocol),
+            )
+            if (visibleNodes.length === 0) return null
+            return (
+              <Card key={group.name} className="tg-mini-config-card">
+                <CardContent className="p-0">
+                  <div className="flex w-full items-center justify-between gap-3 p-3 border-b border-border/80">
+                    <div className="min-w-0">
+                      <span className="font-medium truncate">{group.name}</span>
+                      <p className="text-xs text-muted-foreground">
+                        {visibleNodes.length} узел{visibleNodes.length !== 1 ? 'а' : ''}
+                      </p>
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {owner ? `Владелец: ${owner}` : 'Получить в Telegram с инструкцией'}
-                    </p>
                   </div>
-                  <ChevronRight size={18} className="shrink-0 text-muted-foreground" aria-hidden />
-                </button>
-              </CardContent>
-            </Card>
-          )
-        })
+                  <div className="divide-y divide-border/80">
+                    {visibleNodes.map((entry) => {
+                      const created = entry.config_id != null
+                      return (
+                        <button
+                          key={`${group.name}-${entry.config_id ?? entry.node_id}`}
+                          type="button"
+                          className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-muted/50"
+                          onClick={() => void openActions({ ...entry, clientName: group.name })}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium">{entry.node_label}</span>
+                              <span className={`tg-mini-protocol-badge ${vpnTypeBadgeClass(entry.vpn_type)}`}>
+                                {vpnTypeLabel(entry.vpn_type)}
+                              </span>
+                              <Badge variant={created ? 'success' : 'secondary'} className="text-[10px]">
+                                {created ? 'создан' : 'не создан'}
+                              </Badge>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              узел ID {entry.node_id}{created ? ` · конфиг #${entry.config_id}` : ''}
+                            </p>
+                          </div>
+                          <ChevronRight size={18} className="shrink-0 text-muted-foreground" aria-hidden />
+                        </button>
+                      )
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </>
       )}
 
       <ConfigActionDialog
-        config={activeConfig}
+        config={
+          activeConfig
+            ? {
+                id: activeConfig.config_id,
+                client_name: activeConfig.clientName,
+                vpn_type: activeConfig.vpn_type,
+                is_mine: true,
+              }
+            : null
+        }
         files={files}
         selectedPath={selectedPath}
         onSelectedPathChange={handleSelectedPathChange}
@@ -408,9 +652,9 @@ export default function Configs() {
         feedback={feedback}
         downloadLink={downloadLink}
         canShareLink={canShareInTelegram}
-        isForeignConfig={isForeignConfig}
-        ownerLabel={activeConfig ? ownerLabel(activeConfig) : null}
-        canManage={activeConfig ? canManageConfig(activeConfig) : false}
+        isForeignConfig={false}
+        ownerLabel={null}
+        canManage={Boolean(isAdmin || settings?.can_manage_configs)}
         isAdmin={isAdmin}
         onClose={closeSheet}
         onSend={(destination) => void handleSend(destination)}

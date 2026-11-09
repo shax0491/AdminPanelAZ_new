@@ -168,6 +168,33 @@ class ConfigContent(BaseModel):
     content: str = ""
 
 
+class DnsServersPayload(BaseModel):
+    antizapret: int = Field(ge=1, le=7)
+    vpn: int = Field(ge=1, le=2)
+
+
+class OpenVpnTuningPayload(BaseModel):
+    duplicate: bool
+    logs: bool
+
+
+class OpenVpnMtuPayload(BaseModel):
+    openvpn: int | None = Field(default=None, ge=1280, le=1420)
+    wireguard: int | None = Field(default=None, ge=1280, le=1420)
+
+
+class OpenVpnDcoPayload(BaseModel):
+    enabled: bool
+
+
+class OpenVpnProtocolsPayload(BaseModel):
+    units: dict[str, bool]
+
+
+class OpenVpnPatchPayload(BaseModel):
+    algorithm: int = Field(ge=1, le=4)
+
+
 class OpenVpnClientRequest(BaseModel):
     client_name: str = Field(min_length=1, max_length=32)
     cert_expire_days: int = Field(default=3650, ge=1, le=3650)
@@ -226,6 +253,13 @@ class OpenVpnJournalSampleRequest(BaseModel):
 class OpenVpnKillClientRequest(BaseModel):
     unit: str = Field(min_length=1, max_length=128)
     client_name: str = Field(min_length=1, max_length=32, pattern=KILL_CLIENT_NAME_PATTERN)
+
+
+class OpenVpnClientKillByIdRequest(BaseModel):
+    """Disconnect one session (device) by its OpenVPN Client ID."""
+
+    unit: str = Field(min_length=1, max_length=128)
+    client_id: int = Field(ge=0, le=2_147_483_647)
 
 
 class RotateApiKeyRequest(BaseModel):
@@ -588,6 +622,19 @@ def openvpn_kill(payload: OpenVpnKillClientRequest, _: None = Depends(verify_api
     return openvpn_management_service.kill_client(unit, payload.client_name)
 
 
+@app.post("/openvpn/management/client-kill")
+def openvpn_client_kill(payload: OpenVpnClientKillByIdRequest, _: None = Depends(verify_api_key)):
+    unit = normalize_watch_unit(payload.unit)
+    if not unit:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Недопустимый OpenVPN unit")
+    return openvpn_management_service.kill_client_by_id(unit, payload.client_id)
+
+
+@app.get("/openvpn/management/global-stats")
+def openvpn_global_stats(_: None = Depends(verify_api_key)):
+    return openvpn_management_service.collect_global_stats()
+
+
 @app.get("/openvpn/multihome")
 def openvpn_multihome_status(_: None = Depends(verify_api_key)):
     return service.get_openvpn_multihome_status()
@@ -908,6 +955,46 @@ def write_config(filename: str, payload: ConfigContent, _: None = Depends(verify
 def apply_config(_: None = Depends(verify_api_key)):
     output = service.apply_config_changes()
     return {"message": "Настройки применены", "detail": output}
+
+
+@app.get("/configs/dns-servers")
+def get_dns_servers(_: None = Depends(verify_api_key)):
+    return service.get_dns_servers()
+
+
+@app.put("/configs/dns-servers")
+def apply_dns_servers(payload: DnsServersPayload, _: None = Depends(verify_api_key)):
+    return service.apply_dns_servers(antizapret=payload.antizapret, vpn=payload.vpn)
+
+
+@app.get("/openvpn/tuning")
+def get_openvpn_tuning(_: None = Depends(verify_api_key)):
+    return service.get_openvpn_tuning()
+
+
+@app.put("/openvpn/tuning")
+def apply_openvpn_tuning(payload: OpenVpnTuningPayload, _: None = Depends(verify_api_key)):
+    return service.apply_openvpn_tuning(duplicate=payload.duplicate, logs=payload.logs)
+
+
+@app.put("/openvpn/mtu")
+def apply_openvpn_mtu(payload: OpenVpnMtuPayload, _: None = Depends(verify_api_key)):
+    return service.apply_mtu(openvpn_mtu=payload.openvpn, wireguard_mtu=payload.wireguard)
+
+
+@app.put("/openvpn/dco")
+def apply_openvpn_dco(payload: OpenVpnDcoPayload, _: None = Depends(verify_api_key)):
+    return service.apply_dco(payload.enabled)
+
+
+@app.put("/openvpn/protocols")
+def apply_openvpn_protocols(payload: OpenVpnProtocolsPayload, _: None = Depends(verify_api_key)):
+    return service.apply_protocols(payload.units)
+
+
+@app.post("/openvpn/patch")
+def apply_openvpn_patch(payload: OpenVpnPatchPayload, _: None = Depends(verify_api_key)):
+    return service.apply_openvpn_patch(payload.algorithm)
 
 
 @app.post("/configs/recreate-profiles")
@@ -1316,6 +1403,8 @@ async def awg2_import_archive(request: Request, _: None = Depends(verify_api_key
         await asyncio.to_thread(Awg2Service().import_state_archive, data)
     except Awg2NotInstalledError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return {"success": True}
 
 

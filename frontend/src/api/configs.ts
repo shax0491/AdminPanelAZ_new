@@ -7,6 +7,7 @@ import type {
   SelfServiceQuota,
   SelfServiceLimits,
   EffectiveVisibleVpnProfilesResponse,
+  UserGraceSettings,
   VisibleVpnProfilesDefaultResponse,
   VisibleVpnProfilesPolicy,
   VpnType,
@@ -21,6 +22,23 @@ export async function getConfigs(includeFiles = false, tagIds?: number[]) {
   if (tagIds?.length) tagIds.forEach((id) => params.append('tag_ids', String(id)))
   const query = params.toString() ? `?${params.toString()}` : ''
   return apiFetch<VpnConfig[]>(`/configs${query}`)
+}
+
+/** Admin: primary configs on all nodes (create-user «привязать существующие»). */
+export type AssignableConfig = {
+  id: number
+  client_name: string
+  vpn_type: string
+  node_id: number
+  node_name: string
+  owner_id: number | null
+  owner_username?: string | null
+  owner_is_admin: boolean
+  description?: string | null
+}
+
+export async function getAssignableConfigs() {
+  return apiFetch<AssignableConfig[]>('/configs/assignable')
 }
 
 export async function getConfigQuota() {
@@ -55,6 +73,18 @@ export async function updateSelfServiceLimits(data: Partial<SelfServiceLimits>) 
   return apiFetch<SelfServiceLimits>('/settings/self-service', {
     method: 'PATCH',
     body: JSON.stringify(data),
+  })
+}
+
+/** Срок удержания конфигов после истечения доступа (месяцы; 0 — выключено). */
+export async function getUserGraceSettings() {
+  return apiFetch<UserGraceSettings>('/settings/user-grace')
+}
+
+export async function updateUserGraceSettings(graceMonths: number) {
+  return apiFetch<UserGraceSettings>('/settings/user-grace', {
+    method: 'PATCH',
+    body: JSON.stringify({ grace_months: graceMonths }),
   })
 }
 

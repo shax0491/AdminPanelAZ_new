@@ -167,6 +167,9 @@ API `GET /api/awg2/monitoring` остаётся для NOC / Telegram Mini App (
 **Можно ли то же имя, что у WireGuard?**  
 Да: уникальность `(узел, имя, тип VPN)` — `amneziawg2` и `wireguard` не конфликтуют.
 
+**Работает ли AWG 2.0 через AntiZapret `proxy.sh`?**  
+Частично: панель при галочке «Также для AmneziaWG…» подставляет IP прокси в `Endpoint` при скачивании. Порты слоя **не** входят в штатный `proxy.sh` (рандом az-awg2) — на RU нужны ручные DNAT, см. [proxy-nodes.md § AmneziaWG 2.0 через прокси](proxy-nodes.md#amneziawg-20-через-прокси). Панель `proxy.sh` не меняет.
+
 **Где документация upstream?**  
 [blindtechnique/az-awg2](https://github.com/blindtechnique/az-awg2)
 
@@ -178,6 +181,7 @@ API `GET /api/awg2/monitoring` остаётся для NOC / Telegram Mini App (
 - Не рассчитывайте на UI для `install-base` или reboot: это только SSH
 - Не путайте вкладки **AmneziaWG** и **AmneziaWG 2** на Dashboard
 - Для HA-копии AWG2 учитывайте byte-copy crypto-sync и исключения архива из среза 2a
+- Restore / regenerate / apply обфускации на primary отвечают сразу; push overlay на replica — фон `ha_awg2_sync` (прогресс в панели)
 - После смены обфускации переимпортируйте клиентские профили
 
 ---

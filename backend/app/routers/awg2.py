@@ -56,6 +56,11 @@ def _ha_sync_awg2_from_active(db: Session) -> dict[str, Any]:
         return {"attempted": True, "errors": [{"node_name": None, "error": str(exc)}]}
 
 
+def _enqueue_ha_awg2_from_active(db: Session, *, username: str | None = None) -> dict[str, Any]:
+    """Совместимость с backup_overlays апстрима: у форка HA-синхронизация нативного AWG2 синхронная."""
+    return _ha_sync_awg2_from_active(db)
+
+
 def _map_awg2_exc(exc: Exception) -> HTTPException:
     if isinstance(exc, Awg2NotInstalledError):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))

@@ -35,26 +35,22 @@ class ProxyNodeAdapter:
         self.base_url = f"{scheme}://{endpoint(host, port)}"
         self.api_key = api_key
         self._verify = build_node_agent_ssl_context(mtls_enabled=mtls_enabled)
-        self._http_client: httpx.Client | None = None
 
     def _get_http_client(self) -> httpx.Client:
-        if self._http_client is None:
-            self._http_client = httpx.Client(timeout=HTTP_TIMEOUT, **self._client_kwargs())
-        return self._http_client
+        from app.services.node_adapter import shared_http_client
+
+        return shared_http_client(
+            self.base_url,
+            self._mtls_enabled,
+            self._verify,
+            timeout=HTTP_TIMEOUT,
+        )
 
     def close(self) -> None:
-        if self._http_client is not None:
-            self._http_client.close()
-            self._http_client = None
+        """The client is shared per endpoint and closed at process shutdown."""
 
     def _headers(self) -> dict[str, str]:
         return {"X-Node-Key": self.api_key}
-
-    def _client_kwargs(self) -> dict[str, Any]:
-        kwargs: dict[str, Any] = {}
-        if self._verify is not None:
-            kwargs["verify"] = self._verify
-        return kwargs
 
     def _format_connection_error(self, exc: httpx.RequestError) -> str:
         from app.services.node_link_errors import classify_request_error
@@ -86,13 +82,18 @@ class ProxyNodeAdapter:
 
         if response.status_code >= 400:
             detail = response.text
+            from_agent = False
             try:
                 data = response.json()
                 detail = data.get("detail", detail)
+                from_agent = True
             except Exception:
                 pass
             code, message = classify_http_status(
-                response.status_code, detail, mtls_enabled=self._mtls_enabled
+                response.status_code,
+                detail,
+                mtls_enabled=self._mtls_enabled,
+                from_agent=from_agent,
             )
             raise_link_error(code, message, upstream_status=response.status_code)
 

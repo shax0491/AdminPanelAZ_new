@@ -7,6 +7,7 @@ import {
 } from '@/tg-mini/lib/telegramInitData'
 import type {
   AdminNotifySettings,
+  ClosedAccessView,
   FeatureModulesResponse,
   InstallPlatform,
   SelfServiceLimits,
@@ -15,11 +16,13 @@ import type {
   TgMiniAuthResponse,
   TgMiniConfig,
   TgMiniConfigFile,
-  TgMiniDashboard,
+  TgMeConfig,
+  TgMeStatus,
   TgMiniNodeActionResponse,
   TgMiniNodesResponse,
   TgMiniQrLink,
   TgMiniSettings,
+  TgMiniDashboard,
   TgMiniWarperStatus,
   TgMiniAwg2Status,
   TgMiniMtproxyNode,
@@ -31,6 +34,15 @@ import type {
   ClientAccessPolicy,
   UnlockCodeRecord,
   ClientPoliciesResponseEntry,
+  AccessRequestResponse,
+  ApproveRequest,
+  RejectRequest,
+  PresetResponse,
+  UserProvisionedCreate,
+  UserProvisionedResponse,
+  UserHistoryEntry,
+  UserStatsResponse,
+  UserUpdatePayload,
 } from '@/types'
 import { apiBase } from '@/lib/panelBase'
 
@@ -101,6 +113,30 @@ async function panelApiFetch<T>(path: string, options: RequestInit = {}, retry =
   return parseApiResponse<T>(response)
 }
 
+/** Raw panel response (blobs, images) with the Mini App token. */
+async function panelApiFetchResponse(
+  path: string,
+  options: RequestInit = {},
+  retry = true,
+): Promise<Response> {
+  const headers = new Headers(options.headers)
+  if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json')
+  }
+  const token = getTgToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+
+  const response = await fetch(`${PANEL_API_BASE}${path}`, { ...options, headers })
+  if (response.status === 401 && retry && (await renewAfterUnauthorized(token))) {
+    return panelApiFetchResponse(path, options, false)
+  }
+  if (!response.ok) {
+    const body = await response.text()
+    throw new ApiError(parseHttpErrorBody(body, response.status), response.status)
+  }
+  return response
+}
+
 export async function refreshTgSessionFromInitData(initData: string): Promise<void> {
   try {
     const auth = await tgAuth(initData)
@@ -157,15 +193,63 @@ export async function getTgConfigs(): Promise<{ configs: TgMiniConfig[] }> {
   return tgFetch<{ configs: TgMiniConfig[] }>('/configs')
 }
 
+export async function getTgMeConfigs(): Promise<{
+  configs: TgMeConfig[]
+  closed_access: ClosedAccessView | null
+  status: TgMeStatus
+}> {
+  return tgFetch<{
+    configs: TgMeConfig[]
+    closed_access: ClosedAccessView | null
+    status: TgMeStatus
+  }>('/me/configs')
+}
+
+/** Продление доступа unlock-кодом (owner scope) — Mini App. */
+export async function redeemTgMeCode(code: string): Promise<{
+  grant_days: number
+  protocols_applied: string[]
+  access_until_by_protocol: Record<string, string | null>
+}> {
+  return tgFetch<{
+    grant_days: number
+    protocols_applied: string[]
+    access_until_by_protocol: Record<string, string | null>
+  }>('/me/redeem-code', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  })
+}
+
+/** Самосервис плана конфигов: добавить следующее свободное имя. */
+export async function createTgMePlanConfig(): Promise<{ index: number; task_id: string }> {
+  return panelApiFetch<{ index: number; task_id: string }>('/me/plan-configs', {
+    method: 'POST',
+  })
+}
+
+/** Самосервис плана конфигов: убрать имя по индексу. */
+export async function removeTgMePlanConfig(
+  index: number,
+  confirmDeletions = false,
+): Promise<{ task_id: string }> {
+  const qs = confirmDeletions ? '?confirm_deletions=true' : ''
+  return panelApiFetch<{ task_id: string }>(`/me/plan-configs/${index}${qs}`, {
+    method: 'DELETE',
+  })
+}
+
 export async function getTgConfigFiles(configId: number): Promise<{ files: TgMiniConfigFile[] }> {
-  return tgFetch<{ files: TgMiniConfigFile[] }>(`/configs/${configId}/files`)
+  // /me/... ищет конфиг на его собственном узле; /configs/{id}/files работает
+  // только с активным узлом и даёт 404 для конфига на другом сервере.
+  return tgFetch<{ files: TgMiniConfigFile[] }>(`/me/configs/${configId}/files`)
 }
 
 export async function sendTgConfig(
   configId: number,
   data: { path?: string; destination: 'self' | 'owner'; platform?: InstallPlatform },
 ): Promise<{ message: string }> {
-  return tgFetch<{ message: string }>(`/configs/${configId}/send`, {
+  return tgFetch<{ message: string }>(`/me/configs/${configId}/send`, {
     method: 'POST',
     body: JSON.stringify(data),
   })
@@ -173,7 +257,7 @@ export async function sendTgConfig(
 
 export async function getTgQrLink(configId: number, path: string): Promise<TgMiniQrLink> {
   const params = new URLSearchParams({ config_id: String(configId), path })
-  return tgFetch<TgMiniQrLink>(`/qr-link?${params.toString()}`)
+  return tgFetch<TgMiniQrLink>(`/me/qr-link?${params.toString()}`)
 }
 
 export async function getTgSettings(opts?: { retry?: boolean }): Promise<TgMiniSettings> {
@@ -453,4 +537,154 @@ export async function revokeTgUnlockCode(codeId: number): Promise<{ ok: boolean;
   return panelApiFetch<{ ok: boolean; id: number }>(`/unlock-codes/${codeId}/revoke`, {
     method: 'POST',
   })
+}
+
+/* ------------------- Админ: конфиги на активном узле ------------------- */
+
+/** Файлы профиля на активном узле (админский список конфигов). */
+export async function getTgPanelConfigFiles(
+  configId: number,
+): Promise<{ files: TgMiniConfigFile[] }> {
+  return tgFetch<{ files: TgMiniConfigFile[] }>(`/configs/${configId}/files`)
+}
+
+export async function sendTgPanelConfig(
+  configId: number,
+  data: { path?: string; destination: 'self' | 'owner'; platform?: InstallPlatform },
+): Promise<{ message: string }> {
+  return tgFetch<{ message: string }>(`/configs/${configId}/send`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function getTgPanelQrLink(configId: number, path: string): Promise<TgMiniQrLink> {
+  const params = new URLSearchParams({ config_id: String(configId), path })
+  return tgFetch<TgMiniQrLink>(`/qr-link?${params.toString()}`)
+}
+
+/* ------------------- Клиенты: аккаунты абонентов ------------------- */
+
+export async function suspendTgUser(userId: number, reason?: string | null): Promise<User> {
+  return panelApiFetch<User>(`/users/${userId}/suspend`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: reason ?? null }),
+  })
+}
+
+export async function resumeTgUser(userId: number): Promise<User> {
+  return panelApiFetch<User>(`/users/${userId}/resume`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  })
+}
+
+export async function extendTgUser(userId: number, days: number): Promise<User> {
+  return panelApiFetch<User>(`/users/${userId}/extend`, {
+    method: 'POST',
+    body: JSON.stringify({ days }),
+  })
+}
+
+export async function resetTgUserTraffic(userId: number): Promise<User> {
+  return panelApiFetch<User>(`/users/${userId}/traffic-counter/reset`, { method: 'POST' })
+}
+
+export async function setTgUserTrafficLimit(
+  userId: number,
+  bytes: number | null,
+): Promise<User> {
+  return panelApiFetch<User>(`/users/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ traffic_limit_bytes: bytes }),
+  })
+}
+
+export async function deleteTgUser(userId: number): Promise<{ message: string }> {
+  return panelApiFetch<{ message: string }>(`/users/${userId}`, { method: 'DELETE' })
+}
+
+export async function createTgProvisionedUser(
+  data: UserProvisionedCreate,
+): Promise<UserProvisionedResponse> {
+  return panelApiFetch<UserProvisionedResponse>('/users/provisioned', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function listTgPresets(): Promise<PresetResponse[]> {
+  return panelApiFetch<PresetResponse[]>('/users/presets')
+}
+
+/* ------------------- Подтверждение доступа: заявки ------------------- */
+
+export async function listTgRequests(params?: {
+  status?: string
+  type?: string
+  q?: string
+  limit?: number
+  offset?: number
+}): Promise<AccessRequestResponse[]> {
+  const qs = new URLSearchParams()
+  if (params?.status) qs.set('status', params.status)
+  if (params?.type) qs.set('type', params.type)
+  if (params?.q) qs.set('q', params.q)
+  if (params?.limit) qs.set('limit', String(params.limit))
+  if (params?.offset) qs.set('offset', String(params.offset))
+  const query = qs.toString()
+  return panelApiFetch<AccessRequestResponse[]>(`/users/requests${query ? `?${query}` : ''}`)
+}
+
+export async function getTgRequestsCount(status = 'pending'): Promise<number> {
+  const data = await panelApiFetch<{ count: number }>(
+    `/users/requests/count?status=${encodeURIComponent(status)}`,
+  )
+  return data.count
+}
+
+export async function approveTgRequest(
+  requestId: number,
+  data: ApproveRequest,
+): Promise<AccessRequestResponse> {
+  return panelApiFetch<AccessRequestResponse>(`/users/requests/${requestId}/approve`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function rejectTgRequest(
+  requestId: number,
+  data: RejectRequest,
+): Promise<AccessRequestResponse> {
+  return panelApiFetch<AccessRequestResponse>(`/users/requests/${requestId}/reject`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+/** Чек оплаты заявки (JPEG) для предпросмотра. */
+export async function getTgRequestReceipt(requestId: number): Promise<Blob> {
+  const response = await panelApiFetchResponse(`/users/requests/${requestId}/receipt`)
+  return response.blob()
+}
+
+/* ------------------- Карточка клиента: права, история, статистика ------------------- */
+
+export async function updateTgUser(userId: number, payload: UserUpdatePayload): Promise<User> {
+  return panelApiFetch<User>(`/users/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function getTgUserHistory(
+  userId: number,
+  limit = 50,
+): Promise<UserHistoryEntry[]> {
+  return panelApiFetch<UserHistoryEntry[]>(`/users/${userId}/history?limit=${limit}`)
+}
+
+export async function getTgUserStats(userId: number, days = 30): Promise<UserStatsResponse> {
+  return panelApiFetch<UserStatsResponse>(`/users/${userId}/stats?days=${days}`)
 }

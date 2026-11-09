@@ -60,6 +60,13 @@ function withTz(opts?: Intl.DateTimeFormatOptions): Intl.DateTimeFormatOptions {
 
 type DateInput = string | number | Date | null | undefined
 
+/** `<input type="date">` (`YYYY-MM-DD`) → ISO конца этого дня в локальной зоне. */
+export function endOfDayIso(value: string): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return null
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 23, 59, 59, 999).toISOString()
+}
+
 /** Full date + time, e.g. "18.06.2026, 11:45:00" in the active timezone. */
 export function formatDateTime(value: DateInput, opts?: Intl.DateTimeFormatOptions, fallback = '—'): string {
   const d = toDate(value)
@@ -91,6 +98,27 @@ export function formatTime(value: DateInput, opts?: Intl.DateTimeFormatOptions, 
   } catch {
     return fallback
   }
+}
+
+const MINUTE_MS = 60_000
+const HOUR_MS = 60 * MINUTE_MS
+const DAY_MS = 24 * HOUR_MS
+
+/**
+ * Относительное время в активном поясе: «только что», «5 мин назад», «2 ч назад»,
+ * «вчера», «3 дн назад», иначе дата. Для дат из будущего/рассинхрона — «только что».
+ */
+export function formatRelative(value: DateInput, now: number = Date.now(), fallback = '—'): string {
+  const d = toDate(value)
+  if (!d) return fallback
+  const diff = now - d.getTime()
+  if (diff < MINUTE_MS) return 'только что'
+  if (diff < HOUR_MS) return `${Math.floor(diff / MINUTE_MS)} мин назад`
+  if (diff < DAY_MS) return `${Math.floor(diff / HOUR_MS)} ч назад`
+  const days = Math.floor(diff / DAY_MS)
+  if (days === 1) return 'вчера'
+  if (days < 30) return `${days} дн назад`
+  return formatDate(value)
 }
 
 /** Short label of the active timezone, e.g. "UTC+3" / "MSK", for hints. */

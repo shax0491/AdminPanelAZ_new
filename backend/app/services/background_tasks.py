@@ -54,6 +54,13 @@ _PIPELINE_TASK_TYPES = {
     "node_sync_push_full",
     "node_sync_shared_domain",
     "node_update_roll",
+    "user_provision",
+    "user_delete_cleanup",
+    "bulk_user_nodes",
+    "ha_client_sync",
+    "config_apply",
+    "recreate_profiles",
+    "ha_awg2_sync",
 }
 
 _TASK_START_PROGRESS: dict[str, tuple[str, str, int]] = {
@@ -77,6 +84,13 @@ _TASK_START_PROGRESS: dict[str, tuple[str, str, int]] = {
     "node_sync_push_full": ("Синхронизация HA…", "Подготовка push-full…", 5),
     "node_sync_shared_domain": ("Применение shared domain…", "Запись хостов в setup…", 5),
     "node_update_roll": ("Rolling update узлов…", "Подготовка очереди…", 3),
+    "user_provision": ("Применение плана конфигов…", "Подготовка плана…", 5),
+    "user_delete_cleanup": ("Удаление пользователя…", "Подготовка очистки…", 5),
+    "bulk_user_nodes": ("Массовая выдача серверов…", "Запуск…", 5),
+    "ha_client_sync": ("Синхронизация HA клиентов…", "Подготовка…", 5),
+    "config_apply": ("Применение конфигурации…", "Подготовка…", 5),
+    "recreate_profiles": ("Пересоздание профилей…", "client.sh 7…", 5),
+    "ha_awg2_sync": ("HA-синхронизация AZ-AWG2…", "Подготовка…", 5),
 }
 
 _TASK_DONE_PROGRESS: dict[str, str] = {
@@ -100,6 +114,13 @@ _TASK_DONE_PROGRESS: dict[str, str] = {
     "node_sync_push_full": "Синхронизация HA завершена",
     "node_sync_shared_domain": "Shared domain применён на узлах",
     "node_update_roll": "Rolling update завершён",
+    "user_provision": "План конфигов применён",
+    "user_delete_cleanup": "Пользователь удалён",
+    "bulk_user_nodes": "Массовая операция с серверами завершена",
+    "ha_client_sync": "Синхронизация HA клиентов завершена",
+    "config_apply": "Конфигурация применена",
+    "recreate_profiles": "Профили пересозданы",
+    "ha_awg2_sync": "HA-синхронизация AZ-AWG2 завершена",
 }
 
 
@@ -203,18 +224,16 @@ class BackgroundTaskService:
         finally:
             db.close()
 
-    def find_active_task(self, task_type: str) -> BackgroundTask | None:
+    def find_active_task(self, task_type: str, subject_key: str | None = None) -> BackgroundTask | None:
         db = SessionLocal()
         try:
-            return (
-                db.query(BackgroundTask)
-                .filter(
-                    BackgroundTask.task_type == task_type,
-                    BackgroundTask.status.in_(["queued", "running"]),
-                )
-                .order_by(BackgroundTask.created_at.desc())
-                .first()
+            q = db.query(BackgroundTask).filter(
+                BackgroundTask.task_type == task_type,
+                BackgroundTask.status.in_(["queued", "running"]),
             )
+            if subject_key is not None:
+                q = q.filter(BackgroundTask.subject_key == subject_key)
+            return q.order_by(BackgroundTask.created_at.desc()).first()
         finally:
             db.close()
 
@@ -266,6 +285,8 @@ class BackgroundTaskService:
         message: str,
         *,
         created_by_username: str | None = None,
+        subject_key: str | None = None,
+        input: str | None = None,
     ) -> str:
         task_id = secrets.token_hex(16)
         owner = current_process_owner()
@@ -279,9 +300,11 @@ class BackgroundTaskService:
                         status="queued",
                         created_by_username=created_by_username,
                         message=(message or "Задача поставлена в очередь")[:255],
+                        input=input,
                         progress_percent=0,
                         progress_stage="Ожидание запуска задачи…",
                         owner=owner,
+                        subject_key=subject_key,
                     )
                 )
 
@@ -405,11 +428,13 @@ class BackgroundTaskService:
         *,
         created_by_username: str | None = None,
         queued_message: str | None = None,
+        subject_key: str | None = None,
     ) -> BackgroundTask:
         task_id = self.create_queued_task(
             task_type,
             queued_message or "Задача поставлена в очередь",
             created_by_username=created_by_username,
+            subject_key=subject_key,
         )
         _submit_in_current_context(self.run_background_task, task_id, task_callable)
         task = self.get_task(task_id)

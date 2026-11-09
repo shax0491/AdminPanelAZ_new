@@ -92,7 +92,7 @@ export default function DashboardPage() {
       visibilityPolicy.protocols.includes('amneziawg2'))
   const { activeNode, loading: nodeLoading } = useNode()
   const haReplicaReadonly = useHaReplicaReadonly()
-  const { success, error: notifyError, warning: notifyWarning } = useNotifications()
+  const { success, error: notifyError, warning: notifyWarning, info: notifyInfo } = useNotifications()
   const { startGlobal, doneGlobal, withInline } = useProgress()
   const { task: importTask, polling: importPolling, startPoll: startImportPoll } = useBackgroundTaskPoll()
   const csvInputRef = useRef<HTMLInputElement>(null)
@@ -183,11 +183,12 @@ export default function DashboardPage() {
       startGlobal()
     }
 
-    // Admin: one live probe via /monitoring/overview (feeds cards + connectionMap).
+    // Admin: federated overview so HA / multi-node clients online on any member
+    // still light the card (scope=node only saw the active node).
     // Config counts come from getConfigs — avoids a second /monitoring/summary probe.
     const monitoringPromise =
       user?.role === 'admin'
-        ? getMonitoring('node')
+        ? getMonitoring('all', 'dedupe')
             .then((data) => {
               setConnectionMap(
                 buildClientConnectionMap(
@@ -554,6 +555,7 @@ export default function DashboardPage() {
         onSuccess={success}
         onError={notifyError}
         onWarning={notifyWarning}
+        onInfo={notifyInfo}
         withProgress={withInline}
       />
 
@@ -644,6 +646,7 @@ export default function DashboardPage() {
           visibilityPolicy={visibilityPolicy}
           userRole={user.role}
           currentUserId={user.id}
+          canManageConfigs={isAdmin || Boolean(user?.can_manage_configs)}
           ownerCandidates={panelUsers}
           connectionMap={connectionMap}
           filesLoading={loadingFiles}

@@ -58,17 +58,21 @@ export async function createBackup(
   })
 }
 
-export async function restoreBackup(fileName: string) {
+export async function restoreBackup(fileName: string, password?: string) {
   return apiFetch<{ message: string; detail?: Record<string, unknown> }>('/backups/restore', {
     method: 'POST',
-    body: JSON.stringify({ file_name: fileName }),
+    body: JSON.stringify({
+      file_name: fileName,
+      ...(password ? { password } : {}),
+    }),
   })
 }
 
-export async function uploadBackup(file: File, restore = false) {
+export async function uploadBackup(file: File, restore = false, password?: string) {
   const form = new FormData()
   form.append('file', file)
   form.append('restore', restore ? 'true' : 'false')
+  if (password) form.append('password', password)
   return apiFetch<BackupEntry>('/backups/upload', {
     method: 'POST',
     body: form,
@@ -98,7 +102,9 @@ export async function getBackupSettings() {
   return apiFetch<BackupSettings>('/backups/settings')
 }
 
-export async function updateBackupSettings(data: Partial<BackupSettings>) {
+export async function updateBackupSettings(
+  data: Partial<BackupSettings> & { backup_password?: string | null },
+) {
   return apiFetch<BackupSettings>('/backups/settings', {
     method: 'PATCH',
     body: JSON.stringify(data),
@@ -187,6 +193,8 @@ export async function updateTelegramSettings(data: {
   legacy_login_enabled?: boolean
   bot_command_rate_max?: number
   bot_command_rate_window_seconds?: number
+  accept_access_requests?: boolean
+  pending_request_cap?: number
 }) {
   return apiFetch<TelegramSettings>('/settings/telegram', {
     method: 'PATCH',
@@ -368,4 +376,9 @@ export async function checkSystemUpdates() {
 
 export function downloadBackup(fileName: string) {
   return apiFetchResponse(`/backups/${encodeURIComponent(fileName)}/download`)
+}
+
+/** POST /maintenance/chat-attachments/purge — убрать фото из переписок и очистить кэш превью. */
+export async function purgeChatAttachments() {
+  return apiFetch<{ message: string }>('/maintenance/chat-attachments/purge', { method: 'POST' })
 }

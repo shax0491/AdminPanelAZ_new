@@ -63,7 +63,14 @@ DEFAULT_TG_NOTIFY_EVENTS: dict[str, bool] = {
     "noc_report": True,
     "alert_rule": True,
     "openvpn_buffer_guard_triggered": True,
+    "bulk_user_nodes": True,
+    "access_request": True,
+    "user_message": True,
+    "unlock_redeem": True,
 }
+
+# Категории колокольчика в панели. Единственный источник правды для API и фильтра ленты.
+BELL_NOTIFY_CATEGORIES: tuple[str, ...] = ("requests", "security", "nodes", "services", "tasks")
 
 # Event split out of an older one: until the user saves prefs again, it follows the old event,
 # so a muted "settings_change" keeps HA drift muted after the split.
@@ -94,11 +101,36 @@ class User(Base):
     totp_backup_codes_encrypted: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     telegram_id: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True, index=True)
     tg_notify_events: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    bell_notify_categories: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     config_quota: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
-    can_create_configs: Mapped[bool] = mapped_column(Boolean, default=True)
+    can_create_configs: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_manage_configs: Mapped[bool] = mapped_column(Boolean, default=False)
     visible_vpn_profiles: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     access_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    client_base_name: Mapped[str | None] = mapped_column(String(28), nullable=True)
+    plan_config_indexes: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list[int]
+    desired_protocols: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list[str]
+    panel_login_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    provision_state: Mapped[str] = mapped_column(String(16), default="unmanaged")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_read_notification_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Stage 3: admin suspend/resume + per-user traffic limit.
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    suspend_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    suspend_reason_visible: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0"
+    )
+    traffic_limit_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    traffic_counter_reset_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Chat abonent ↔ admin: время входа в режим переписки (None — режим выключен).
+    chat_mode_since: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    traffic_limit_blocked: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0"
+    )
+    # Stage 4: баннер портала для пользователей без привязанного Telegram.
+    portal_banner_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    portal_banner_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     vpn_configs: Mapped[list["VpnConfig"]] = relationship(back_populates="owner")
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user")
@@ -122,6 +154,20 @@ class User(Base):
             return dict(DEFAULT_TG_NOTIFY_EVENTS)
         return {key: _stored_tg_notify_event(stored, key) for key in DEFAULT_TG_NOTIFY_EVENTS}
 
+    def bell_categories(self) -> dict[str, bool]:
+        """Пять категорий колокольчика; отсутствующий ключ — включён.
+
+        Пустое поле и битый JSON читаются как «всё включено»: старые записи и
+        ручная правка БД ленту не ломают.
+        """
+        try:
+            stored = json.loads(self.bell_notify_categories or "{}")
+        except (ValueError, TypeError):
+            stored = {}
+        if not isinstance(stored, dict):
+            stored = {}
+        return {key: bool(stored.get(key, True)) for key in BELL_NOTIFY_CATEGORIES}
+
 
 def _stored_tg_notify_event(stored: dict[str, bool], event_type: str) -> bool:
     if event_type in stored:
@@ -130,6 +176,15 @@ def _stored_tg_notify_event(stored: dict[str, bool], event_type: str) -> bool:
     if parent and parent in stored:
         return bool(stored[parent])
     return bool(DEFAULT_TG_NOTIFY_EVENTS.get(event_type, False))
+
+
+class UserNodeAssignment(Base):
+    __tablename__ = "user_node_assignments"
+    __table_args__ = (UniqueConstraint("user_id", "node_id", name="uq_user_node_assignment"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id"), index=True)
 
 
 class RefreshToken(Base):
@@ -328,6 +383,9 @@ class Node(Base):
     # When True, saving remotes also writes hosts[0] to WIREGUARD_HOST (GubernievS proxy.sh).
     wireguard_use_first_remote: Mapped[bool] = mapped_column(Boolean, default=False)
     openvpn_multihome: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Panel intent for server conf tuning (None = никогда не задавали из панели).
+    openvpn_duplicate_cn: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    openvpn_detailed_logs: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     # HA replica got a new OpenVPN server identity on disk; running servers still use the old one.
     openvpn_restart_pending: Mapped[bool] = mapped_column(Boolean, default=False)
     # Built-in client templates were added once; templates deleted later are not re-created.
@@ -522,10 +580,12 @@ class UnlockCode(Base):
     max_redemptions: Mapped[int] = mapped_column(Integer)
     redemption_count: Mapped[int] = mapped_column(Integer, default=0)
     allowed_client_names: Mapped[str] = mapped_column(Text, default="[]")
+    target_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     code_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    comment: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     redemptions: Mapped[list["UnlockCodeRedemption"]] = relationship(
         back_populates="code",
@@ -658,11 +718,14 @@ class UserActionLog(Base):
     __tablename__ = "user_action_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     action: Mapped[str] = mapped_column(String(64))
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
     remote_addr: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    target_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
@@ -851,6 +914,7 @@ class BackgroundTask(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued", index=True)
     created_by_username: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     message: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    input: Mapped[str | None] = mapped_column(Text, nullable=True)
     output: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     progress_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -860,6 +924,7 @@ class BackgroundTask(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # process_identity token of the worker running the task.
     owner: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    subject_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
 
 class WebAuthnCredential(Base):
@@ -1160,3 +1225,164 @@ class SharedState(Base):
     key: Mapped[str] = mapped_column(String(128), primary_key=True)
     payload: Mapped[str] = mapped_column(Text, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+
+
+class AdminPanelNotification(Base):
+    __tablename__ = "admin_panel_notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    category: Mapped[str] = mapped_column(String(16), index=True)
+    level: Mapped[str] = mapped_column(String(16), default="info")
+    event_type: Mapped[str] = mapped_column(String(64), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    message: Mapped[str] = mapped_column(Text, default="")
+    action_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class AdminPanelNotificationState(Base):
+    """Личное состояние уведомления у админа: прочитано / скрыто / отложено.
+
+    Строка создаётся только при действии. «Непрочитано» по умолчанию выражает
+    ``users.last_read_notification_id``, поэтому бэкфилл не нужен.
+    """
+
+    __tablename__ = "admin_panel_notification_states"
+    __table_args__ = (UniqueConstraint("user_id", "notification_id", name="uq_apns_user_notification"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    notification_id: Mapped[int] = mapped_column(
+        ForeignKey("admin_panel_notifications.id", ondelete="CASCADE"), index=True
+    )
+    read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    hidden_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    snoozed_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ProvisioningPreset(Base):
+    __tablename__ = "provisioning_presets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    node_ids: Mapped[str] = mapped_column(Text, default="[]")
+    protocols: Mapped[str] = mapped_column(Text, default="[]")
+    config_count: Mapped[int] = mapped_column(Integer, default=1)
+    config_quota: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    traffic_limit_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    access_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class UserAccessRequest(Base):
+    __tablename__ = "user_access_requests"
+    __table_args__ = (
+        Index(
+            "uq_pending_request_per_tg_type",
+            "telegram_id",
+            "request_type",
+            unique=True,
+            sqlite_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_type: Mapped[str] = mapped_column(String(16), index=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    telegram_id: Mapped[str] = mapped_column(String(32), index=True)
+    telegram_username: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    telegram_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    requested_count: Mapped[int] = mapped_column(Integer, default=1)
+    user_note: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    admin_message_refs: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reject_reason: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    # Админ снял 24-часовой кулдаун после отказа (заявку отклонили случайно).
+    cooldown_waived: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    receipt_file_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class UserMessage(Base):
+    """Сообщение чата абонент ↔ администратор.
+
+    ``direction="in"`` — написал абонент, ``"out"`` — ответил администратор.
+    ``telegram_message_id`` защищает от повторной доставки одного апдейта Telegram.
+    """
+
+    __tablename__ = "user_messages"
+    __table_args__ = (
+        Index("ix_user_messages_user_created", "user_id", "created_at"),
+        Index(
+            "ix_user_messages_unread",
+            "user_id",
+            sqlite_where=text("direction = 'in' AND read_by_admin_at IS NULL"),
+        ),
+        Index(
+            "uq_user_messages_tg",
+            "user_id",
+            "telegram_message_id",
+            unique=True,
+            sqlite_where=text("telegram_message_id IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    direction: Mapped[str] = mapped_column(String(8))
+    admin_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    text: Mapped[str] = mapped_column(Text)
+    telegram_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Фото в переписке (чек оплаты): Telegram file_id, отдаётся через прокси панели.
+    attachment_file_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    read_by_admin_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class UserMessageCard(Base):
+    """Карточка «новое сообщение» в Telegram: reply на неё = ответ абоненту."""
+
+    __tablename__ = "user_message_cards"
+    __table_args__ = (
+        Index("uq_user_message_cards_tg", "admin_chat_id", "message_id", unique=True),
+        Index("ix_user_message_cards_user", "user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    admin_chat_id: Mapped[str] = mapped_column(String(32))
+    message_id: Mapped[int] = mapped_column(Integer)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TelegramRequestBan(Base):
+    __tablename__ = "telegram_request_bans"
+
+    telegram_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    banned_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    note: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
+
+class TelegramUserArchive(Base):
+    __tablename__ = "telegram_user_archive"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_id: Mapped[str] = mapped_column(String(32), index=True)
+    username: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    last_access_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_term_days: Mapped[int | None] = mapped_column(Integer, nullable=True)

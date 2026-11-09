@@ -24,6 +24,8 @@ interface CidrPipelineTabProps {
   pipelineTask: CidrPipelineTask | null
   pendingPipelineAction: PipelinePendingAction | null
   nodes: Node[]
+  /** Узлы-реплики HA: в списке они есть (ручной ремонт), но помечены. */
+  replicaNodeIds?: ReadonlySet<number>
   deployAllOnline: boolean
   deployTargetNodeIds: number[]
   selectedProviderFiles: string[]
@@ -61,9 +63,15 @@ const workflowSteps = [
   { num: 3, text: 'Списки на узел' },
 ]
 
-function nodeCheckboxLabel(node: Node): string {
+function nodeCheckboxLabel(node: Node, replicaNodeIds?: ReadonlySet<number>): string {
   const status = nodeStatusRu(node.status)
-  return `${node.name}${node.is_local ? ' (локальная)' : ''} — ${status}`
+  const role =
+    (node.node_kind ?? 'vpn') === 'proxy'
+      ? ' (прокси)'
+      : replicaNodeIds?.has(node.id)
+        ? ' (реплика)'
+        : ''
+  return `${node.name}${node.is_local ? ' (локальная)' : ''}${role} — ${status}`
 }
 
 export default function CidrPipelineTab({
@@ -73,6 +81,7 @@ export default function CidrPipelineTab({
   pipelineTask,
   pendingPipelineAction,
   nodes,
+  replicaNodeIds,
   deployAllOnline,
   deployTargetNodeIds,
   selectedProviderFiles,
@@ -149,7 +158,7 @@ export default function CidrPipelineTab({
 
   return (
     <div className="space-y-6">
-      <div className="sticky top-0 z-20 -mx-1 rounded-lg border bg-background/95 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <div className="sticky top-14 z-20 -mx-1 rounded-lg border bg-background/95 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex flex-wrap items-center gap-2">
           {pipelineStageNav.map((item) => {
             const step = workflow?.steps.find((s) => s.stage === item.num)
@@ -448,7 +457,7 @@ export default function CidrPipelineTab({
                       htmlFor={`deploy-node-${node.id}`}
                       className={`text-sm cursor-pointer ${node.status !== 'online' ? 'text-muted-foreground' : ''}`}
                     >
-                      {nodeCheckboxLabel(node)}
+                      {nodeCheckboxLabel(node, replicaNodeIds)}
                     </Label>
                   </div>
                 ))
@@ -557,32 +566,30 @@ export default function CidrPipelineTab({
       {(cidrDb?.history?.length ?? 0) > 0 && (
         <StatusPanel title="История обновлений БД" icon={CloudDownload}>
           <div className="rounded-md border overflow-hidden">
-            <div className="max-h-64 overflow-auto">
-              <Table>
-                <TableHeader className="sticky top-0 bg-muted/95">
-                  <TableRow>
-                    <TableHead>Начало</TableHead>
-                    <TableHead>Окончание</TableHead>
-                    <TableHead>Статус</TableHead>
-                    <TableHead className="text-right">CIDR</TableHead>
-                    <TableHead>Инициатор</TableHead>
+            <Table containerClassName="max-h-64">
+              <TableHeader className="sticky top-0 z-10 bg-muted/95">
+                <TableRow>
+                  <TableHead>Начало</TableHead>
+                  <TableHead>Окончание</TableHead>
+                  <TableHead>Статус</TableHead>
+                  <TableHead className="text-right">CIDR</TableHead>
+                  <TableHead>Инициатор</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cidrDb!.history!.map((h) => (
+                  <TableRow key={h.id}>
+                    <TableCell className="text-xs">{formatDt(h.started_at)}</TableCell>
+                    <TableCell className="text-xs">{formatDt(h.finished_at)}</TableCell>
+                    <TableCell>
+                      <Badge variant={statusBadgeVariant(h.status)}>{statusLabel(h.status)}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs">{h.total_cidrs ?? '—'}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{h.triggered_by ?? '—'}</TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {cidrDb!.history!.map((h) => (
-                    <TableRow key={h.id}>
-                      <TableCell className="text-xs">{formatDt(h.started_at)}</TableCell>
-                      <TableCell className="text-xs">{formatDt(h.finished_at)}</TableCell>
-                      <TableCell>
-                        <Badge variant={statusBadgeVariant(h.status)}>{statusLabel(h.status)}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-xs">{h.total_cidrs ?? '—'}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{h.triggered_by ?? '—'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </StatusPanel>
       )}

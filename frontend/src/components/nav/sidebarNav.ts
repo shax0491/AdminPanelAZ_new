@@ -9,6 +9,7 @@ import {
   Globe,
   HardDrive,
   LayoutDashboard,
+  MessageSquare,
   Network,
   RefreshCw,
   Satellite,
@@ -17,6 +18,7 @@ import {
   Settings,
   Settings2,
   Ticket,
+  Users,
 } from 'lucide-react'
 
 export type SidebarNavItem = {
@@ -27,6 +29,7 @@ export type SidebarNavItem = {
   adminOnly: boolean
   featureKey: string | null
   featureAnyOf?: readonly string[]
+  badge?: number
 }
 
 type SidebarNavGroup = {
@@ -36,9 +39,25 @@ type SidebarNavGroup = {
 
 export const SIDEBAR_NAV_GROUPS: SidebarNavGroup[] = [
   {
-    label: 'Клиенты',
+    label: 'Клиенты и доступ',
     items: [
-      { to: '/', label: 'Клиенты', icon: LayoutDashboard, end: true, adminOnly: false, featureKey: null },
+      { to: '/', label: 'Клиенты', icon: LayoutDashboard, end: true, adminOnly: false, featureKey: 'clients_page' },
+      {
+        to: '/users',
+        label: 'Пользователи',
+        icon: Users,
+        end: false,
+        adminOnly: true,
+        featureKey: 'user_provisioning',
+      },
+      {
+        to: '/messages',
+        label: 'Сообщения',
+        icon: MessageSquare,
+        end: false,
+        adminOnly: true,
+        featureKey: 'user_messaging',
+      },
       {
         to: '/subscription',
         label: 'Подписка',
@@ -51,11 +70,17 @@ export const SIDEBAR_NAV_GROUPS: SidebarNavGroup[] = [
     ],
   },
   {
-    label: 'Сеть',
+    label: 'VPN-сеть',
     items: [
-      { to: '/routing', label: 'Маршрутизация / CIDR', icon: GitBranch, end: false, adminOnly: true, featureKey: 'routing' },
-      { to: '/antizapret', label: 'Конфиг AntiZapret', icon: Settings2, end: false, adminOnly: true, featureKey: 'antizapret_config' },
+      { to: '/nodes', label: 'Узлы', icon: Server, end: false, adminOnly: true, featureKey: 'nodes' },
       { to: '/proxy', label: 'Прокси', icon: Network, end: false, adminOnly: true, featureKey: 'proxy_nodes' },
+      { to: '/routing', label: 'Маршрутизация / CIDR', icon: GitBranch, end: false, adminOnly: true, featureKey: 'routing' },
+    ],
+  },
+  {
+    label: 'Протоколы и обвязки',
+    items: [
+      { to: '/antizapret', label: 'Конфиг AntiZapret', icon: Settings2, end: false, adminOnly: true, featureKey: 'antizapret_config' },
       { to: '/warper', label: 'AZ-WARP', icon: Globe, end: false, adminOnly: true, featureKey: 'warper' },
       { to: '/warp-geo', label: 'WARP Geolocation', icon: Satellite, end: false, adminOnly: true, featureKey: 'warp_geo' },
       { to: '/mtproxy', label: 'MTProxy', icon: Send, end: false, adminOnly: true, featureKey: 'mtproxy' },
@@ -80,9 +105,8 @@ export const SIDEBAR_NAV_GROUPS: SidebarNavGroup[] = [
     ],
   },
   {
-    label: 'Панель',
+    label: 'Система',
     items: [
-      { to: '/nodes', label: 'Узлы', icon: Server, end: false, adminOnly: true, featureKey: 'nodes' },
       { to: '/settings', label: 'Настройки', icon: Settings, end: false, adminOnly: true, featureKey: null },
       { to: '/telegram', label: 'Telegram', icon: Send, end: false, adminOnly: true, featureKey: 'telegram' },
       { to: '/edit-files', label: 'Редактор файлов', icon: FileText, end: false, adminOnly: true, featureKey: 'edit_files' },

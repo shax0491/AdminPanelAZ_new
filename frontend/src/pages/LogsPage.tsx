@@ -17,6 +17,7 @@ import {
   Wifi,
   WifiOff,
   Plug,
+  Bell,
 } from 'lucide-react'
 import {
   ApiError,
@@ -52,6 +53,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/context/AuthContext'
 import { useFeatureModules } from '@/context/FeatureModulesContext'
 import { useNode } from '@/context/NodeContext'
+import { useNotificationCenter } from '@/context/NotificationCenterContext'
+import NotificationsFeed from '@/components/notifications/NotificationsFeed'
 import { useNotifications } from '@/context/NotificationContext'
 import { useProgress } from '@/context/ProgressContext'
 import { useIntervalWhenVisible } from '@/hooks/useIntervalWhenVisible'
@@ -79,12 +82,14 @@ type LogLevel = 'all' | 'error' | 'warn' | 'info'
 function dataSourceLabel(source?: string) {
   if (source === 'management_socket') return connectionSourceLabel('management_socket')
   if (source === 'status_log') return 'Status-логи'
+  if (source === 'db_fallback') return 'Сессии из БД (сокет недоступен)'
   return 'Нет данных'
 }
 
 function dataSourceVariant(source?: string): 'default' | 'secondary' | 'outline' {
   if (source === 'management_socket') return 'default'
   if (source === 'status_log') return 'secondary'
+  if (source === 'db_fallback') return 'secondary'
   return 'outline'
 }
 
@@ -608,10 +613,13 @@ export default function LogsPage() {
   const showActionTab = user?.role === 'admin' && actionLogsEnabled
   const showQrDownloadsTab = user?.role === 'admin' && qrDownloadsEnabled
   const showSocketsTab = user?.role === 'admin' && logsDashboardEnabled
+  const showNotificationsTab = user?.role === 'admin'
+  const { counts: notificationCounts } = useNotificationCenter()
 
   const [searchParams] = useSearchParams()
   const initialLogTab = useMemo(() => {
     const tab = searchParams.get('tab')
+    if (tab === 'notifications' && showNotificationsTab) return tab
     if (tab === 'qr-downloads' && showQrDownloadsTab) return tab
     if (tab === 'openvpn-sockets' && showSocketsTab) return tab
     if (tab === 'actions' && showActionTab) return tab
@@ -619,6 +627,7 @@ export default function LogsPage() {
     return defaultLogTab
   }, [
     searchParams,
+    showNotificationsTab,
     showQrDownloadsTab,
     showSocketsTab,
     showActionTab,
@@ -718,7 +727,8 @@ export default function LogsPage() {
     },
     1000,
     {
-      enabled: autoRefresh,
+      // На вкладке «Уведомления» плашки автообновления нет — логи там не нужны.
+      enabled: autoRefresh && activeTab !== 'notifications',
       onBecomeVisible: () => {
         setCountdown(REFRESH_INTERVAL)
         void load(false, false)
@@ -733,6 +743,7 @@ export default function LogsPage() {
       skipTabFetchRef.current = false
       return
     }
+    if (activeTab === 'notifications') return
     void load(false, false, activeTab)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on explicit tab switches
   }, [activeTab])
@@ -827,51 +838,66 @@ export default function LogsPage() {
 
   return (
     <div className="space-y-6">
-      <PageSectionHeader
-        icon={ScrollText}
-        title="Журналы"
-        docsHref={DOCS.logs}
-        titleAddon={<NodeBadge name={activeNode?.name} status={activeNode?.status} />}
-        description={
-          <>
-            Подключения, события OpenVPN, аудит QR и действия администраторов
-            {connections?.timestamp && <> · обновлено {formatDateTime(connections.timestamp)}</>}
-          </>
-        }
-        actions={
-          <AutoRefreshControl
-            enabled={autoRefresh}
-            onToggle={() => setAutoRefresh((v) => !v)}
-            countdown={countdown}
-            intervalSec={REFRESH_INTERVAL}
-            refreshing={refreshing}
-            onManualRefresh={handleRefresh}
+      {activeTab === 'notifications' ? (
+        <PageSectionHeader
+          icon={Bell}
+          title="Уведомления"
+          description={
+            <>
+              События панели по всем узлам: заявки, безопасность, серверы и сеть, задачи. Колокол в
+              шапке показывает только непрочитанные.
+            </>
+          }
+        />
+      ) : (
+        <>
+          <PageSectionHeader
+            icon={ScrollText}
+            title="Журналы"
+            docsHref={DOCS.logs}
+            titleAddon={<NodeBadge name={activeNode?.name} status={activeNode?.status} />}
+            description={
+              <>
+                Подключения, события OpenVPN, аудит QR и действия администраторов
+                {connections?.timestamp && <> · обновлено {formatDateTime(connections.timestamp)}</>}
+              </>
+            }
+            actions={
+              <AutoRefreshControl
+                enabled={autoRefresh}
+                onToggle={() => setAutoRefresh((v) => !v)}
+                countdown={countdown}
+                intervalSec={REFRESH_INTERVAL}
+                refreshing={refreshing}
+                onManualRefresh={handleRefresh}
+              />
+            }
           />
-        }
-      />
 
-      <SettingsAlert variant="info" title="Данные активного узла">
-        Логи собираются с <strong>{activeNode?.name ?? 'активного узла'}</strong>
-        {activeNode?.is_local ? ' (локальный controller)' : ' (удалённый node agent)'}.
-        Переключите узел в шапке или на странице «Узлы», чтобы смотреть другой сервер.
-      </SettingsAlert>
+          <SettingsAlert variant="info" title="Данные активного узла">
+            Логи собираются с <strong>{activeNode?.name ?? 'активного узла'}</strong>
+            {activeNode?.is_local ? ' (локальный controller)' : ' (удалённый node agent)'}.
+            Переключите узел в шапке или на странице «Узлы», чтобы смотреть другой сервер.
+          </SettingsAlert>
 
-      {nodeOffline && (
-        <SettingsAlert variant="warning" title="Узел офлайн">
-          Активный узел недоступен. Логи подключений и событий могут быть устаревшими или отсутствовать.
-          Проверьте связь с node agent и повторите обновление.
-        </SettingsAlert>
+          {nodeOffline && (
+            <SettingsAlert variant="warning" title="Узел офлайн">
+              Активный узел недоступен. Логи подключений и событий могут быть устаревшими или отсутствовать.
+              Проверьте связь с node agent и повторите обновление.
+            </SettingsAlert>
+          )}
+
+          {nodeUnknown && !nodeOffline && (
+            <SettingsAlert variant="warning" title="Статус узла неизвестен">
+              Связь с узлом не подтверждена. Запустите проверку здоровья на странице «Узлы».
+            </SettingsAlert>
+          )}
+
+          <InlineProgressBar active={refreshing} label="Обновление логов..." />
+        </>
       )}
 
-      {nodeUnknown && !nodeOffline && (
-        <SettingsAlert variant="warning" title="Статус узла неизвестен">
-          Связь с узлом не подтверждена. Запустите проверку здоровья на странице «Узлы».
-        </SettingsAlert>
-      )}
-
-      <InlineProgressBar active={refreshing} label="Обновление логов..." />
-
-      {loadError && !connections && events.length === 0 ? (
+      {loadError && !connections && events.length === 0 && activeTab !== 'notifications' ? (
         <Card>
           <CardContent>
             <EmptyState
@@ -937,6 +963,17 @@ export default function LogsPage() {
               <TabsTrigger value="openvpn-sockets" className="gap-1.5">
                 <Plug size={14} />
                 OVPN сокеты
+              </TabsTrigger>
+            )}
+            {showNotificationsTab && (
+              <TabsTrigger value="notifications" className="gap-1.5">
+                <Bell size={14} />
+                Уведомления
+                {notificationCounts.unread > 0 && (
+                  <Badge variant="destructive" className="h-4 px-1 text-[10px]">
+                    {notificationCounts.unread > 99 ? '99+' : notificationCounts.unread}
+                  </Badge>
+                )}
               </TabsTrigger>
             )}
           </TabsList>
@@ -1376,6 +1413,12 @@ export default function LogsPage() {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+          )}
+
+          {showNotificationsTab && (
+            <TabsContent value="notifications" className="space-y-4">
+              <NotificationsFeed />
             </TabsContent>
           )}
         </Tabs>

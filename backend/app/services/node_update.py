@@ -41,6 +41,29 @@ def _git_run(args: list[str], cwd: Path, *, timeout: float = GIT_TIMEOUT) -> sub
 PREPULL_BACKUP_ROOT = Path("/root")
 
 
+def fetch_remote(repo_path: Path, remote: str = "origin", *, timeout: float = 60.0) -> bool:
+    """Fetch remote refs so a freshly published release becomes visible."""
+    result = _git_run(["fetch", "--quiet", remote], repo_path, timeout=timeout)
+    return result.returncode == 0
+
+
+def ahead_count(repo_path: Path, ref: str, *, timeout: float = 30.0) -> int:
+    """How many commits ``ref`` is ahead of the checked-out HEAD (0 on any failure)."""
+    result = _git_run(["rev-list", "--count", f"HEAD..{ref}"], repo_path, timeout=timeout)
+    if result.returncode != 0:
+        return 0
+    try:
+        return int((result.stdout or "").strip() or "0")
+    except ValueError:
+        return 0
+
+
+def rev_parse(repo_path: Path, ref: str, *, timeout: float = 30.0) -> str:
+    """Full commit SHA of ``ref`` ("" on any failure)."""
+    result = _git_run(["rev-parse", ref], repo_path, timeout=timeout)
+    return (result.stdout or "").strip() if result.returncode == 0 else ""
+
+
 def _move_aside_blocking_copies(repo_path: Path, ref: str, *, backup_root: Path | None = None) -> dict[str, Any]:
     """Set aside local copies that would block the fast-forward merge onto ``ref``.
 

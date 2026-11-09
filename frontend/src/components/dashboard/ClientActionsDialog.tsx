@@ -98,6 +98,7 @@ interface ClientActionsDialogProps {
   allConfigs?: VpnConfig[]
   userRole: UserRole
   currentUserId?: number
+  canManageConfigs: boolean
   ownerCandidates?: User[]
   allTags?: ConfigTag[]
   open: boolean
@@ -223,6 +224,7 @@ export default function ClientActionsDialog({
   allConfigs = [],
   userRole,
   currentUserId,
+  canManageConfigs,
   ownerCandidates = [],
   allTags = [],
   open,
@@ -450,9 +452,14 @@ export default function ClientActionsDialog({
     }
   }
 
-  const isOwner = isAdmin || (userRole === 'user' && currentUserId != null && config.owner_id === currentUserId)
+  const canManageOwn =
+    isAdmin ||
+    (userRole === 'user' &&
+      currentUserId != null &&
+      config.owner_id === currentUserId &&
+      canManageConfigs)
   const canManage = isAdmin
-  const canDelete = isOwner
+  const canDelete = canManageOwn
   const vpnFile = pickVpnFile(config, tab)
   const azFile = pickAzFile(config, tab)
   const isOpenVpn = config.vpn_type === 'openvpn'
@@ -589,7 +596,7 @@ export default function ClientActionsDialog({
   }
 
   const handleRenewCert = () => {
-    const defaultDays = String(config.cert_expire_days || 365)
+    const defaultDays = isAdmin ? String(config.cert_expire_days || 365) : '3650'
     setRenewDays(defaultDays)
     const days = Number.parseInt(defaultDays, 10) || 365
     const target = new Date()
@@ -694,7 +701,7 @@ export default function ClientActionsDialog({
   }
 
   const submitRenew = async () => {
-    const days = Number.parseInt(renewDays, 10)
+    const days = isAdmin ? Number.parseInt(renewDays, 10) : 3650
     if (!Number.isFinite(days) || days < 1 || days > 3650) {
       onNotifyError('Срок должен быть от 1 до 3650 дней')
       return
@@ -776,7 +783,7 @@ export default function ClientActionsDialog({
           key: 'renew-cert',
           label: 'Продлить сертификат',
           icon: <RefreshCw size={14} />,
-          hidden: !isOwner || haReplicaReadonly,
+          hidden: !canManageOwn || haReplicaReadonly,
           onClick: handleRenewCert,
         },
         {
@@ -1109,13 +1116,13 @@ export default function ClientActionsDialog({
           </DialogHeader>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-5">
-            {(isOwner || (isAdmin && ownerCandidates.length > 0)) && (
+            {(canManageOwn || (isAdmin && ownerCandidates.length > 0)) && (
               <ProfileSection
                 title="Основное"
                 description="Описание видно на карточке. Владелец определяет, кто видит конфиг в своём списке."
               >
                 <div className="space-y-4">
-                  {isOwner && (
+                  {canManageOwn && (
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                       <div className="min-w-0 flex-1 space-y-2">
                         <Label htmlFor={`description-${config.id}`}>Описание</Label>
@@ -1154,7 +1161,7 @@ export default function ClientActionsDialog({
                       onChange={(ownerId) => void handleOwnerChange(ownerId)}
                       disabled={busyAction !== null}
                       currentOwner={
-                        config.owner_username
+                        config.owner_id != null && config.owner_username
                           ? { id: config.owner_id, username: config.owner_username }
                           : undefined
                       }
@@ -1512,7 +1519,11 @@ export default function ClientActionsDialog({
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Продлить сертификат</DialogTitle>
-            <DialogDescription>Укажите новый срок сертификата для клиента.</DialogDescription>
+            <DialogDescription>
+              {isAdmin
+                ? 'Укажите новый срок сертификата для клиента.'
+                : 'Сертификат будет обновлён на максимальный срок (3650 дней).'}
+            </DialogDescription>
           </DialogHeader>
           <form
             noValidate
@@ -1522,45 +1533,49 @@ export default function ClientActionsDialog({
             }}
             className="space-y-4"
           >
-            <div className="space-y-2">
-              <Label htmlFor="renewDays">Срок действия (дни, 1–3650)</Label>
-              <Input
-                id="renewDays"
-                type="number"
-                min={1}
-                max={3650}
-                value={renewDays}
-                onChange={(e) => {
-                  setRenewDays(e.target.value)
-                  const days = Number.parseInt(e.target.value, 10)
-                  if (Number.isFinite(days) && days >= 1) {
-                    const target = new Date()
-                    target.setDate(target.getDate() + days)
-                    setRenewDate(
-                      `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`,
-                    )
-                  }
-                }}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="renewDate">Дата окончания сертификата</Label>
-              <DatePickerField
-                id="renewDate"
-                value={renewDate}
-                allowClear={false}
-                fromDate={panelToday()}
-                onChange={(next) => {
-                  setRenewDate(next)
-                  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(next)
-                  if (!match) return
-                  const target = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
-                  const today = panelToday()
-                  const diff = Math.round((target.getTime() - today.getTime()) / 86400000)
-                  if (diff >= 1 && diff <= 3650) setRenewDays(String(diff))
-                }}
-              />
-            </div>
+            {isAdmin && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="renewDays">Срок действия (дни, 1–3650)</Label>
+                  <Input
+                    id="renewDays"
+                    type="number"
+                    min={1}
+                    max={3650}
+                    value={renewDays}
+                    onChange={(e) => {
+                      setRenewDays(e.target.value)
+                      const days = Number.parseInt(e.target.value, 10)
+                      if (Number.isFinite(days) && days >= 1) {
+                        const target = new Date()
+                        target.setDate(target.getDate() + days)
+                        setRenewDate(
+                          `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`,
+                        )
+                      }
+                    }}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="renewDate">Дата окончания сертификата</Label>
+                  <DatePickerField
+                    id="renewDate"
+                    value={renewDate}
+                    allowClear={false}
+                    fromDate={panelToday()}
+                    onChange={(next) => {
+                      setRenewDate(next)
+                      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(next)
+                      if (!match) return
+                      const target = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+                      const today = panelToday()
+                      const diff = Math.round((target.getTime() - today.getTime()) / 86400000)
+                      if (diff >= 1 && diff <= 3650) setRenewDays(String(diff))
+                    }}
+                  />
+                </div>
+              </>
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={closePrompt} disabled={busyAction !== null}>
                 Отмена

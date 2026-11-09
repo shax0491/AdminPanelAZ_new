@@ -8,8 +8,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.models import UserRole, VpnType
-from app.schemas import VpnConfigCreate
-from app.routers import awg2 as awg2_router, configs as configs_router
+from app.routers import awg2 as awg2_router
 from app.services.feature_guards import check_path_access
 from app.services.feature_toggles import FeatureToggleService
 
@@ -107,147 +106,156 @@ def test_awg2_health_installed_mock():
     assert result["missing_components"] == []
 
 
-def test_create_amneziawg2_calls_replicate_and_awg2():
-    db = _FakeDb(owner=SimpleNamespace(id=1, username="owner"))
-    current_user = SimpleNamespace(id=1, username="admin", role=UserRole.admin)
-    payload = VpnConfigCreate(client_name="awg2user", vpn_type=VpnType.amneziawg2)
+# --- create/delete идут через config_provisioning (рефакторинг апстрима 2.26.6) ---
+
+_CP = "app.services.config_provisioning"
+
+
+@pytest.fixture()
+def prov_db():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from app.database import Base
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    try:
+        yield session
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def _prov_node_owner(db):
+    from app.models import Node, NodeStatus, User
+
+    node = Node(
+        name="node-1", host="127.0.0.1", port=9100, api_key_hash="h", api_key_encrypted="e",
+        status=NodeStatus.online, is_local=True, node_kind="vpn", node_metadata="{}",
+    )
+    owner = User(username="admin", password_hash="x", role=UserRole.admin)
+    db.add_all([node, owner])
+    db.commit()
+    return node, owner
+
+
+def _provision(db, node, owner, adapter, group=None, enqueue=None):
+    from app.services.config_provisioning import provision_config
+
+    with (
+        patch(f"{_CP}.get_adapter_for_node", return_value=adapter),
+        patch(f"{_CP}.require_vpn_type"),
+        patch(f"{_CP}.enforce_can_create_vpn_type"),
+        patch(f"{_CP}.get_feature_service", return_value=SimpleNamespace()),
+        patch(f"{_CP}.refresh_config_cert_expiry"),
+        patch(f"{_CP}.find_sync_group_for_primary", return_value=group),
+        patch(f"{_CP}.enqueue_maybe_replicate_create", enqueue or MagicMock(return_value=None)),
+        patch(f"{_CP}.admin_notify_service"),
+    ):
+        return provision_config(
+            db, node=node, client_name="awg2user", vpn_type=VpnType.amneziawg2,
+            owner=owner, actor=owner, notify=True,
+        )
+
+
+def test_create_amneziawg2_calls_replicate_and_awg2(prov_db):
+    node, owner = _prov_node_owner(prov_db)
     adapter = MagicMock()
     adapter.get_awg2_health.return_value = {"installed": True}
     adapter.awg2_add_client.return_value = "ok"
-    group = SimpleNamespace(id=7)
+    enqueue = MagicMock(return_value={"task_id": "t1"})
 
-    with (
-        patch.object(configs_router, "enforce_user_can_create_config"),
-        patch.object(configs_router, "require_ha_primary_for_client_ops"),
-        patch.object(configs_router, "require_vpn_type"),
-        patch.object(configs_router, "enforce_can_create_vpn_type"),
-        patch.object(configs_router, "_active_node_id", return_value=1),
-        patch.object(configs_router, "get_active_adapter", return_value=adapter),
-        patch.object(configs_router, "find_sync_group_for_primary", return_value=group),
-        patch.object(configs_router, "maybe_replicate_create") as replicate,
-        patch.object(configs_router, "refresh_config_cert_expiry"),
-        patch.object(configs_router, "purge_traffic_history_for_reused_name"),
-        patch.object(configs_router, "get_active_node", return_value=SimpleNamespace(id=1, name="node-1")),
-        patch.object(configs_router.admin_notify_service, "send_config_create"),
-        patch.object(configs_router, "get_client_timezone_from_request", return_value="UTC"),
-        patch.object(configs_router, "_viewer_visibility_policy", return_value={}),
-        patch.object(configs_router, "resolve_openvpn_group_for_user", return_value=None),
-        patch.object(configs_router, "_local_ip_for_config", return_value=None),
-        patch.object(configs_router, "_to_response", return_value={"ok": True}),
-        patch.object(configs_router, "get_feature_service", return_value=SimpleNamespace()),
-    ):
-        result = configs_router.create_config(payload, SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")), db, current_user)
+    config, _warn, task_id = _provision(prov_db, node, owner, adapter, group=SimpleNamespace(id=7), enqueue=enqueue)
 
-    assert result == {"ok": True}
+    assert config.vpn_type == VpnType.amneziawg2 and task_id == "t1"
     adapter.awg2_add_client.assert_called_once_with("awg2user")
     adapter.add_wireguard_client.assert_not_called()
-    replicate.assert_called_once()
+    enqueue.assert_called_once()
 
 
-def test_create_amneziawg2_not_installed_409():
+def test_create_amneziawg2_not_installed_409(prov_db):
     # Health gate now reflects the native `awg` binary (client.sh), not the retired
     # third-party az-awg2 overlay — "installed": False means amneziawg-tools is missing.
-    db = _FakeDb(owner=SimpleNamespace(id=1, username="owner"))
-    current_user = SimpleNamespace(id=1, username="admin", role=UserRole.admin)
-    payload = VpnConfigCreate(client_name="x", vpn_type=VpnType.amneziawg2)
+    node, owner = _prov_node_owner(prov_db)
     adapter = MagicMock()
     adapter.get_awg2_health.return_value = {"installed": False, "awg_binary": False}
 
-    with (
-        patch.object(configs_router, "enforce_user_can_create_config"),
-        patch.object(configs_router, "require_ha_primary_for_client_ops"),
-        patch.object(configs_router, "require_vpn_type"),
-        patch.object(configs_router, "enforce_can_create_vpn_type"),
-        patch.object(configs_router, "_active_node_id", return_value=1),
-        patch.object(configs_router, "get_active_adapter", return_value=adapter),
-        patch.object(configs_router, "get_feature_service", return_value=SimpleNamespace()),
-        patch.object(configs_router, "get_client_timezone_from_request", return_value="UTC"),
-    ):
-        with pytest.raises(HTTPException) as exc:
-            configs_router.create_config(payload, SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")), db, current_user)
+    with pytest.raises(HTTPException) as exc:
+        _provision(prov_db, node, owner, adapter)
 
     assert exc.value.status_code == 409
     assert "awg" in exc.value.detail["message"].lower()
 
 
-def test_create_amneziawg2_health_probe_failure_409():
-    db = _FakeDb(owner=SimpleNamespace(id=1, username="owner"))
-    current_user = SimpleNamespace(id=1, username="admin", role=UserRole.admin)
-    payload = VpnConfigCreate(client_name="x", vpn_type=VpnType.amneziawg2)
+def test_create_amneziawg2_health_probe_failure_409(prov_db):
+    node, owner = _prov_node_owner(prov_db)
     adapter = MagicMock()
     adapter.get_awg2_health.side_effect = HTTPException(status_code=404, detail="missing")
 
-    with (
-        patch.object(configs_router, "enforce_user_can_create_config"),
-        patch.object(configs_router, "require_ha_primary_for_client_ops"),
-        patch.object(configs_router, "require_vpn_type"),
-        patch.object(configs_router, "enforce_can_create_vpn_type"),
-        patch.object(configs_router, "_active_node_id", return_value=1),
-        patch.object(configs_router, "get_active_adapter", return_value=adapter),
-        patch.object(configs_router, "get_feature_service", return_value=SimpleNamespace()),
-        patch.object(configs_router, "get_client_timezone_from_request", return_value="UTC"),
-    ):
-        with pytest.raises(HTTPException) as exc:
-            configs_router.create_config(payload, SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")), db, current_user)
+    with pytest.raises(HTTPException) as exc:
+        _provision(prov_db, node, owner, adapter)
 
     assert exc.value.status_code == 409
     assert "awg" in exc.value.detail["message"].lower()
 
 
-def test_delete_amneziawg2_calls_replicate_and_awg2():
-    db = _FakeDb()
-    current_user = SimpleNamespace(id=1, username="admin", role=UserRole.admin)
-    config = SimpleNamespace(id=11, node_id=1, client_name="awg2user", vpn_type=VpnType.amneziawg2)
+def _deprovision(db, node, owner, config, adapter, group=None):
+    from app.services.config_provisioning import deprovision_config
+
+    enqueue = MagicMock(return_value=None)
+    with (
+        patch(f"{_CP}.get_adapter_for_node", return_value=adapter),
+        patch(f"{_CP}.find_sync_group_for_primary", return_value=group),
+        patch(f"{_CP}.enqueue_maybe_replicate_delete", enqueue),
+        patch(f"{_CP}.admin_notify_service"),
+    ):
+        deprovision_config(db, config=config, actor=owner, notify=True)
+    return enqueue
+
+
+def _add_config(db, node, owner, vpn_type):
+    from app.models import VpnConfig
+
+    config = VpnConfig(node_id=node.id, client_name="awg2user", vpn_type=vpn_type, owner_id=owner.id)
+    db.add(config)
+    db.commit()
+    return config
+
+
+def test_delete_amneziawg2_calls_replicate_and_awg2(prov_db):
+    node, owner = _prov_node_owner(prov_db)
+    config = _add_config(prov_db, node, owner, VpnType.amneziawg2)
     adapter = MagicMock()
 
-    with (
-        patch.object(configs_router, "_get_config_for_active_node", return_value=config),
-        patch.object(configs_router, "_can_mutate_config", return_value=True),
-        patch.object(configs_router, "require_ha_primary_for_client_ops"),
-        patch.object(configs_router, "get_active_adapter", return_value=adapter),
-        patch.object(configs_router, "get_active_node", return_value=SimpleNamespace(id=1, name="node-1")),
-        patch.object(configs_router, "find_sync_group_for_primary", return_value=SimpleNamespace(id=7)),
-        patch.object(configs_router, "maybe_replicate_delete") as replicate,
-        patch.object(configs_router, "purge_ha_shadow_configs"),
-        patch.object(configs_router.admin_notify_service, "send_config_delete"),
-        patch.object(configs_router, "get_client_timezone_from_request", return_value="UTC"),
-    ):
-        result = configs_router.delete_config(11, SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")), db, current_user)
+    enqueue = _deprovision(prov_db, node, owner, config, adapter, group=SimpleNamespace(id=7))
 
-    assert result.message == "Клиент 'awg2user' удалён"
     adapter.awg2_delete_client.assert_called_once_with("awg2user")
     adapter.delete_wireguard_client.assert_not_called()
-    replicate.assert_called_once()
+    enqueue.assert_called_once()
 
 
-def test_delete_one_protocol_leaves_other_protocol_rows_for_same_client_untouched():
+def test_delete_one_protocol_leaves_other_protocol_rows_for_same_client_untouched(prov_db):
     """client.sh options 7/8/9 delete exactly one protocol for a client name (see
     AntiZapretService.delete_openvpn_client/delete_wireguard_client/delete_amneziawg2_client) —
     deleting the AWG2 row for a client that also has an OpenVPN row must succeed and must not
     touch that sibling OpenVPN config/adapter call at all."""
-    other_config = SimpleNamespace(id=12, node_id=1, client_name="awg2user", vpn_type=VpnType.openvpn)
-    db = _FakeDb(existing=other_config)
-    current_user = SimpleNamespace(id=1, username="admin", role=UserRole.admin)
-    config = SimpleNamespace(id=11, node_id=1, client_name="awg2user", vpn_type=VpnType.amneziawg2)
+    from app.models import VpnConfig
+
+    node, owner = _prov_node_owner(prov_db)
+    _add_config(prov_db, node, owner, VpnType.openvpn)
+    config = _add_config(prov_db, node, owner, VpnType.amneziawg2)
     adapter = MagicMock()
 
-    with (
-        patch.object(configs_router, "_get_config_for_active_node", return_value=config),
-        patch.object(configs_router, "_can_mutate_config", return_value=True),
-        patch.object(configs_router, "require_ha_primary_for_client_ops"),
-        patch.object(configs_router, "get_active_adapter", return_value=adapter),
-        patch.object(configs_router, "get_active_node", return_value=SimpleNamespace(id=1, name="node-1")),
-        patch.object(configs_router, "find_sync_group_for_primary", return_value=None),
-        patch.object(configs_router, "purge_ha_shadow_configs"),
-        patch.object(configs_router.admin_notify_service, "send_config_delete"),
-        patch.object(configs_router, "get_client_timezone_from_request", return_value="UTC"),
-    ):
-        result = configs_router.delete_config(11, SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")), db, current_user)
+    _deprovision(prov_db, node, owner, config, adapter)
 
-    assert result.message == "Клиент 'awg2user' удалён"
     adapter.awg2_delete_client.assert_called_once_with("awg2user")
     adapter.delete_openvpn_client.assert_not_called()
     adapter.delete_wireguard_client.assert_not_called()
+    left = prov_db.query(VpnConfig).all()
+    assert [c.vpn_type for c in left] == [VpnType.openvpn]
 
 
 def test_get_monitoring_ok():

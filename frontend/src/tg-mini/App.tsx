@@ -4,6 +4,8 @@ import FeatureGate from '@/tg-mini/FeatureGate'
 import { TgAuthProvider, useTgAuth } from '@/tg-mini/context/TgAuthContext'
 import MiniShell from '@/tg-mini/layout/MiniShell'
 import { mapTelegramStartParam } from '@/tg-mini/lib/startParam'
+import AccessRequests from '@/tg-mini/pages/AccessRequests'
+import Clients from '@/tg-mini/pages/Clients'
 import Awg from '@/tg-mini/pages/Awg'
 import Mtproxy from '@/tg-mini/pages/Mtproxy'
 import Configs from '@/tg-mini/pages/Configs'
@@ -47,6 +49,8 @@ export default function TgMiniApp() {
           <Route element={<MiniShell />}>
             <Route index element={<HomeRoute />} />
             <Route path="configs" element={<Configs />} />
+            <Route path="clients" element={<Clients />} />
+            <Route path="requests" element={<AccessRequests />} />
             <Route path="nodes" element={<Nodes />} />
             <Route
               path="warper"

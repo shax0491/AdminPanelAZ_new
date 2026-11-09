@@ -30,6 +30,42 @@ class Awg2NotInstalledError(RuntimeError):
     """AZ-AWG2 is missing on the replica; its state was not touched."""
 
 
+class Awg2EmptyStateError(RuntimeError):
+    """Primary AZ-AWG2 is installed but has no exportable amneziawg/ + clients/ files."""
+
+
+AWG2_REPLICA_NOT_INSTALLED_MSG = (
+    "AZ-AWG2 установлен на primary, но не установлен на реплике. "
+    "Установите AZ-AWG2 на реплике и повторите синхронизацию."
+)
+AWG2_PRIMARY_EMPTY_STATE_MSG = (
+    "На primary нет состояния AZ-AWG2 (пустые конфиги сервера или клиентов). "
+    "Создайте клиентов или дождитесь завершения установки на primary и повторите синхронизацию."
+)
+
+
+def _archive_has_awg2_state_files(data: bytes) -> bool:
+    if not data:
+        return False
+    try:
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+            has_amnezia = False
+            has_clients = False
+            for member in archive.getmembers():
+                if not member.isfile():
+                    continue
+                name = member.name
+                if name.startswith("amneziawg/") and name != "amneziawg/":
+                    has_amnezia = True
+                elif name.startswith("clients/") and name != "clients/":
+                    has_clients = True
+                if has_amnezia and has_clients:
+                    return True
+            return False
+    except tarfile.TarError:
+        return False
+
+
 class ReplicaRuntimeError(RuntimeError):
     """Files reached the replica, but its WireGuard / AWG2 runtime did not apply them."""
 
@@ -565,6 +601,8 @@ def sync_all_vpn_crypto_from_primary(
             )
         except Awg2NotInstalledError as exc:
             logger.warning("HA full crypto: AWG2 skipped: %s", exc)
+        except Awg2EmptyStateError as exc:
+            runtime_errors.append(str(exc))
         except ReplicaRuntimeError as exc:
             runtime_errors.append(str(exc))
     if runtime_errors:

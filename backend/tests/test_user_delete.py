@@ -72,7 +72,7 @@ def test_delete_user_who_created_unlock_code_and_portal_token(db, monkeypatch):
     )
     db.commit()
 
-    request = SimpleNamespace(headers={})
+    request = SimpleNamespace(headers={}, client=SimpleNamespace(host="127.0.0.1"))
     result = delete_user(creator.id, request, db=db, current_user=admin)
 
     assert result.message == "Пользователь удалён"

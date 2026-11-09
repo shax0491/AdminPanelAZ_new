@@ -13,6 +13,7 @@ import ConfigDeliveryTab from '@/components/settings/ConfigDeliveryTab'
 import FeatureTogglesTab from '@/components/settings/FeatureTogglesTab'
 import MaintenanceTab from '@/components/settings/MaintenanceTab'
 import MonitoringTab from '@/components/settings/MonitoringTab'
+import NotificationsSection from '@/components/settings/NotificationsSection'
 import PersonalTab from '@/components/settings/PersonalTab'
 import SecurityTab from '@/components/settings/SecurityTab'
 import {
@@ -249,6 +250,8 @@ export default function SettingsPage() {
         return <BackupTab />
       case 'monitoring':
         return <MonitoringTab />
+      case 'notifications':
+        return <NotificationsSection />
       case 'modules':
         return <FeatureTogglesTab />
       case 'updates':
@@ -293,7 +296,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
-        <aside className="hidden w-56 shrink-0 lg:sticky lg:top-4 lg:block">
+        <aside className="hidden w-56 shrink-0 lg:sticky lg:top-[4.5rem] lg:block">
           <SettingsSectionBrowser groups={visibleGroups} variant="nav" activeSection={section} />
         </aside>
 

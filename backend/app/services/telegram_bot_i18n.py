@@ -37,6 +37,21 @@ def settings_root_secret_state(webhook_secret_set: bool) -> str:
     return "не задан"
 
 
+# --- Protocol labels ---
+
+VPN_TYPE_LABELS: dict[str, str] = {
+    "openvpn": "OpenVPN",
+    "wireguard": "WireGuard",
+    "amneziawg2": "AmneziaWG 2.0",
+}
+
+
+def vpn_type_label(value: str | None) -> str:
+    """Человеческое имя протокола вместо enum из базы."""
+    key = (value or "").strip().lower()
+    return VPN_TYPE_LABELS.get(key, value or "—")
+
+
 # --- Common ---
 
 UNLINKED = (
@@ -58,6 +73,9 @@ MODULE_DISABLED = "Модуль «{name}» отключён в настройк�
 BTN_OPEN_MINI_APP = "📱 Открыть Mini App"
 BTN_OPEN_MINI_APP_CONFIG = "📱 Открыть в Mini App"
 BTN_HELP = "❓ Помощь"
+BTN_MENU_ADMIN = "✉️ Написать администратору"
+BTN_CHAT_STOP = "Завершить"
+BTN_PAY = "💳 Оплатить (чек)"
 BTN_ALL_CONFIGS = "📁 Все конфиги"
 BTN_BACK = "◀️ Назад"
 BTN_BACK_SETTINGS = "◀️ Telegram"
@@ -80,6 +98,7 @@ BTN_TG_WEBHOOK_DELETE = "🗑 Удалить webhook"
 # --- Main menu (Reply Keyboard + inline nav) ---
 
 BTN_MENU_STATUS = "📊 Статус"
+BTN_MENU_OVERVIEW = "📊 Сводка"
 BTN_MENU_CONFIGS = "📁 Конфиги"
 BTN_MENU_MORE = "⋯ Ещё"
 BTN_MENU_TRAFFIC = "📈 Трафик"
@@ -92,16 +111,21 @@ BTN_MENU_WARPER = "🌐 WARP"
 BTN_MENU_AWG = "🛡️ AmneziaWG"
 BTN_MENU_MTPROXY = "📨 MTProxy"
 BTN_MENU_UNLOCK_CODES = "🎟 Коды доступа"
+BTN_REDEEM_UNLOCK = "🎟 Продлить по ключу"
 
-MENU_KEYBOARD_PLACEHOLDER = "Конфиги, статус или Ещё…"
+MENU_KEYBOARD_PLACEHOLDER = "Раздел или «Ещё»…"
 MENU_MORE_TITLE = "📋 <b>Дополнительно</b>\n\n<i>Остальные разделы — кнопками ниже.</i>"
 
 MENU_ACTIONS: dict[str, str] = {
     BTN_MENU_STATUS: "status",
+    BTN_MENU_OVERVIEW: "status",
     BTN_MENU_CONFIGS: "configs",
     BTN_MENU_MORE: "more",
     BTN_MENU_TRAFFIC: "traffic",
     BTN_MENU_HELP: "help",
+    BTN_MENU_ADMIN: "admin_chat",
+    BTN_CHAT_STOP: "chat_stop",
+    BTN_PAY: "pay_request",
     BTN_MENU_HOME: "home",
     BTN_MENU_SETTINGS: "settings",
     BTN_MENU_NODES: "nodes",
@@ -109,28 +133,84 @@ MENU_ACTIONS: dict[str, str] = {
     BTN_MENU_WARPER: "warper",
     BTN_MENU_AWG: "awg",
     BTN_MENU_MTPROXY: "mtproxy",
+    "Запросить доступ": "request_access",
+    "Запросить ещё конфиг": "request_more_config",
+    "Продлить по ключу": "redeem_unlock",
+    BTN_REDEEM_UNLOCK: "redeem_unlock",
+    "У меня есть код привязки": "link_code",
     # Старые подписи кнопок (до обновления меню)
     "🌐 AZ-WARP": "warper",
     "🛡️ AWG2": "awg",
     "🛡️ AWG3": "awg",
 }
 
-BOT_COMMANDS: tuple[tuple[str, str], ...] = (
+# --- Access requests (Stage 2) ---
+
+BTN_REQUEST_ACCESS = "Запросить доступ"
+BTN_REQUEST_MORE_CONFIG = "Запросить ещё конфиг"
+BTN_LINK_CODE = "У меня есть код привязки"
+
+BTN_REQUEST_APPROVE = "Одобрить"
+BTN_REQUEST_CONFIGURE = "Настроить"
+BTN_REQUEST_APPROVE_MORE = "Одобрить (+1)"
+BTN_REQUEST_REJECT = "Отклонить"
+BTN_REQUEST_EXTEND_30 = "+30"
+BTN_REQUEST_EXTEND_60 = "+60"
+BTN_REQUEST_EXTEND_CUSTOM = "Свой срок"
+BTN_OPEN_REQUEST_PANEL = "Открыть заявку в панели"
+
+REQUESTS_CLOSED = "Приём заявок временно закрыт"
+RECEIPT_NOT_PHOTO = "Пришлите чек фотографией (не файлом)"
+REQUEST_ALREADY_DECIDED = "Заявка уже обработана"
+REQUEST_E1 = "Заявка не может быть принята, напишите администратору"
+REQUEST_SUBMITTED = "Заявка отправлена администратору. Ожидайте решения."
+REQUEST_MORE_SUBMITTED = "Заявка на ещё один конфиг отправлена администратору. Ожидайте решения."
+REQUEST_RECEIPT_OK = "Чек принят. Администратор проверит оплату."
+REQUEST_LINK_HINT = "Привязка: отправьте боту <code>/link &lt;код&gt;</code>. Код — в панели: «Мой профиль» → Telegram."
+CHAT_ADMIN_HINT = "Чат с абонентами — в панели, раздел «Сообщения». Здесь режим переписки не нужен."
+CHAT_ENTER = (
+    "Напишите сообщение — оно уйдёт администратору. "
+    "Чтобы выйти из переписки, нажмите «Завершить»."
+)
+CHAT_SENT = "Отправлено администратору."
+CHAT_STOPPED = "Режим переписки закрыт."
+CHAT_TEXT_ONLY = "В переписке только текст: фото чека отправьте через «Оплатить (чек)»."
+CHAT_TOO_LONG = "Сообщение длиннее 4096 символов — сократите текст."
+CHAT_DISABLED = "Чат с администратором отключён в настройках панели."
+CHAT_NEED_LINK = "Сначала привяжите аккаунт: отправьте <code>/link &lt;код&gt;</code>."
+PAY_REQUEST_CREATED = (
+    "Заявка на продление создана. Отправьте фото чека одним сообщением — "
+    "администратор проверит оплату."
+)
+ADMIN_NO_RIGHTS = "Недостаточно прав."
+ADMIN_REQUEST_APPROVED = "✅ Одобрено в веб-панели: {admin}"
+ADMIN_REQUEST_REJECTED = "❌ Отклонено в веб-панели: {admin}"
+REQUEST_OPEN_IN_PANEL = "Параметры заявки настройте в веб-панели: <code>/users?request={request_id}</code>"
+REQUEST_NEED_PRESET = (
+    "Шаблон по умолчанию не задан — одобрить в один клик нельзя. "
+    "Откройте заявку в панели и выберите узлы и протоколы."
+)
+REQUEST_EXTEND_CUSTOM_TEXT = "Задайте срок доступа в веб-панели по заявке."
+
+BOT_COMMANDS_USER: tuple[tuple[str, str], ...] = (
     ("start", "Главное меню"),
-    ("help", "Справка по командам"),
-    ("link", "Привязка аккаунта"),
-    ("status", "Статус панели"),
     ("myconfigs", "Мои VPN-конфиги"),
-    ("traffic", "Трафик: сводка и топ-5"),
     ("configs", "Список VPN-конфигов"),
-    ("config", "Карточка конфига"),
+    ("traffic", "Трафик: сводка и топ-5"),
+    ("link", "Привязка аккаунта"),
+    ("admin", "Написать администратору"),
+    ("help", "Справка по командам"),
+)
+
+BOT_COMMANDS_ADMIN: tuple[tuple[str, str], ...] = BOT_COMMANDS_USER + (
+    ("status", "Статус панели (admin)"),
     ("settings", "Настройки панели (admin)"),
-    ("unlock", "Генерация unlock-кода (admin)"),
     ("nodes", "VPN-узлы (admin)"),
     ("cidr", "Статус CIDR pipeline (admin)"),
     ("warper", "Статус AZ-WARP (admin)"),
     ("awg", "AmneziaWG 2 и 3 (admin)"),
     ("mtproxy", "MTProxy на узлах (admin)"),
+    ("unlock", "Генерация unlock-кода (admin)"),
 )
 
 # --- /start ---
@@ -142,10 +222,17 @@ START_UNLINKED = (
     "<code>/link &lt;код&gt;</code>\n\n"
     "Код — в панели: <b>Мой профиль</b>."
 )
+START_UNLINKED_WITH_REQUESTS = (
+    "{title}\n\n"
+    "Нет аккаунта — нажмите <b>Запросить доступ</b> внизу.\n\n"
+    "Уже есть аккаунт — привяжите Telegram:\n"
+    "<code>/link &lt;код&gt;</code>\n"
+    "Код — в панели: <b>Мой профиль</b>."
+)
 START_LINKED = (
     "{title}\n\n"
     "Привет, <b>{username}</b> · {role_display}\n\n"
-    "<i>Внизу — Конфиги и Статус; остальное в «⋯ Ещё».</i>"
+    "<i>Разделы — кнопками внизу чата.</i>"
 )
 START_ROLE_DISPLAY = {
     "admin": "🔑 Администратор",
@@ -158,8 +245,7 @@ HELP_TITLE = "❓ <b>Справка</b>"
 HELP_SECTION_MAIN = "<b>📌 Основное</b>"
 HELP_LINES_MAIN = (
     "• /start — главное меню",
-    "• Кнопки <b>Конфиги</b> и <b>Статус</b> — внизу чата",
-    "• <b>⋯ Ещё</b> — трафик, помощь и разделы admin",
+    "• Кнопки <b>Конфиги</b> и <b>Трафик</b> — внизу чата",
     "• /help — эта справка",
     "• /link &lt;код&gt; — привязка Telegram",
 )
@@ -193,7 +279,7 @@ STATUS_TITLE = "📊 <b>Статус панели</b>"
 STATUS_BODY = (
     "{title}\n\n"
     "🖥 Узел: <b>{node_name}</b>\n"
-    "📁 Конфигов: <b>{total_configs}</b>\n"
+    "📁 Конфигов на узле: <b>{total_configs}</b>\n"
     "🔐 OpenVPN online: <b>{connected_openvpn}</b>\n"
     "🛡️ WireGuard online: <b>{connected_wireguard}</b>\n"
     "🌐 IP сервера: <code>{server_ip}</code>"
@@ -214,7 +300,7 @@ STATUS_FOOTER = "\n\n🕐 <i>Обновлено: {timestamp}</i>"
 
 CONFIGS_LIST = (
     "📁 <b>Конфигурации</b> · {filter_label}\n"
-    "Стр. {page}/{total_pages} · <b>{count}</b> клиент(ов){hint}\n\n"
+    "Стр. {page}/{total_pages} · <b>{count}</b> конфиг(ов){hint}\n\n"
     "{preview}\n"
     "<i>Выберите клиента ↓</i>"
 )
@@ -228,11 +314,25 @@ CONFIGS_FILTER_HINT_WG_AWG = (
     "\nПри выборе фильтра сразу откроются файлы нужного типа"
 )
 CONFIGS_NONE = "📭 Конфигурации не найдены.\n\nСоздайте клиента в веб-панели или Mini App."
+CONFIGS_NONE_USER = (
+    "📭 У вас пока нет конфигураций.\n\n"
+    "Напишите администратору — он выдаст доступ."
+)
+CONFIGS_NODE_NO_FILES_USER = (
+    "⚠️ Файлы профилей сейчас недоступны.\n\n"
+    "Напишите администратору — он проверит сервер."
+)
+
 CONFIGS_NONE_ON_NODE = (
     "📭 На активном узле нет файлов конфигурации.\n\n"
-    "Клиенты есть в панели, но профили на сервере не найдены."
+    "Конфиги есть в панели, но файлы профилей на сервере не найдены."
 )
-CONFIGS_FILTER_EMPTY = "<i>Нет клиентов с файлами этого типа на узле.</i>"
+CONFIGS_FILTER_EMPTY = "<i>Нет клиентов с файлами этого типа.</i>"
+CONFIGS_NODE_NO_FILES = (
+    "⚠️ На узле <b>{node}</b> нет файлов профилей — скачивать нечего.\n\n"
+    "Сделайте узел активным (<b>Узлы</b> → «Сделать активным») и нажмите "
+    "<b>Настройки → Обслуживание → Пересоздать профили</b>."
+)
 
 # --- /traffic ---
 
@@ -243,7 +343,7 @@ TRAFFIC_SUMMARY = (
     "{title}\n\n"
     "🖥 Узел: <b>{node_name}</b>\n"
     "{scope_hint}"
-    "Клиентов: <b>{count}</b> · online <b>{active}</b>\n"
+    "Конфигов: <b>{count}</b> · онлайн <b>{active}</b>\n"
     "За 24 ч: <b>{traffic_1d}</b> · всего: <b>{total_all}</b>\n\n"
     "🏆 <b>Топ-5 за сутки</b>\n"
     "{top_lines}"
@@ -267,11 +367,19 @@ CONFIG_SEND_UNKNOWN = "неизвестная ошибка"
 CONFIG_FILES_NONE = "Файлы конфигурации не найдены на узле."
 CONFIG_PICK_PROTOCOL = (
     "📄 <b>{name}</b>\n"
-    "Тип: <code>{vpn_type}</code>\n\n"
+    "Тип: <code>{vpn_type}</code>\n"
+    "🌍 Узел: <b>{node}</b>\n\n"
     "Выберите протокол:"
 )
+CONFIG_CHOOSE_NODE = (
+    "📄 <b>{name}</b>\n"
+    "Это имя есть на нескольких узлах.\n\n"
+    "Выберите конфигурацию:"
+)
+CONFIG_NODE_UNAVAILABLE = "⚠️ Узел конфигурации недоступен. Проверьте связь с сервером."
 CONFIG_PICK_FILE = (
     "📄 <b>{name}</b>\n"
+    "🌍 Узел: <b>{node}</b>\n"
     "{protocol}\n\n"
     "{preview}\n\n"
     "<i>Выберите файл ↓</i>"
@@ -294,7 +402,7 @@ INLINE_UNLINKED_TITLE = "🔗 Привязка аккаунта"
 INLINE_UNLINKED_DESC = "Telegram не привязан к панели"
 INLINE_CONFIG_TITLE = "📄 {name} ({vpn_type})"
 INLINE_CONFIG_DESC = "{name} · {vpn_type} · {filename}"
-INLINE_CONFIG_ARTICLE_DESC = "Конфиг {vpn_type}"
+INLINE_CONFIG_ARTICLE_DESC = "Конфиг {vpn_type} · узел {node}"
 INLINE_CONFIG_MESSAGE = (
     "📄 <b>{name}</b>\n"
     "Тип: <code>{vpn_type}</code>\n\n"
@@ -303,6 +411,12 @@ INLINE_CONFIG_MESSAGE = (
 INLINE_EMPTY_TITLE = "🔍 Ничего не найдено"
 INLINE_EMPTY_DESC = "Запрос: {query}"
 INLINE_EMPTY_MESSAGE = "Конфиги по запросу <code>{query}</code> не найдены."
+INLINE_PRIVATE_ONLY_TITLE = "🔒 Только в личном чате"
+INLINE_PRIVATE_ONLY_DESC = "Конфиги недоступны в группах и чужих чатах"
+INLINE_PRIVATE_ONLY_MESSAGE = (
+    "Конфиги доступны только в личном чате с ботом. Откройте диалог с ботом и повторите запрос."
+)
+INLINE_PRIVATE_ONLY_BUTTON = "Открыть личный чат"
 
 # --- /settings root ---
 

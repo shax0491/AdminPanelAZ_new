@@ -234,6 +234,7 @@ class NodeAllowFirstRemoteHostResponse(BaseModel):
     host: str
     detail: str | None = None
     warnings: list[str] = Field(default_factory=list)
+    apply_task_id: str | None = None
 
 
 class NodeOpenVpnMultihomeBody(BaseModel):
@@ -266,7 +267,12 @@ class UserUpdate(BaseModel):
     telegram_id: str | None = None
     config_quota: int | None = Field(default=None, ge=0, le=1000)
     can_create_configs: bool | None = None
+    can_manage_configs: bool | None = None
     visible_vpn_profiles: dict | None = None
+    panel_login_enabled: bool | None = None
+    # Stage 3: лимит трафика пользователя (None — без ограничения).
+    traffic_limit_bytes: int | None = Field(default=None, ge=0)
+    note: str | None = Field(default=None, max_length=2000)
 
     @field_validator("access_until", mode="before")
     @classmethod
@@ -280,6 +286,57 @@ class UserUpdate(BaseModel):
         return value
 
 
+class UserSuspendRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=200)
+    show_reason: bool = False
+    notify_telegram: bool = False
+
+
+class UserResumeRequest(BaseModel):
+    notify_telegram: bool = False
+
+
+class UserExtendRequest(BaseModel):
+    days: int = Field(ge=1, le=3650)
+
+
+class UserHistoryEntry(BaseModel):
+    id: int
+    actor_username: str | None = None
+    action: str
+    details: str | None = None
+    created_at: datetime
+
+
+class BulkUsersRequest(BaseModel):
+    action: Literal["extend", "suspend", "resume", "set_traffic_limit", "delete"]
+    user_ids: list[int] = Field(default_factory=list, max_length=200)
+    days: int | None = Field(default=None, ge=1, le=3650)
+    reason: str | None = Field(default=None, max_length=200)
+    show_reason: bool = False
+    notify_telegram: bool = False
+    traffic_limit_bytes: int | None = Field(default=None, ge=0)
+
+
+class BulkNotifyRequest(BaseModel):
+    """Массовое сообщение выбранным абонентам (только с Telegram)."""
+
+    user_ids: list[int] = Field(min_length=1, max_length=200)
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class BulkUsersFailure(BaseModel):
+    user_id: int
+    username: str
+    error: str
+
+
+class BulkUsersResult(BaseModel):
+    total: int
+    succeeded: int
+    failed: list[BulkUsersFailure]
+
+
 class UserResponse(UserBase):
     id: int
     must_change_password: bool
@@ -289,12 +346,34 @@ class UserResponse(UserBase):
     telegram_id: str | None = None
     config_quota: int | None = None
     can_create_configs: bool = True
+    can_manage_configs: bool = False
     visible_vpn_profiles: dict | None = None
+    panel_login_enabled: bool = True
+    # Сводка режима предоставления конфигов (заполняется в списке абонентов GET /users).
+    provision_state: str = "unmanaged"
+    client_base_name: str | None = None
+    # Фактическое имя конфигов владельца, когда плана нет (создан «из существующих»).
+    owned_config_base_name: str | None = None
+    plan_node_ids: list[int] = []
+    plan_protocols: list[str] = []
+    plan_config_count: int = 0
+    active_task_id: str | None = None
     timezone: str = ""
     noc_daily_time: str = ""
     noc_weekly_dow: str = ""
     noc_weekly_time: str = ""
     created_at: datetime
+    # Stage 3: приостановка и лимит трафика пользователя.
+    suspended_at: datetime | None = None
+    suspend_reason: str | None = None
+    suspend_reason_visible: bool = False
+    traffic_limit_bytes: int | None = None
+    traffic_counter_reset_at: datetime | None = None
+    traffic_limit_blocked: bool = False
+    traffic_consumed_bytes: int = 0
+    online: bool = False
+    last_seen_at: datetime | None = None
+    note: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -316,6 +395,203 @@ class UserResponse(UserBase):
         return None
 
 
+class ProvisionPlanItem(BaseModel):
+    node_id: int
+    node_label: str
+    client_name: str
+    vpn_type: str
+    action: str  # create|delete|conflict|skipped
+    reason: str | None = None
+    config_id: int | None = None
+
+
+class ProvisionPlanResponse(BaseModel):
+    create: list[ProvisionPlanItem] = []
+    delete: list[ProvisionPlanItem] = []
+    conflict: list[ProvisionPlanItem] = []
+    skipped: list[ProvisionPlanItem] = []
+    blocked: bool = False
+    block_reason: str | None = None
+
+
+class UserProvisionedCreate(BaseModel):
+    username: str
+    client_base_name: str | None = None
+    node_ids: list[int]
+    protocols: list[str]
+    config_count: int = Field(default=1, ge=1, le=20)
+    config_quota: int | None = Field(default=None, ge=0, le=1000)
+    access_until: datetime | None = None
+    panel_login_enabled: bool = False
+    password: str | None = None
+    telegram_id: str | None = None
+
+
+class UserFromExistingCreate(BaseModel):
+    username: str
+    config_ids: list[int] = []
+    config_quota: int | None = Field(default=None, ge=0, le=1000)
+    access_until: datetime | None = None
+    panel_login_enabled: bool = False
+    password: str | None = None
+    telegram_id: str | None = None
+
+    @field_validator("access_until", mode="before")
+    @classmethod
+    def _access_until_end_of_day(cls, value: Any) -> Any:
+        """A bare `YYYY-MM-DD` means the end of that day, as on the client level.
+
+        Without this, "доступ до 1 окт" would cut access at 00:00 on Oct 1.
+        """
+        if isinstance(value, str) and DATE_ONLY_RE.fullmatch(value.strip()):
+            return f"{value.strip()}T23:59:59.999999+00:00"
+        return value
+
+
+class UserProvisionSummary(BaseModel):
+    id: int
+    username: str
+    role: str
+    client_base_name: str | None = None
+    # Фактическое имя конфигов владельца, когда плана нет.
+    owned_config_base_name: str | None = None
+    plan_config_indexes: list[int] | None = None
+    desired_protocols: list[str] | None = None
+    panel_login_enabled: bool = True
+    provision_state: str = "unmanaged"
+    access_until: datetime | None = None
+    node_ids: list[int] = []
+    config_quota: int | None = None
+    # Права абонента на свои конфиги (панель и Telegram Mini App).
+    can_create_configs: bool = True
+    can_manage_configs: bool = False
+    # Stage 3: приостановка и лимит трафика.
+    suspended_at: datetime | None = None
+    suspend_reason: str | None = None
+    suspend_reason_visible: bool = False
+    traffic_limit_bytes: int | None = None
+    traffic_counter_reset_at: datetime | None = None
+    traffic_limit_blocked: bool = False
+    traffic_consumed_bytes: int = 0
+    online: bool = False
+    telegram_id: str | None = None
+    visible_vpn_profiles: dict | None = None
+    note: str | None = None
+
+
+class GraceHoldView(BaseModel):
+    """Удержание после истечения срока (grace) — для шапки карточки абонента."""
+
+    elapsed_months: int
+    limit_months: int
+
+
+class UserProvisionedResponse(BaseModel):
+    user: UserProvisionSummary
+    task_id: str
+
+
+class UserFromExistingResponse(BaseModel):
+    user: UserProvisionSummary
+    assigned_config_ids: list[int] = []
+
+
+class UserProvisioningUpdate(BaseModel):
+    node_ids: list[int]
+    protocols: list[str]
+    plan_config_indexes: list[int]
+    client_base_name: str | None = None
+    confirm_deletions: bool = False
+
+
+class UserProvisioningApply(BaseModel):
+    confirm_deletions: bool = False
+
+
+class ProvisioningConfigNode(BaseModel):
+    node_id: int
+    node_label: str
+    vpn_type: str
+    config_id: int | None = None
+
+
+class ProvisioningConfig(BaseModel):
+    name: str
+    nodes: list[ProvisioningConfigNode] = []
+
+
+class UserProvisioningDesired(BaseModel):
+    client_base_name: str | None = None
+    plan_config_indexes: list[int] = []
+    desired_protocols: list[str] = []
+    node_ids: list[int] = []
+
+
+class UserProvisioningSuggested(BaseModel):
+    client_base_name: str | None = None
+    plan_config_indexes: list[int] = []
+    node_ids: list[int] = []
+    protocols: list[str] = []
+
+
+class UserProvisioningCard(BaseModel):
+    user: UserProvisionSummary
+    has_plan: bool
+    desired: UserProvisioningDesired
+    suggested: UserProvisioningSuggested | None = None
+    plan: ProvisionPlanResponse
+    configs: list[ProvisioningConfig] = []
+    last_task: dict | None = None
+    grace_hold: GraceHoldView | None = None
+
+
+class BulkNodesScope(BaseModel):
+    """Область массовой операции с серверами.
+
+    ``all`` — все пользователи с планом, ``user_ids`` — выбранные в списке,
+    ``filter`` — текущий фильтр списка пользователей.
+    """
+
+    mode: Literal["all", "user_ids", "filter"] = "all"
+    user_ids: list[int] | None = None
+    state: str | None = None
+    q: str | None = None
+
+
+class BulkNodesRequest(BaseModel):
+    action: Literal["add", "remove", "replace"]
+    node_id: int
+    to_node_id: int | None = None
+    scope: BulkNodesScope = Field(default_factory=BulkNodesScope)
+    notify_telegram: bool = False
+    note: str | None = Field(default=None, max_length=500)
+    # Для «Убрать»/«Перенести» — имя сервера, введённое админом вручную.
+    confirm_node_name: str | None = None
+
+
+class BulkNodesPreviewItem(BaseModel):
+    user_id: int
+    username: str
+    configs_create: int = 0
+    configs_delete: int = 0
+    expired: bool = False
+    detail: str | None = None
+
+
+class BulkNodesPreviewResponse(BaseModel):
+    action: str
+    node_id: int
+    to_node_id: int | None = None
+    node_label: str
+    to_node_label: str | None = None
+    affected: list[BulkNodesPreviewItem] = []
+    skipped: dict[str, list[BulkNodesPreviewItem]] = {}
+    without_telegram: list[BulkNodesPreviewItem] = []
+    notify_text_preview: str | None = None
+    configs_to_create: int = 0
+    configs_to_delete: int = 0
+
+
 class UserConfigAccessUpdate(BaseModel):
     config_groups: list[str] = []
 
@@ -331,6 +607,7 @@ class SelfServiceQuotaResponse(BaseModel):
     remaining: int | None = None
     unlimited: bool = False
     can_create: bool = True
+    can_manage: bool = True
     create_rate_max: int | None = None
     create_rate_window_seconds: int | None = None
 
@@ -339,6 +616,7 @@ class VisibleVpnProfilesPolicy(BaseModel):
     routes: list[str] = Field(default_factory=list)
     protocols: list[str] = Field(default_factory=list)
     openvpn_groups: list[str] = Field(default_factory=list)
+    awg2_tunnel_only: bool = True
 
 
 class VisibleVpnProfilesDefaultResponse(BaseModel):
@@ -352,6 +630,17 @@ class VisibleVpnProfilesDefaultUpdate(BaseModel):
 class EffectiveVisibleVpnProfilesResponse(BaseModel):
     policy: VisibleVpnProfilesPolicy
     inherited: bool = True
+
+
+class UserGraceSettingsResponse(BaseModel):
+    """Срок удержания конфигов после истечения доступа (месяцы, 0 — выключено)."""
+
+    grace_months: int = 0
+    allowed_months: list[int] = [0, 1, 2, 3, 6, 12]
+
+
+class UserGraceSettingsUpdate(BaseModel):
+    grace_months: int = Field(ge=0, le=12)
 
 
 class PasswordChangeRequest(BaseModel):
@@ -393,7 +682,7 @@ class VpnConfigResponse(BaseModel):
     id: int
     client_name: str
     vpn_type: VpnType
-    owner_id: int
+    owner_id: int | None = None
     owner_username: str | None = None
     cert_expire_days: int | None
     cert_expires_at: datetime | None = None
@@ -406,9 +695,24 @@ class VpnConfigResponse(BaseModel):
     tags: list["ConfigTagResponse"] = []
     ha: VpnConfigHaInfo | None = None
     ha_replicate_warning: str | None = None
+    ha_sync_task_id: str | None = None
     local_ip: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class VpnConfigAssignableItem(BaseModel):
+    """Primary configs across all nodes — for admin «привязать существующие»."""
+
+    id: int
+    client_name: str
+    vpn_type: VpnType
+    node_id: int
+    node_name: str
+    owner_id: int | None = None
+    owner_username: str | None = None
+    owner_is_admin: bool = False
+    description: str | None = None
 
 
 class ConfigTagCreate(BaseModel):
@@ -531,6 +835,11 @@ class OpenVpnClient(BaseModel):
     connected_since_ts: int = 0
     profile: str | None = None
     data_source: str = "status_log"
+    # OpenVPN 2.6+ per-session identity: two devices of one CN are separate sessions.
+    client_id: str | None = None
+    peer_id: str | None = None
+    # OpenVPN 2.7+ reports the data channel cipher per session (AES-GCM, CHACHA20, …).
+    cipher: str | None = None
     display_address: str | None = None
     client_ip: str | None = None
     city: str | None = None
@@ -546,6 +855,10 @@ class OpenVpnClient(BaseModel):
     active_node_name: str | None = None
     ha_nodes: list[HaNodePresence] = Field(default_factory=list)
     ha: VpnConfigHaInfo | None = None
+    # Owner of the matching VpnConfig; ``None`` when the connection has no config
+    # in the panel (legacy/orphan client) or the owner was removed.
+    owner_id: int | None = None
+    owner_username: str | None = None
 
 
 class WireGuardPeer(BaseModel):
@@ -572,6 +885,8 @@ class WireGuardPeer(BaseModel):
     active_node_name: str | None = None
     ha_nodes: list[HaNodePresence] = Field(default_factory=list)
     ha: VpnConfigHaInfo | None = None
+    owner_id: int | None = None
+    owner_username: str | None = None
 
 
 class MonitoringNodeSummary(BaseModel):
@@ -626,6 +941,13 @@ class GlobalDashboardSummary(BaseModel):
     total_connected_amneziawg3: int = 0
 
 
+class OpenVpnGlobalStats(BaseModel):
+    """Daemon-wide OpenVPN counters from ``GLOBAL_STATS``."""
+
+    dco_enabled: bool | None = None
+    max_bcast_mcast_queue: int | None = None
+
+
 class MonitoringOverview(BaseModel):
     services: list[MonitoringService]
     openvpn_clients: list[OpenVpnClient]
@@ -637,6 +959,7 @@ class MonitoringOverview(BaseModel):
     node_id: int | None = None
     node_name: str | None = None
     openvpn_data_source: str = "status_log"
+    openvpn_global_stats: OpenVpnGlobalStats | None = None
     scope: str = "node"
     nodes_summary: list[MonitoringNodeSummary] = Field(default_factory=list)
     nodes_online: int = 0
@@ -773,6 +1096,8 @@ class AppSettingsResponse(BaseModel):
     allow_ips: str = ""
     node_id: int | None = None
     node_name: str | None = None
+    # Background doall + HA replicate after saving AntiZapret lists.
+    apply_task_id: str | None = None
 
 
 class AppSettingsUpdate(BaseModel):
@@ -822,6 +1147,7 @@ class BackupTestTelegramRequest(BaseModel):
 
 class BackupRestoreRequest(BaseModel):
     file_name: str
+    password: str | None = None
 
 
 class BackupSettingsResponse(BaseModel):
@@ -832,6 +1158,7 @@ class BackupSettingsResponse(BaseModel):
     backup_awg2_enabled: bool = True
     backup_awg3_enabled: bool = True
     retention_count: int = 5
+    backup_password_set: bool = False
 
 
 class BackupSettingsUpdate(BaseModel):
@@ -842,6 +1169,8 @@ class BackupSettingsUpdate(BaseModel):
     backup_awg2_enabled: bool | None = None
     backup_awg3_enabled: bool | None = None
     retention_count: int | None = Field(default=None, ge=1, le=30)
+    # Set a new password, or "" / null to clear. Omitted = leave unchanged.
+    backup_password: str | None = None
 
 
 class MonitorSettingsResponse(BaseModel):
@@ -971,6 +1300,100 @@ class DnsAaaaStateOut(BaseModel):
 class DnsAaaaUpdate(BaseModel):
     target: Literal["antizapret", "vpn"]
     nodata: bool
+
+
+class DnsServersOption(BaseModel):
+    value: str
+    label: str
+
+
+class DnsServersStateOut(BaseModel):
+    """Выбор upstream DNS для резолверов AntiZapret (kresd.conf) активного узла."""
+
+    supported: bool
+    antizapret: str
+    vpn: str
+    applied_antizapret: str | None = None
+    applied_vpn_dns: str | None = None
+    antizapret_options: list[DnsServersOption] = []
+    vpn_options: list[DnsServersOption] = []
+    warnings: list[str] = []
+    restarted: list[str] = []
+
+
+class DnsServersUpdate(BaseModel):
+    antizapret: int = Field(ge=1, le=7)
+    vpn: int = Field(ge=1, le=2)
+
+
+class OpenVpnProtocolState(BaseModel):
+    unit: str
+    enabled: bool | None = None
+
+
+class OpenVpnPatchState(BaseModel):
+    custom_binary: bool = False
+    unit_exec: str | None = None
+    in_use: bool = False
+
+
+class OpenVpnAppliedState(BaseModel):
+    unit: str
+    enabled: bool | None = None
+    ok: bool = True
+    error: str | None = None
+
+
+class OpenVpnTuningStateOut(BaseModel):
+    """Состояние server conf OpenVPN: то, что setup.sh настраивает через sed и systemctl."""
+
+    duplicate_cn: Literal["on", "off", "mixed", "unknown"] = "unknown"
+    logs: Literal["on", "off", "mixed", "unknown"] = "unknown"
+    # Намерение панели (nodes.openvpn_duplicate_cn / openvpn_detailed_logs); None — не задавали.
+    duplicate_cn_desired: bool | None = None
+    logs_desired: bool | None = None
+    in_sync: bool = True
+    mtu_openvpn: int | Literal["mixed"] | None = None
+    mtu_wireguard: int | Literal["mixed"] | None = None
+    dco: Literal["on", "off", "mixed", "unknown"] = "unknown"
+    patch: OpenVpnPatchState = OpenVpnPatchState()
+    protocols: list[OpenVpnProtocolState] = []
+    update_timer: bool | None = None
+    confs: list[str] = []
+    warnings: list[str] = []
+    restarted: list[str] = []
+    applied: list[OpenVpnAppliedState] = []
+    patch_output: str | None = None
+
+
+class OpenVpnTuningUpdate(BaseModel):
+    duplicate: bool
+    logs: bool
+
+
+class OpenVpnMtuUpdate(BaseModel):
+    """MTU отдельно: OpenVPN (`tun-mtu`) и WireGuard (`MTU =`), хотя бы одно значение."""
+
+    openvpn: int | None = Field(default=None, ge=1280, le=1420)
+    wireguard: int | None = Field(default=None, ge=1280, le=1420)
+
+    @model_validator(mode="after")
+    def _at_least_one(self) -> "OpenVpnMtuUpdate":
+        if self.openvpn is None and self.wireguard is None:
+            raise ValueError("Укажите MTU OpenVPN и/или MTU WireGuard")
+        return self
+
+
+class OpenVpnDcoUpdate(BaseModel):
+    enabled: bool
+
+
+class OpenVpnProtocolsUpdate(BaseModel):
+    units: dict[str, bool] = Field(min_length=1)
+
+
+class OpenVpnPatchUpdate(BaseModel):
+    algorithm: int = Field(ge=1, le=4)
 
 
 class GeoIpStatusResponse(BaseModel):
@@ -1156,6 +1579,8 @@ class TelegramSettingsResponse(BaseModel):
     relay_last_error: str = ""
     relay_last_node: str = ""
     relay_check: list[TelegramRelayCheck] = Field(default_factory=list)
+    accept_access_requests: bool = False
+    pending_request_cap: int = 50
 
 
 class TelegramRelayUpdate(BaseModel):
@@ -1185,6 +1610,8 @@ class TelegramSettingsUpdate(BaseModel):
     legacy_login_enabled: bool | None = None
     bot_command_rate_max: int | None = Field(default=None, ge=0, le=1000)
     bot_command_rate_window_seconds: int | None = Field(default=None, ge=10, le=3600)
+    accept_access_requests: bool | None = None
+    pending_request_cap: int | None = Field(default=None, ge=0, le=10000)
 
 
 class SelfServiceLimitsResponse(BaseModel):
@@ -1208,6 +1635,48 @@ class TelegramLinkCodeRequest(BaseModel):
 class TelegramLinkCodeResponse(BaseModel):
     code: str
     expires_in_seconds: int
+
+
+class UserTrafficTotals(BaseModel):
+    received: int = 0
+    sent: int = 0
+    bytes: int = 0
+    received_vpn: int = 0
+    sent_vpn: int = 0
+    received_antizapret: int = 0
+    sent_antizapret: int = 0
+    sessions: int = 0
+    period_bytes: int = 0
+
+
+class UserTrafficStatRow(BaseModel):
+    node_id: int
+    client_name: str
+    vpn_type: str
+    total_received: int = 0
+    total_sent: int = 0
+    total_bytes: int = 0
+    total_received_vpn: int = 0
+    total_sent_vpn: int = 0
+    total_received_antizapret: int = 0
+    total_sent_antizapret: int = 0
+    total_sessions: int = 0
+    period_bytes: int = 0
+    first_seen_at: datetime | None = None
+    last_seen_at: datetime | None = None
+    daily: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class UserStatsResponse(BaseModel):
+    user_id: int
+    period_days: int
+    rows: list[UserTrafficStatRow] = []
+    totals: UserTrafficTotals = Field(default_factory=UserTrafficTotals)
+
+
+class ConfigAccessOpRequest(BaseModel):
+    op: Literal["block_temp", "block_perm", "unblock"]
+    days: int | None = Field(default=None, ge=1, le=3650)
 
 
 class TelegramBotInfoResponse(BaseModel):
@@ -1472,6 +1941,7 @@ class ServerRebootPendingResponse(BaseModel):
 class MessageResponse(BaseModel):
     message: str
     detail: Any | None = None
+    task_id: str | None = None
 
 
 class FailoverPoolMemberCreate(BaseModel):
@@ -1620,6 +2090,135 @@ class BackgroundTaskResponse(BaseModel):
     status_url: str | None = None
 
 
+class PresetBase(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    node_ids: list[int] = Field(default_factory=list)
+    protocols: list[str] = Field(default_factory=list)
+    config_count: int = Field(default=1, ge=1, le=20)
+    config_quota: int | None = Field(default=None, ge=0, le=1000)
+    traffic_limit_bytes: int | None = Field(default=None, ge=0)
+    access_days: int | None = Field(default=None, ge=1)
+    is_default: bool = False
+
+
+class PresetCreate(PresetBase):
+    pass
+
+
+class PresetUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=64)
+    node_ids: list[int] | None = None
+    protocols: list[str] | None = None
+    config_count: int | None = Field(default=None, ge=1, le=20)
+    config_quota: int | None = Field(default=None, ge=0, le=1000)
+    traffic_limit_bytes: int | None = Field(default=None, ge=0)
+    access_days: int | None = Field(default=None, ge=1)
+    is_default: bool | None = None
+
+
+class PresetResponse(PresetBase):
+    id: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AccessRequestResponse(BaseModel):
+    id: int
+    request_type: str
+    user_id: int | None = None
+    telegram_id: str
+    telegram_username: str | None = None
+    telegram_name: str | None = None
+    requested_count: int = 1
+    user_note: str | None = None
+    status: str
+    reviewed_by_id: int | None = None
+    reviewed_at: datetime | None = None
+    reject_reason: str | None = None
+    delivered_at: datetime | None = None
+    receipt_file_id: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class UserMessageOut(BaseModel):
+    """Строка ленты чата абонент ↔ администратор."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    direction: str
+    admin_id: int | None = None
+    text: str
+    created_at: datetime
+    read_by_admin_at: datetime | None = None
+    attachment_url: str | None = None
+
+
+class MessageThreadOut(BaseModel):
+    """Диалог в списке «Сообщения»: последнее сообщение и непрочитанные."""
+
+    user_id: int
+    username: str
+    last_text: str
+    last_at: datetime
+    last_direction: str
+    unread_count: int
+
+
+class SendMessageRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4096)
+
+
+class SendMessageResult(BaseModel):
+    message: UserMessageOut
+    delivered: bool
+    warning: str | None = None
+
+
+class ApproveRequest(BaseModel):
+    preset_id: int | None = None
+    node_ids: list[int] | None = None
+    protocols: list[str] | None = None
+    config_count: int | None = Field(default=None, ge=1, le=20)
+    # Одобрение с привязкой готовых конфигов вместо выпуска новых.
+    config_ids: list[int] | None = None
+    access_until: datetime | None = None
+    traffic_limit_bytes: int | None = Field(default=None, ge=0)
+    username: str | None = Field(default=None, min_length=1, max_length=64)
+    count: int | None = Field(default=None, ge=1, le=20)
+    days: int | None = Field(default=None, ge=1, le=3650)
+
+
+class CooldownBlockedItem(BaseModel):
+    telegram_id: str
+    name: str
+    request_type: str
+    rejected_at: datetime
+    until: datetime
+
+
+class CooldownSettingsResponse(BaseModel):
+    hours: int
+    total: int = 0
+    blocked: list[CooldownBlockedItem]
+
+
+class CooldownSettingsUpdate(BaseModel):
+    hours: int = Field(ge=0, le=720)
+
+
+class CooldownReleaseRequest(BaseModel):
+    telegram_id: str = Field(min_length=1, max_length=32)
+
+
+class RejectRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=256)
+    ban: bool = False
+
+
 class NodeBase(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     host: str = Field(min_length=1, max_length=255)
@@ -1705,6 +2304,7 @@ class NodeResponse(NodeBase):
     last_network_audit_at: datetime | None = None
     last_seen_at: datetime | None = None
     metadata: dict[str, Any] = {}
+    awg2_installed: bool | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -1962,6 +2562,7 @@ class AntizapretSettingsUpdateResponse(BaseModel):
     changes: int
     needs_apply: bool
     warnings: list[str] = Field(default_factory=list)
+    antizapret_restarted: bool = False
 
 
 class WarperHealthResponse(BaseModel):
@@ -2252,6 +2853,8 @@ class TrafficClientRow(BaseModel):
     ha: VpnConfigHaInfo | None = None
     ha_aggregated: bool = False
     ha_node_breakdown: list[TrafficHaNodeBreakdown] | None = None
+    owner_id: int | None = None
+    owner_username: str | None = None
 
 
 class TrafficSummary(BaseModel):
@@ -2296,6 +2899,8 @@ class TrafficNeverConnectedRow(BaseModel):
     protocol_type: str
     created_at: str | None = None
     config_id: int | None = None
+    owner_id: int | None = None
+    owner_username: str | None = None
 
 
 class TrafficNeverConnectedSummary(BaseModel):
@@ -2374,9 +2979,93 @@ class Awg2ObfuscationApply(BaseModel):
 
 
 class StreamTicketRequest(BaseModel):
-    stream: Literal["monitoring", "warper_update", "awg2_install", "server_monitor"]
+    stream: Literal[
+        "monitoring", "warper_update", "awg2_install", "server_monitor", "notifications"
+    ]
 
 
 class StreamTicketResponse(BaseModel):
     ticket: str
     expires_in_seconds: int
+
+
+class NotificationDetailsEntry(BaseModel):
+    label: str
+    value: str
+
+
+class NotificationStateOut(BaseModel):
+    read: bool
+    hidden: bool
+    snoozed_until: str | None = None
+
+
+class NotificationCategoryCount(BaseModel):
+    total: int
+    unread: int
+
+
+class NotificationCounts(BaseModel):
+    unread: int
+    attention: int
+    snoozed: int
+    hidden: int
+    by_category: dict[str, NotificationCategoryCount]
+
+
+class NotificationPreferences(BaseModel):
+    categories: dict[str, bool]
+
+
+class NotificationPreferencesUpdate(BaseModel):
+    categories: dict[str, bool]
+
+
+class BellNotifyAdmin(BaseModel):
+    user_id: int
+    username: str
+    categories: dict[str, bool]
+
+
+class BellNotifyAdminsResponse(BaseModel):
+    admins: list[BellNotifyAdmin]
+
+
+class NotificationItem(BaseModel):
+    id: int
+    category: str
+    level: str
+    event_type: str
+    title: str
+    message: str
+    created_at: str
+    # Поле не было объявлено, и response_model молча вырезал его из ответа —
+    # из-за этого переход по конкретной заявке на фронтенде не срабатывал никогда.
+    action_payload: dict[str, Any] | None = None
+    details: list[NotificationDetailsEntry] = []
+    state: NotificationStateOut
+
+
+class NotificationsListResponse(BaseModel):
+    items: list[NotificationItem]
+    unread_count: int
+    pending_requests_count: int
+    counts: NotificationCounts
+
+
+class NotificationStateUpdate(BaseModel):
+    read: bool | None = None
+    hidden: bool | None = None
+    snoozed_until: datetime | None = None
+
+
+class NotificationStateResponse(BaseModel):
+    state: NotificationStateOut
+
+
+class MarkReadRequest(BaseModel):
+    up_to_id: int = Field(ge=1)
+
+
+class MarkReadResponse(BaseModel):
+    ok: bool = True

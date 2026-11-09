@@ -5,8 +5,10 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.services.access_log_privacy import install_uvicorn_access_log_filter
 
 logger = logging.getLogger(__name__)
+install_uvicorn_access_log_filter()
 from app.middleware.api_rate_limit import ApiRateLimitMiddleware
 from app.middleware.http_security import (
     HttpSecurityMiddleware,
@@ -45,10 +47,13 @@ from app.routers import (
     ip_blocked,
     logs,
     maintenance,
+    messages,
     monitoring,
+    notifications,
     nodes,
     node_sync,
     openvpn_buffer_guard,
+    openvpn_tuning,
     public_download,
     public_portal,
     routing,
@@ -72,6 +77,7 @@ from app.routers import (
 )
 from app.routers import settings as settings_router
 from app.routers import users
+from app.routers import me
 from app.services.admin_bootstrap import upsert_bootstrap_admin
 from app.services.node_manager import get_active_adapter, get_active_node, sync_local_node
 from app.services.ip_restriction import ip_restriction_service
@@ -82,7 +88,9 @@ from app.services.lifespan_workers import (
     start_leader_workers,
 )
 from app.services.background_gate import configure_background_gate
+from app.services.node_http_gate import configure_node_http_gate
 from app.services.shared_state import configure_shared_state
+from app.services.sqlite_tx_watchdog import install as install_sqlite_tx_watchdog
 from app.services.worker_leader import WorkerLeaderLock
 from app.services.worker_lifecycle import should_start_resource_monitor
 
@@ -203,6 +211,14 @@ def run_leader_startup_actions() -> None:
     except Exception:
         logger.debug("Systemd unit migration skipped", exc_info=True)
     try:
+        from app.services.feature_guards import get_feature_service
+
+        # Stage 5 (§8.2): RESOURCE_PROFILE → SCENARIO_PRESET, label only.
+        if get_feature_service().migrate_resource_profile_label_only():
+            logger.info("Migrated RESOURCE_PROFILE label to SCENARIO_PRESET in .env (toggles untouched)")
+    except Exception:
+        logger.exception("Failed to migrate RESOURCE_PROFILE label to SCENARIO_PRESET on startup")
+    try:
         ip_restriction_service.sync_firewall()
     except Exception:
         logger.exception("Failed to sync IP restriction firewall on startup")
@@ -216,6 +232,25 @@ def run_leader_startup_actions() -> None:
             startup_db.close()
     except Exception:
         logger.exception("Failed to sync whitelist port firewall on startup")
+    try:
+        from app.database import SessionLocal
+        from app.services.privacy_upgrade import run_privacy_upgrade
+
+        privacy_db = SessionLocal()
+        try:
+            result = run_privacy_upgrade(privacy_db)
+            if result.get("grants_changed") or result.get("pin_migrated"):
+                logger.info(
+                    "Privacy upgrade: grants=%s pin=%s webhook=%s nginx=%s",
+                    result.get("grants_changed"),
+                    result.get("pin_migrated"),
+                    result.get("webhook"),
+                    result.get("nginx"),
+                )
+        finally:
+            privacy_db.close()
+    except Exception:
+        logger.exception("Failed to run privacy upgrade on startup")
 
 
 @asynccontextmanager
@@ -246,7 +281,9 @@ async def lifespan(_: FastAPI):
         return tasks
 
     configure_background_gate(db_path)
+    configure_node_http_gate(db_path)
     configure_shared_state(SessionLocal)
+    install_sqlite_tx_watchdog(engine)
     leader_lock = WorkerLeaderLock(leader_lock_path(db_path))
     background_tasks = start_leader_workers(
         leader_lock, start=_start_workers, on_startup=run_leader_startup_actions
@@ -255,6 +292,7 @@ async def lifespan(_: FastAPI):
     await cancel_background_tasks(background_tasks)
     leader_lock.release()
     configure_background_gate(None)
+    configure_node_http_gate(None)
     configure_shared_state(None)
 
 
@@ -288,11 +326,14 @@ app.add_middleware(ApiRateLimitMiddleware)
 app.include_router(auth.router, prefix=_API_PREFIX)
 app.include_router(session.router, prefix=_API_PREFIX)
 app.include_router(users.router, prefix=_API_PREFIX)
+app.include_router(me.router, prefix=_API_PREFIX)
 app.include_router(configs.router, prefix=_API_PREFIX)
 app.include_router(configs_bulk.router, prefix=_API_PREFIX)
 app.include_router(config_tags.router, prefix=_API_PREFIX)
 app.include_router(client_templates.router, prefix=_API_PREFIX)
 app.include_router(monitoring.router, prefix=_API_PREFIX)
+app.include_router(notifications.router, prefix=_API_PREFIX)
+app.include_router(messages.router, prefix=_API_PREFIX)
 app.include_router(alert_rules.router, prefix=_API_PREFIX)
 app.include_router(openvpn_buffer_guard.router, prefix=_API_PREFIX)
 app.include_router(dns_aaaa.router, prefix=_API_PREFIX)

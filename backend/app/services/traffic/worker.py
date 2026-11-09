@@ -48,6 +48,8 @@ def _collect_all_nodes():
         nodes = db.query(Node).all()
         awg2_enabled = is_awg2_enabled(db)
         awg3_enabled = is_awg3_enabled(db)
+        from app.services.node_http_gate import NodeHttpBusy, node_http_gate_nonblocking
+
         for node in nodes:
             if not is_vpn_node(node):
                 continue
@@ -56,10 +58,12 @@ def _collect_all_nodes():
             wg_runtime_calls = 0
             clients_changed = 0
             try:
-                adapter = get_adapter_for_node(node)
-                status_rows = build_status_rows_for_adapter(
-                    db, adapter, awg2_enabled=awg2_enabled, awg3_enabled=awg3_enabled
-                )
+                # DB writes stay outside the slot: a waiter must not race a write transaction.
+                with node_http_gate_nonblocking():
+                    adapter = get_adapter_for_node(node)
+                    status_rows = build_status_rows_for_adapter(
+                        db, adapter, awg2_enabled=awg2_enabled, awg3_enabled=awg3_enabled
+                    )
                 collector = TrafficCollectorService(db, node.id)
                 collector.persist_snapshot(status_rows)
                 if settings.traffic_limit_reconcile_after_sync:
@@ -78,6 +82,8 @@ def _collect_all_nodes():
                     wg_runtime_calls,
                     clients_changed,
                 )
+            except NodeHttpBusy:
+                logger.debug("Traffic collect skipped for %s: agent slot busy", node_name)
             except SQLAlchemyError as exc:
                 db.rollback()
                 logger.warning("Traffic collect failed for node %s: %s", node_name, exc)

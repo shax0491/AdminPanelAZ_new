@@ -7,10 +7,11 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.services.telegram_api import answer_callback_query
+from app.services.telegram_api import answer_callback_query, leave_chat
 from app.services.telegram_bot_handlers.base import (
     BotContext,
     TelegramBotSettingsSnapshot,
+    is_admin,
     load_telegram_bot_settings_snapshot,
     resolve_user,
 )
@@ -53,6 +54,17 @@ logger = logging.getLogger(__name__)
 
 _PUBLIC_COMMANDS = frozenset({"/start", "/help", "/link"})
 
+# Префиксы callback'ов, которые не должны выполняться у обычного пользователя.
+# Fail-closed сеть: даже если хендлер забудет свою проверку, dispatch не пустит.
+_ADMIN_CALLBACK_PREFIXES = ("st:", "uc:", "nodes:", "nd:", "ndh:", "nda:", "ar:")
+
+
+def _is_admin_callback(data: str) -> bool:
+    """True for admin-only callback prefixes; ``ar:ext`` is a user renew request."""
+    if data == "ar:ext":
+        return False
+    return data.startswith(_ADMIN_CALLBACK_PREFIXES)
+
 
 def _is_shared_chat(chat: dict[str, Any]) -> bool:
     """Group/supergroup/channel: replies (configs, QR, links) would be visible to other members."""
@@ -77,6 +89,8 @@ def _build_context(
     telegram_user_id: str,
     mini_app_url: str,
     settings: TelegramBotSettingsSnapshot | None = None,
+    telegram_username: str = "",
+    telegram_name: str = "",
 ) -> BotContext:
     snap = settings or load_telegram_bot_settings_snapshot(db)
     user = resolve_user(db, telegram_user_id)
@@ -88,12 +102,30 @@ def _build_context(
         user=user,
         settings=snap,
         mini_app_url=mini_app_url,
+        telegram_username=telegram_username,
+        telegram_name=telegram_name,
     )
+
+
+def _profile_from_user(from_user: dict[str, Any]) -> tuple[str, str]:
+    """Ник и отображаемое имя из Telegram ``from`` (пустые строки, если не пришло)."""
+    username = str(from_user.get("username") or "").strip()
+    name = " ".join(
+        str(part).strip()
+        for part in (from_user.get("first_name"), from_user.get("last_name"))
+        if part
+    ).strip()
+    return username, name
 
 
 async def _dispatch_command(ctx: BotContext, command: str, args: str) -> None:
     if command == "/start":
-        await handle_start(ctx)
+        await handle_start(ctx, payload=args.strip() or None)
+        return
+    if command == "/admin":
+        from app.services.telegram_bot_handlers.chat import handle_admin_chat
+
+        await handle_admin_chat(ctx)
         return
     if command == "/help":
         await handle_help(ctx)
@@ -149,7 +181,23 @@ async def _dispatch_command(ctx: BotContext, command: str, args: str) -> None:
         )
 
 
-async def _dispatch_callback(ctx: BotContext, data: str, *, message_id: int | None) -> None:
+async def _dispatch_callback(
+    ctx: BotContext, data: str, *, message_id: int | None, callback_id: str = ""
+) -> None:
+    if _is_admin_callback(data) and not is_admin(ctx.user):
+        from app.services.telegram_api import send_message
+
+        await send_message(ctx.bot_token, ctx.chat_id, i18n.ADMIN_ONLY)
+        return
+    if data.startswith("ar:"):
+        from app.services.telegram_bot_handlers.access_requests import (
+            handle_admin_request_callback,
+        )
+
+        await handle_admin_request_callback(
+            ctx, data, message_id=message_id, callback_id=callback_id
+        )
+        return
     if await handle_menu_callback(ctx, data, message_id=message_id):
         return
     if data == "help":
@@ -158,8 +206,8 @@ async def _dispatch_callback(ctx: BotContext, data: str, *, message_id: int | No
     if data.startswith("configs:"):
         from app.services.telegram_bot_handlers.configs import handle_configs, parse_configs_callback
 
-        page, filter_key = parse_configs_callback(data)
-        await handle_configs(ctx, page=page, filter_key=filter_key, message_id=message_id)
+        page, filter_key, node_id = parse_configs_callback(data)
+        await handle_configs(ctx, page=page, filter_key=filter_key, node_id=node_id, message_id=message_id)
         return
     if data.startswith("traffic:"):
         page = int(data.split(":", 1)[1]) if data.split(":", 1)[1].isdigit() else 0
@@ -217,6 +265,11 @@ class TelegramBotService:
         if not snap.interactive_enabled or not snap.bot_token:
             return
 
+        my_chat_member = update.get("my_chat_member")
+        if my_chat_member:
+            await self._handle_my_chat_member(snap.bot_token, my_chat_member)
+            return
+
         callback = update.get("callback_query")
         if callback:
             await self._handle_callback(db, callback, mini_app_url=mini_app_url, settings=snap)
@@ -241,27 +294,66 @@ class TelegramBotService:
 
         from_user = message.get("from") or {}
         chat = message.get("chat") or {}
-        if _is_shared_chat(chat):
+        # Stage 2 privacy: заявки и прочие сообщения бота — только личный чат,
+        # и только когда chat.id == from.id (никогда не чужой/групповой id).
+        if chat.get("type") != "private" or chat.get("id") != from_user.get("id"):
             return
         telegram_user_id = str(from_user.get("id", ""))
         chat_id = chat.get("id", telegram_user_id)
         if not telegram_user_id:
             return
 
+        tg_username, tg_name = _profile_from_user(from_user)
         ctx = _build_context(
             db,
             chat_id=chat_id,
             telegram_user_id=telegram_user_id,
             mini_app_url=mini_app_url,
             settings=snap,
+            telegram_username=tg_username,
+            telegram_name=tg_name,
         )
         if not command:
+            if text.strip():
+                from app.services.telegram_bot_handlers.chat import handle_admin_card_reply
+
+                if await handle_admin_card_reply(ctx, message):
+                    return
             if text.strip() and await handle_menu_text(ctx, text):
                 return
             if text.strip() and await handle_settings_text(ctx, text):
                 return
             if text.strip() and await handle_unlock_codes_text(ctx, text):
                 return
+            if text.strip():
+                from app.services.telegram_bot_handlers.user_renew import try_handle_code_message
+
+                if await try_handle_code_message(
+                    db,
+                    ctx.bot_token,
+                    telegram_id=telegram_user_id,
+                    text=text,
+                ):
+                    return
+            # Режим переписки: текст уходит админу, вложения — подсказкой (чек через «Оплатить»).
+            from app.services.telegram_bot_handlers.chat import handle_chat_text
+
+            if await handle_chat_text(ctx, message):
+                return
+            if message.get("photo"):
+                from app.services.telegram_bot_handlers.access_requests import (
+                    handle_request_photo,
+                )
+
+                if await handle_request_photo(ctx, message):
+                    return
+            if message.get("document"):
+                from app.services.telegram_bot_handlers.access_requests import (
+                    handle_request_document,
+                )
+
+                if await handle_request_document(ctx, message):
+                    return
             if text.strip():
                 await handle_unknown_text(ctx)
             return
@@ -291,13 +383,20 @@ class TelegramBotService:
 
         if not data or not telegram_user_id or _is_shared_chat(chat):
             return
+        # Stage 2 privacy 6.9: заявки и админские колбэки — только из личного чата,
+        # когда chat.id == from.id (никогда не чужой/групповой id).
+        if chat.get("id") != from_user.get("id"):
+            return
 
+        tg_username, tg_name = _profile_from_user(from_user)
         ctx = _build_context(
             db,
             chat_id=chat_id,
             telegram_user_id=telegram_user_id,
             mini_app_url=mini_app_url,
             settings=snap,
+            telegram_username=tg_username,
+            telegram_name=tg_name,
         )
         if ctx.user is None and not (data == "help" or data.startswith("nav:help")):
             from app.services.telegram_api import send_message
@@ -306,7 +405,7 @@ class TelegramBotService:
             await send_message(ctx.bot_token, ctx.chat_id, unlinked_message())
             return
 
-        await _dispatch_callback(ctx, data, message_id=message_id)
+        await _dispatch_callback(ctx, data, message_id=message_id, callback_id=callback_id)
 
     async def _handle_inline_query(
         self,
@@ -321,12 +420,15 @@ class TelegramBotService:
         if not telegram_user_id:
             return
 
+        tg_username, tg_name = _profile_from_user(from_user)
         ctx = _build_context(
             db,
             chat_id=telegram_user_id,
             telegram_user_id=telegram_user_id,
             mini_app_url=mini_app_url,
             settings=settings,
+            telegram_username=tg_username,
+            telegram_name=tg_name,
         )
         await handle_inline_query(ctx, inline_query)
 
@@ -343,17 +445,37 @@ class TelegramBotService:
         if not telegram_user_id:
             return
 
+        tg_username, tg_name = _profile_from_user(from_user)
         ctx = _build_context(
             db,
             chat_id=telegram_user_id,
             telegram_user_id=telegram_user_id,
             mini_app_url=mini_app_url,
             settings=settings,
+            telegram_username=tg_username,
+            telegram_name=tg_name,
         )
         if ctx.user is None:
             return
 
         await handle_chosen_inline_result(ctx, chosen)
+
+    async def _handle_my_chat_member(self, bot_token: str, my_chat_member: dict[str, Any]) -> None:
+        """Leave groups/channels — configs must never be available outside private chats."""
+        chat = my_chat_member.get("chat") or {}
+        if not _is_shared_chat(chat):
+            return
+        new_status = str((my_chat_member.get("new_chat_member") or {}).get("status") or "")
+        if new_status in {"left", "kicked"}:
+            return
+        chat_id = chat.get("id")
+        if chat_id is None:
+            return
+        ok = await leave_chat(bot_token, chat_id)
+        if ok:
+            logger.info("Left non-private Telegram chat type=%s id=%s", chat.get("type"), chat_id)
+        else:
+            logger.warning("Failed to leave Telegram chat type=%s id=%s", chat.get("type"), chat_id)
 
 
 telegram_bot_service = TelegramBotService()

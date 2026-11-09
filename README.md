@@ -97,7 +97,7 @@ curl -fsSL https://raw.githubusercontent.com/shax0491/AdminPanelAZ_new/refs/head
 - [📖 Руководства пользователя](#-руководства-пользователя)
 - [🌐 Бесплатный адрес (DDNS)](#-бесплатный-адрес-для-панели-ddns)
 - [🔗 StatusOpenVPN на одном домене](#-statusopenvpn-на-одном-домене)
-- [⚙️ Production: VDS, Redis и профили](#️-production-vds-redis-и-профили)
+- [⚙️ Production: VDS, Redis и сценарии](#️-production-vds-redis-и-сценарии)
 - [🔐 Безопасность](#-безопасность)
 - [💻 Полезные команды](#-полезные-команды-на-сервере)
 - [📝 История изменений](#-история-изменений)
@@ -153,6 +153,8 @@ curl -fsSL https://raw.githubusercontent.com/shax0491/AdminPanelAZ_new/refs/head
 - AZ-WARP — точечная маршрутизация через Cloudflare WARP ([инструкция](docs/warper.md))
 - **OpenVPN Buffer Guard** — защита OpenVPN от шторма ENOBUFS: от уведомления до отключения клиента, перезапуска OpenVPN и временного бана (по умолчанию выкл.) ([инструкция](docs/antizapret-config.md#openvpn-buffer-guard-enobufs))
 - **DNS: ответ на AAAA** — NODATA вместо `::` для AntiZapret и полного VPN, чтобы клиенты не подключались к `[::]` ([инструкция](docs/antizapret-config.md#dns-ответ-на-aaaa))
+- **DNS-серверы** — выбор upstream DNS для AntiZapret и полного VPN прямо в `kresd.conf` с перезапуском резолверов ([инструкция](docs/antizapret-config.md#dns-серверы))
+- **OpenVPN: профили, логи и состояние установки** — `duplicate-cn` (несколько устройств с одним профилем), подробные логи, а также чтение MTU, DCO, патча антицензуры, включённых протоколов и таймера обновления ([инструкция](docs/antizapret-config.md#openvpn-профили-логи-и-состояние-установки))
 
 <p align="center">
   <img src="docs/assets/telegram-promo/08-routing-az-warp.png" alt="AZ-WARP — интеграция с github.com/Liafanx/AZ-WARP" width="900">
@@ -210,7 +212,7 @@ curl -fsSL https://raw.githubusercontent.com/shax0491/AdminPanelAZ_new/refs/head
 6. В разделе **Клиенты** нажмите **Синхронизировать** — [инструкция](docs/konfiguracii.md)
 7. **Подписка** — unlock-коды и **клиентский портал** (поддомен + «Настроить под текущую публикацию»)
 8. **Telegram** — раздел уже в меню; укажите bot token в UI — [инструкция](docs/Telegram.md)
-9. Для **HA** (два сервера на один домен): создайте группу синхронизации на **Узлах**, нажмите **Синхронизировать** (домен → Push full → verify) — [Node Sync](docs/NodeSync.md). После обновления панели обновите **node agent** на VPN-узлах (**Узлы** → «Обновить», агент перезапустится сам), чтобы в «Узлах» отображалась версия **1.13.0**
+9. Для **HA** (два сервера на один домен): создайте группу синхронизации на **Узлах**, нажмите **Синхронизировать** (домен → Push full → verify) — [Node Sync](docs/NodeSync.md). После обновления панели обновите **node agent** на VPN-узлах (**Узлы** → «Обновить», агент перезапустится сам), чтобы в «Узлах» отображалась версия **1.17.0**
 
 > [!NOTE]
 > **Авто-бэкап** после install включён (каждые **7** дней) — изменить в [Настройки → Резервные копии](docs/nastrojki/rezervnye-kopii.md).
@@ -293,11 +295,11 @@ sudo ./install.sh              # меню: переустановка или у�
 sudo ./install.sh --uninstall  # удалить только сервисы панели
 ```
 
-## ⚙️ Production: VDS, Redis и профили
+## ⚙️ Production: VDS, Redis и сценарии
 
-После установки: профиль **Full**, `UVICORN_WORKERS=1`. Профиль и модули меняются в **Настройки → Разделы панели** ([инструкция](docs/nastrojki/moduli.md)), затем `sudo systemctl restart adminpanelaz`.
+После установки: сценарий из мастера (`SCENARIO_PRESET=home` по умолчанию), `UVICORN_WORKERS=1`. Сценарий и модули меняются в **Настройки → Разделы панели** ([инструкция](docs/nastrojki/moduli.md)), затем `sudo systemctl restart adminpanelaz`.
 
-**Ориентир по RAM** (Full, панель + локальная нода): ~**411 MB** стек (ср. ~148 MB за 7 дней). Для одного VDS с VPN — **1–2 GB**; только панель на Minimal — **1 GB** + swap.
+**Ориентир по RAM** (панель + локальная нода): ~**411 MB** стек (ср. ~148 MB за 7 дней) в сценарии «Коммерческое». Для одного VDS с VPN — **1–2 GB**; только панель в сценарии «Только панель» — **1 GB** + swap.
 
 **Workers > 1:** в `backend/.env` задайте `UVICORN_WORKERS=N` и Redis (`AUTH_RATE_LIMIT_BACKEND=redis`, `API_RATE_LIMIT_BACKEND=redis`, `REDIS_URL=redis://127.0.0.1:6379/0`), затем перезапустите панель. См. [SECURITY.md](SECURITY.md).
 

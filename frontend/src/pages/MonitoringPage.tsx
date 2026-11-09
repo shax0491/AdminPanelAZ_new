@@ -23,6 +23,7 @@ import {
   getResourceHistory,
   openMonitoringStream,
   openvpnDisconnect,
+  openvpnDisconnectSession,
   restartService,
   type StreamHandle,
 } from '@/api/client'
@@ -31,8 +32,10 @@ import MonitoringCharts from '@/components/monitoring/MonitoringCharts'
 import { formatBytes, totalTraffic } from '@/lib/trafficFormat'
 import MonitoringConnectionsList, {
   buildMonitoringConnectionRows,
+  type DeviceDisconnectTarget,
 } from '@/components/monitoring/MonitoringConnectionsList'
 import MonitoringGeoSummary from '@/components/monitoring/MonitoringGeoSummary'
+import MonitoringUsersList from '@/components/monitoring/MonitoringUsersList'
 import NodeSummaryCard from '@/components/monitoring/NodeSummaryCard'
 import { awgTransferTotal, liveConnectionsDescription, nodeOnlineSummary, onlineMetricLabel } from '@/lib/awgMonitoring'
 import {
@@ -40,6 +43,7 @@ import {
   ResourceMetricInline,
 } from '@/components/monitoring/nodeSummaryMetrics'
 import PageSectionHeader from '@/components/shared/PageSectionHeader'
+import ViewModeToggle from '@/components/shared/ViewModeToggle'
 import { DOCS } from '@/lib/docsUrls'
 import { ConfirmDialogHost } from '@/components/shared/ConfirmDialog'
 import ResponsiveDataView from '@/components/shared/ResponsiveDataView'
@@ -92,6 +96,7 @@ import { useConfirmDialog } from '@/hooks/useConfirmDialog'
 import { useConnectionRates } from '@/hooks/useConnectionRates'
 import { isDocumentHidden } from '@/hooks/useIntervalWhenVisible'
 import { formatDateTime } from '@/lib/datetime'
+import { groupConnectionsByOwner } from '@/lib/connectionUserGroups'
 import { cn } from '@/lib/utils'
 import { isWireGuardOnline } from '@/lib/wireguardStatus'
 import type {
@@ -109,6 +114,7 @@ const INCIDENTS_REFRESH_INTERVAL_MS = 60_000
 const STORAGE_PREFIX = 'noc-monitoring'
 
 type MonitoringScope = 'node' | 'all'
+type ConnectionsViewMode = 'configs' | 'users'
 type ProtocolFilter = 'all' | 'openvpn' | 'wireguard' | 'amneziawg2' | 'amneziawg3'
 const PROTOCOL_FILTER_VALUES = ['all', 'openvpn', 'wireguard', 'amneziawg2', 'amneziawg3'] as const
 
@@ -226,6 +232,9 @@ export default function MonitoringPage() {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [countdown, setCountdown] = useState(REFRESH_INTERVAL)
   const [search, setSearch] = useState('')
+  const [connectionsView, setConnectionsView] = useState<ConnectionsViewMode>(
+    () => readStored('connectionsView', ['configs', 'users'] as const) ?? 'configs',
+  )
   const [onlineOnly, setOnlineOnly] = useState(() => readStored('onlineOnly', ['true', 'false'] as const) !== 'false')
   const [protocolFilter, setProtocolFilter] = useState<ProtocolFilter>(
     () => readStored('protocol', PROTOCOL_FILTER_VALUES) ?? 'all',
@@ -504,6 +513,10 @@ export default function MonitoringPage() {
 
   const searchQuery = search.trim().toLowerCase()
 
+  useEffect(() => {
+    writeStored('connectionsView', connectionsView)
+  }, [connectionsView])
+
   const matchesWgPeerSearch = useCallback(
     (p: (typeof wireguardPeers)[number]) => {
       if (!searchQuery) return true
@@ -514,6 +527,7 @@ export default function MonitoringPage() {
         name.includes(searchQuery) ||
         address.includes(searchQuery) ||
         geo.includes(searchQuery) ||
+        (p.owner_username ?? '').toLowerCase().includes(searchQuery) ||
         (p.endpoint ?? '').toLowerCase().includes(searchQuery) ||
         (p.allowed_ips ?? '').toLowerCase().includes(searchQuery) ||
         p.interface.toLowerCase().includes(searchQuery) ||
@@ -534,6 +548,7 @@ export default function MonitoringPage() {
         c.common_name.toLowerCase().includes(searchQuery) ||
         address.includes(searchQuery) ||
         geo.includes(searchQuery) ||
+        (c.owner_username ?? '').toLowerCase().includes(searchQuery) ||
         c.virtual_address.toLowerCase().includes(searchQuery) ||
         (c.node_name || '').toLowerCase().includes(searchQuery) ||
         (c.ha?.shared_domain || '').toLowerCase().includes(searchQuery)
@@ -655,6 +670,15 @@ export default function MonitoringPage() {
       })
   }, [baseConnectionRows, rates, filterNode, filterCity, filterIsp, minDuration])
 
+  const connectionUserGroups = useMemo(
+    () => (connectionsView === 'users' ? groupConnectionsByOwner(connectionRows) : []),
+    [connectionsView, connectionRows],
+  )
+  const onlineUserGroupsCount = useMemo(
+    () => connectionUserGroups.filter((group) => group.onlineCount > 0).length,
+    [connectionUserGroups],
+  )
+
   const nodeFilterOptions = useMemo(() => {
     const names = new Set<string>()
     for (const row of baseConnectionRows) {
@@ -700,6 +724,34 @@ export default function MonitoringPage() {
           await load({ manual: false })
         } catch (err) {
           notifyError(err instanceof ApiError ? err.message : 'Ошибка отключения')
+        }
+      },
+    })
+  }
+
+  const handleDisconnectDevice = (target: DeviceDisconnectTarget, blockMinutes?: number) => {
+    const blocking = blockMinutes != null
+    confirm({
+      title: blocking ? `Отключить и заблокировать на ${blockMinutes} мин?` : 'Отключить одно устройство?',
+      description: blocking
+        ? `Сессия Client ID ${target.clientId} (${target.profile}) будет отключена, а клиент «${target.clientName}» заблокирован на ${blockMinutes} мин — все его устройства не смогут подключиться до истечения срока.`
+        : `Сессия Client ID ${target.clientId} (${target.profile}) будет отключена. Остальные устройства клиента останутся на связи.`,
+      confirmLabel: blocking ? 'Отключить и заблокировать' : 'Отключить устройство',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await openvpnDisconnectSession(target.profile, target.clientId, target.nodeId, {
+            clientName: target.clientName,
+            blockMinutes,
+          })
+          success(
+            blocking
+              ? `Устройство ${target.clientId} отключено, «${target.clientName}» заблокирован на ${blockMinutes} мин`
+              : `Устройство ${target.clientId} отключено`,
+          )
+          await load({ manual: false })
+        } catch (err) {
+          notifyError(err instanceof ApiError ? err.message : 'Ошибка отключения устройства')
         }
       },
     })
@@ -808,6 +860,7 @@ export default function MonitoringPage() {
               refreshIntervalSec={REFRESH_INTERVAL}
               geoipMode={data?.geoip_mode}
               dataSource={data?.openvpn_data_source}
+              globalStats={data?.openvpn_global_stats}
               servedFromCache={data?.served_from_cache}
             />
           </div>
@@ -1326,6 +1379,15 @@ export default function MonitoringPage() {
                       </CardDescription>
                     </div>
                     <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto lg:justify-end">
+                      <ViewModeToggle
+                        value={connectionsView}
+                        onChange={setConnectionsView}
+                        ariaLabel="Группировка VPN-подключений"
+                        options={[
+                          { value: 'configs', label: 'Конфиги', icon: Server },
+                          { value: 'users', label: 'Пользователи', icon: Users },
+                        ]}
+                      />
                       <div className="relative w-full sm:w-56">
                         <Search
                           size={14}
@@ -1334,7 +1396,7 @@ export default function MonitoringPage() {
                         <Input
                           value={search}
                           onChange={(e) => setSearch(e.target.value)}
-                          placeholder="Поиск по имени, IP, городу..."
+                          placeholder="Поиск по имени, пользователю, IP, городу..."
                           className="h-9 pl-9 text-xs"
                         />
                       </div>
@@ -1404,6 +1466,13 @@ export default function MonitoringPage() {
                         }
                         className="py-8"
                       />
+                    ) : connectionsView === 'users' ? (
+                      <MonitoringUsersList
+                        rows={connectionRows}
+                        showNodeColumn={showNodeColumn}
+                        onDisconnectOpenVpn={handleDisconnectOpenVpn}
+                        onDisconnectDevice={handleDisconnectDevice}
+                      />
                     ) : (
                       <MonitoringConnectionsList
                         rows={connectionRows}
@@ -1415,6 +1484,7 @@ export default function MonitoringPage() {
                           setSortDir(dir)
                         }}
                         onDisconnectOpenVpn={handleDisconnectOpenVpn}
+                        onDisconnectDevice={handleDisconnectDevice}
                       />
                     )}
                   </CardContent>

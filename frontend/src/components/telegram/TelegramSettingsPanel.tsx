@@ -853,6 +853,33 @@ export default function TelegramSettingsPanel({ tg, activeTab, onNavigate }: Tel
 
             <TelegramBotCommandsGuide />
 
+            <ToggleRow
+              id="acceptAccessRequests"
+              label="Принимать заявки на доступ из Telegram"
+              description="Новые пользователи могут присылать заявки на доступ боту в личные сообщения. Выкл. — приём закрыт по умолчанию."
+              checked={tg.acceptAccessRequests}
+              disabled={tg.savingAccessRequests || !tg.settings?.bot_token_set}
+              onCheckedChange={(checked) => void tg.handleSaveAcceptRequests(checked)}
+            />
+            <div className="flex items-center gap-2">
+              <Label htmlFor="pendingRequestCap">Лимит ожидающих заявок</Label>
+              <Input
+                id="pendingRequestCap"
+                type="number"
+                min={0}
+                max={10000}
+                value={String(tg.pendingRequestCap)}
+                onChange={(e) => {
+                  const v = Number.parseInt(e.target.value, 10)
+                  if (Number.isFinite(v) && v >= 0) tg.setPendingRequestCap(v)
+                }}
+                onBlur={() => void tg.handleSavePendingRequestCap(tg.pendingRequestCap)}
+                className="w-24"
+                disabled={tg.savingAccessRequests || !tg.acceptAccessRequests}
+              />
+              <p className="text-xs text-muted-foreground">Максимум pending-заявок новых пользователей (0 = без лимита).</p>
+            </div>
+
             <TelegramLinkedAccountsPanel
               accounts={tg.linkedAccounts}
               unlinkingUserId={tg.unlinkingUserId}
@@ -918,10 +945,10 @@ export default function TelegramSettingsPanel({ tg, activeTab, onNavigate }: Tel
               <div>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Bell size={18} />
-                  Уведомления
+                  Telegram
                 </CardTitle>
                 <CardDescription className="mt-1.5">
-                  Получатели сообщений и бэкапов, типы событий и NOC-сводки
+                  Кому уходят сообщения бота: получатели, типы событий и NOC-сводки
                 </CardDescription>
               </div>
               {tg.notifyEnabled && (

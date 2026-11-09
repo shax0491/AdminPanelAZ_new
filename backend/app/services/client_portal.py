@@ -31,7 +31,7 @@ from app.models import (
     VpnType,
     WgAccessPolicy,
 )
-from app.services.config_access import can_mutate_config
+from app.services.config_access import is_config_owner
 from app.services.node_adapter import node_request_timeout_cap
 from app.services.node_manager import get_active_node, get_adapter_for_node
 from app.services.node_sync.groups import find_sync_group_containing_node
@@ -533,7 +533,7 @@ def _creator_still_manages(db: Session, creator: User, row: ClientPortalToken) -
         )
         .all()
     )
-    return any(can_mutate_config(creator, config) for config in configs)
+    return any(is_config_owner(creator, config) for config in configs)
 
 
 def revoke_client_portal_links(db: Session, *, node_id: int, client_name: str) -> int:
@@ -781,6 +781,7 @@ def _list_files_for_configs(db: Session, configs: list[VpnConfig]) -> list[dict]
                 protocol=protocol,
                 variant=f.get("variant", ""),
                 path=path,
+                kind=f.get("kind", ""),
             ):
                 continue
             filename = (
@@ -1117,6 +1118,17 @@ def _portal_node_info(db: Session, node_ids: list[int]) -> dict[int, PortalNodeI
     return {int(row.id): PortalNodeInfo(portal_node_label(row), row.status == NodeStatus.offline) for row in rows}
 
 
+def portal_banner_payload(user: User) -> dict | None:
+    """Баннер портала для пользователя (Stage 4) — текст и время показа."""
+    text = (user.portal_banner_text or "").strip()
+    if not text:
+        return None
+    return {
+        "text": text,
+        "created_at": user.portal_banner_at.isoformat() if user.portal_banner_at else None,
+    }
+
+
 def build_user_portal_payload(db: Session, token_row: UserPortalToken) -> dict:
     base = resolve_portal_base_url(db)
     if not base:
@@ -1167,10 +1179,14 @@ def build_user_portal_payload(db: Session, token_row: UserPortalToken) -> dict:
         for node_id, entries in clients_by_node.items()
     ]
     nodes.sort(key=lambda node: (node["label"].casefold(), node["node_id"]))
+    from app.services.user_closed_access import closed_access_payload
+
     return {
         "kind": "user",
         "brand_title": _portal_brand_title(db),
         "unlock_codes_enabled": get_feature_service().is_enabled("unlock_codes"),
+        "closed_access": closed_access_payload(db, user),
+        "portal_banner": portal_banner_payload(user),
         "nodes": nodes,
     }
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -61,6 +62,21 @@ ALWAYS_ALLOWED_PREFIXES = (
 
 WG_ACCESS_PREFIX = "/api/client-access/wireguard"
 CONFIGS_QR_PATH_MARKERS = ("/download", "/qr", "/one-time-link")
+
+# §8.1: user_provisioning has no broad api_prefixes (user_management owns /api/users).
+# Provisioning routes are gated by explicit path checks only:
+#   POST /api/users/provisioned, /api/users/{id}/provisioning*, /api/users/{id}/configs/*
+#   POST /api/users/{id}/suspend, /api/users/{id}/resume, /api/users/{id}/extend,
+#   POST /api/users/{id}/grace-cleanup, /api/users/{id}/traffic-counter/reset (Stage 3)
+#   POST /api/users/bulk/nodes* (Stage 4 — массовые операции с серверами)
+# GET /api/users, PATCH /api/users/{id} and /api/tg-mini/me/* are NOT gated here.
+_USER_PROVISIONING_PATH_RE = re.compile(r"^/api/users/provisioned(?:/|$)")
+# Stage 4: массовые операции с серверами (/api/users/bulk/nodes*).
+_USER_PROVISIONING_BULK_RE = re.compile(r"^/api/users/bulk/nodes(?:/|$)")
+_USER_PROVISIONING_ITEM_RE = re.compile(
+    r"^/api/users/\d+/(?:provisioning|suspend|resume|extend|grace-cleanup|traffic-counter)(?:/|$)"
+)
+_USER_CONFIGS_ITEM_RE = re.compile(r"^/api/users/\d+/configs(?:/|$)")
 
 PATH_TO_MODULES: dict[str, tuple[str, ...]] = {}
 PREFIX_TO_MODULES: dict[str, tuple[str, ...]] = {}
@@ -125,8 +141,20 @@ def _wg_access_modules(path: str) -> tuple[str, ...] | None:
     return ("wireguard", "amneziawg")
 
 
+def _user_provisioning_modules(path: str) -> tuple[str, ...] | None:
+    if (
+        _USER_PROVISIONING_PATH_RE.match(path)
+        or _USER_PROVISIONING_ITEM_RE.match(path)
+        or _USER_CONFIGS_ITEM_RE.match(path)
+        or _USER_PROVISIONING_BULK_RE.match(path)
+    ):
+        return ("user_provisioning",)
+    return None
+
+
 def _modules_for_path(path: str) -> tuple[str, ...] | None:
     for resolver in (
+        _user_provisioning_modules,
         _public_qr_modules,
         _security_public_download_modules,
         _openvpn_group_modules,

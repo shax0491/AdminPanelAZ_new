@@ -1,3 +1,4 @@
+import { nodeNameWithHost } from '@/lib/nodeLabels'
 import type { Awg2HealthResponse, Awg2MonitoringResponse, Awg3HealthResponse, Node } from '@/types'
 
 export function awg2StatusMeta(health: Awg2HealthResponse | null) {
@@ -41,10 +42,5 @@ export function formatAwg2IfacePeers(
 }
 
 export function formatAwg2NodeLabel(health: Awg2HealthResponse | null, activeNode: Node | null): string {
-  const name = health?.node_name ?? activeNode?.name
-  const host = health?.node_host ?? activeNode?.host
-  if (name && host) return `${name} (${host})`
-  if (name) return name
-  if (host) return host
-  return 'активном узле панели'
+  return nodeNameWithHost(health, activeNode)
 }

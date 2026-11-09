@@ -7,12 +7,13 @@ import {
 } from './sidebarNav'
 
 describe('SIDEBAR_NAV_GROUPS IA', () => {
-  it('has four role groups in order', () => {
+  it('has role groups in order', () => {
     expect(SIDEBAR_NAV_GROUPS.map((g) => g.label)).toEqual([
-      'Клиенты',
-      'Сеть',
+      'Клиенты и доступ',
+      'VPN-сеть',
+      'Протоколы и обвязки',
       'Наблюдение',
-      'Панель',
+      'Система',
     ])
   })
 
@@ -21,22 +22,20 @@ describe('SIDEBAR_NAV_GROUPS IA', () => {
     expect(home).toMatchObject({ to: '/', label: 'Клиенты', end: true })
   })
 
-  it('places settings under Панель', () => {
-    const panel = SIDEBAR_NAV_GROUPS.find((g) => g.label === 'Панель')
-    expect(panel?.items.map((i) => i.to)).toEqual([
-      '/nodes',
-      '/settings',
-      '/telegram',
-      '/edit-files',
-    ])
+  it('places settings under Система', () => {
+    const panel = SIDEBAR_NAV_GROUPS.find((g) => g.label === 'Система')
+    expect(panel?.items.map((i) => i.to)).toEqual(['/settings', '/telegram', '/edit-files'])
   })
 
-  it('keeps network tools under Сеть', () => {
-    const net = SIDEBAR_NAV_GROUPS.find((g) => g.label === 'Сеть')
-    expect(net?.items.map((i) => i.to)).toEqual([
-      '/routing',
+  it('keeps node/proxy/routing under VPN-сеть', () => {
+    const net = SIDEBAR_NAV_GROUPS.find((g) => g.label === 'VPN-сеть')
+    expect(net?.items.map((i) => i.to)).toEqual(['/nodes', '/proxy', '/routing'])
+  })
+
+  it('keeps protocol tools (incl. fork MTProxy/failover) under Протоколы и обвязки', () => {
+    const tools = SIDEBAR_NAV_GROUPS.find((g) => g.label === 'Протоколы и обвязки')
+    expect(tools?.items.map((i) => i.to)).toEqual([
       '/antizapret',
-      '/proxy',
       '/warper',
       '/warp-geo',
       '/mtproxy',
@@ -64,8 +63,8 @@ describe('visibility', () => {
 
   it('drops empty groups when features off', () => {
     const groups = getVisibleSidebarNavGroups('admin', () => false)
-    // home has featureKey null → still visible; subscription gated off
-    expect(groups.some((g) => g.label === 'Клиенты')).toBe(true)
-    expect(groups.find((g) => g.label === 'Клиенты')?.items.map((i) => i.to)).toEqual(['/'])
+    // только пункты без featureKey остаются: /settings
+    expect(groups.map((g) => g.label)).toEqual(['Система'])
+    expect(groups[0].items.map((i) => i.to)).toEqual(['/settings'])
   })
 })

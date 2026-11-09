@@ -1,4 +1,4 @@
-import { Bell, Bot, LogIn, Send, Smartphone } from 'lucide-react'
+import { Bot, LogIn, Send, Smartphone } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
@@ -63,28 +63,26 @@ export default function TelegramOverviewCards({ tg, loading = false, onNavigate 
       icon: Bot,
       value: !tg.settings?.bot_token_set
         ? '—'
+        : !tg.interactiveEnabled
+          ? 'Выключено'
+          : !tg.commandsConnected
+            ? 'Нужно подключить'
+            : tg.relayError
+              ? 'Узел не отвечает'
+              : tg.webhookReady
+                ? 'Работает'
+                : 'Через узел',
+      sub: tg.interactiveEnabled
+        ? tg.relayEnabled
+          ? '/start, /status · через узел'
+          : '/start, /status и др.'
+        : 'Ответы бота в чате',
+      accent: tg.commandsReady
+        ? 'border-l-emerald-500'
         : tg.interactiveEnabled
-          ? tg.webhookReady
-            ? 'Работает'
-            : 'Нужно подключить'
-          : 'Выключено',
-      sub: tg.interactiveEnabled ? '/start, /status и др.' : 'Ответы бота в чате',
-      accent: tg.webhookReady ? 'border-l-emerald-500' : tg.interactiveEnabled ? 'border-l-amber-500' : 'border-l-muted-foreground/30',
-      tone: tg.webhookReady ? 'text-emerald-600 dark:text-emerald-400' : undefined,
-    },
-    {
-      key: 'notify',
-      title: 'Уведомления',
-      icon: Bell,
-      value: tg.notifyEnabled
-        ? tg.notifyEventsEnabled > 0
-          ? `${tg.notifyEventsEnabled} включено`
-          : 'Включены'
-        : 'Выключены',
-      sub: tg.notifyEnabled
-        ? `из ${tg.adminNotify?.events.length ?? 0} типов событий`
-        : 'Сообщения от бота в личку',
-      accent: tg.notifyEnabled && tg.notifyEventsEnabled > 0 ? 'border-l-sky-500' : 'border-l-muted-foreground/30',
+          ? 'border-l-amber-500'
+          : 'border-l-muted-foreground/30',
+      tone: tg.commandsReady ? 'text-emerald-600 dark:text-emerald-400' : undefined,
     },
   ]
 

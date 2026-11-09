@@ -14,6 +14,11 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import User, UserRole
+from app.services.admin_panel_notifications import (
+    bell_title,
+    humanize_bell_message,
+    write_admin_panel_notification,
+)
 from app.services.app_setting_store import _get_setting
 from app.services.admin_notify_settings_text import (
     parse_mini_details_kv,
@@ -32,6 +37,19 @@ from app.services.traffic_limit import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Действия админа в панели: автору они не приходят как новые — ни в колокол, ни в Telegram.
+# Ошибки, входы, напоминания и результаты фоновых задач сюда не входят: их автору видно.
+SELF_ACTION_EVENTS = frozenset(
+    {
+        "config_create",
+        "config_delete",
+        "user_create",
+        "user_delete",
+        "client_ban",
+        "settings_change",
+    }
+)
 
 TG_NOTIFY_EVENT_LABELS: list[tuple[str, str]] = [
     ("login_success", "Успешный вход"),
@@ -61,15 +79,28 @@ TG_NOTIFY_EVENT_LABELS: list[tuple[str, str]] = [
     ("noc_report", "NOC: ежедневная/еженедельная сводка"),
     ("alert_rule", "Alert rule: срабатывание порога"),
     ("openvpn_buffer_guard_triggered", "OpenVPN Buffer Guard"),
+    ("bulk_user_nodes", "Массовая операция с серверами"),
+    ("access_request", "Заявки на доступ"),
+    ("user_message", "Сообщения в чат"),
+    ("unlock_redeem", "Активация unlock-ключа"),
 ]
 
 TG_NOTIFY_EVENT_GROUPS: list[tuple[str, str, str, tuple[str, ...]]] = [
     ("login", "Входы", "🔐", ("login_success", "login_failed", "tg_unlinked")),
+    ("requests", "Заявки и сообщения", "📨", ("access_request", "user_message", "unlock_redeem")),
     (
         "clients",
         "Клиенты и пользователи",
         "👥",
-        ("config_create", "config_delete", "user_create", "user_delete", "client_ban", "traffic_limit"),
+        (
+            "config_create",
+            "config_delete",
+            "user_create",
+            "user_delete",
+            "client_ban",
+            "traffic_limit",
+            "bulk_user_nodes",
+        ),
     ),
     (
         "reminders",
@@ -544,7 +575,38 @@ class AdminNotifyService:
         node_name: str | None = None,
         user_agent: str | None = None,
         login_via: str | None = None,
+        read_for_author: bool | None = None,
     ) -> None:
+        # Своё действие автору не показываем новым. По умолчанию — по списку событий,
+        # результат фоновой задачи передаёт флаг сам: успех — да, с ошибками — нет.
+        author_action = (
+            event_type in SELF_ACTION_EVENTS if read_for_author is None else read_for_author
+        )
+        # Bell first — must run even when Telegram is off; never blocks Telegram delivery.
+        try:
+            context = " · ".join(
+                part
+                for part in (
+                    f"Кто: {actor_username}" if actor_username else "",
+                    f"Объект: {target_name}" if target_name else "",
+                    f"Узел: {node_name}" if node_name else "",
+                )
+                if part
+            )
+            write_admin_panel_notification(
+                db,
+                event_type=event_type,
+                title=bell_title(event_type)[:200],
+                message="\n".join(
+                    part for part in (context, humanize_bell_message(details)) if part
+                )[:2000],
+                level="error" if "fail" in event_type or event_type.endswith("_failed") else "info",
+                action_payload={"node_id": node_id} if node_id is not None else None,
+                read_for_username=actor_username if author_action else None,
+            )
+        except Exception as exc:
+            self.logger.warning("bell notify error: %s", exc)
+
         try:
             if not get_feature_service().is_enabled("telegram"):
                 return
@@ -568,6 +630,9 @@ class AdminNotifyService:
                 notify_users,
                 lambda key, default="": _get_setting(db, key, default),
             )
+            if author_action and actor_username:
+                # Своё действие не дублируем автору в личку; остальным админам — по-прежнему.
+                notify_users = [u for u in notify_users if u.username != actor_username]
             if not notify_users:
                 return
 
@@ -764,6 +829,7 @@ class AdminNotifyService:
         node_id: int | None = None,
         node_name: str | None = None,
         client_timezone: str | None = None,
+        read_for_author: bool | None = None,
     ) -> None:
         self.send(
             db,
@@ -776,6 +842,7 @@ class AdminNotifyService:
             node_id=node_id,
             node_name=node_name,
             client_timezone=client_timezone,
+            read_for_author=read_for_author,
         )
 
     def send_traffic_limit_block(
@@ -1070,6 +1137,18 @@ class AdminNotifyService:
                 detail_lines=detail_lines,
             )
 
+        if event_type == "unlock_redeem":
+            detail_lines = [
+                _line_code("🎟", "Ключ", target_name),
+                _line_text("📅", "Продление", target_type or "—"),
+            ]
+            return _format_notify_card(
+                "🎟 <b>Абонент активировал ключ</b>",
+                when,
+                actor_line=actor_user,
+                detail_lines=detail_lines,
+            )
+
         if event_type == "config_create":
             detail_lines = _client_detail_lines(target_type, target_name)
             _append_node_detail(detail_lines, node_id=node_id, node_name=node_name)
@@ -1243,6 +1322,19 @@ class AdminNotifyService:
             return _format_notify_card(
                 "🧱 <b>OpenVPN Buffer Guard</b>",
                 when,
+                detail_lines=detail_lines,
+            )
+
+        if event_type == "bulk_user_nodes":
+            detail_lines = []
+            if target_name:
+                detail_lines.append(_line_text("🗄️", "Операция", target_name))
+            if details:
+                detail_lines.append(_line_text("📋", "Детали", details))
+            return _format_notify_card(
+                "📦 <b>Массовая операция с серверами</b>",
+                when,
+                actor_line=_fmt_actor(actor_username, as_admin=True) if actor_username else None,
                 detail_lines=detail_lines,
             )
 

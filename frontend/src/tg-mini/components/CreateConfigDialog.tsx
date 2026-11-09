@@ -20,6 +20,7 @@ import {
   tgOpenvpnSetTrafficLimit,
   tgWgSetTrafficLimit,
 } from '@/tg-mini/api'
+import { endOfDayIso } from '@/lib/datetime'
 import { cn } from '@/lib/utils'
 import type { SelfServiceQuota, User, VpnType } from '@/types'
 
@@ -142,19 +143,11 @@ export default function CreateConfigDialog({
   }
 
   const validateClientName = (trimmedName: string): string | null => {
-    if (!trimmedName) return 'Укажите имя клиента'
+    if (!trimmedName) return 'Укажите имя конфига'
     if (!/^[a-zA-Z0-9_-]{1,32}$/.test(trimmedName)) {
       return 'Имя: латиница, цифры, _ и -, до 32 символов'
     }
     return null
-  }
-
-  const dateInputToIso = (value: string) => {
-    if (!value) return null
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
-    if (!match) return null
-    const next = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 23, 59, 59, 999)
-    return next.toISOString()
   }
 
   const applyAccessUntilAfterCreate = async (
@@ -166,7 +159,7 @@ export default function CreateConfigDialog({
     if (protocol !== 'openvpn' && protocol !== 'wireguard' && protocol !== 'amneziawg2') {
       return 'дата доступа не применена для этого протокола'
     }
-    const iso = dateInputToIso(dateValue)
+    const iso = endOfDayIso(dateValue)
     if (!iso) return 'некорректная дата доступа'
     try {
       await setTgClientAccessUntil(protocol, name, iso)
@@ -205,6 +198,7 @@ export default function CreateConfigDialog({
     }
     const parsedCertDays = Number(certDays)
     if (
+      isAdmin &&
       selectedProtocols.includes('openvpn') &&
       (!Number.isFinite(parsedCertDays) || parsedCertDays < 1 || parsedCertDays > 3650)
     ) {
@@ -238,7 +232,7 @@ export default function CreateConfigDialog({
           await createTgPanelConfig({
             client_name: trimmedName,
             vpn_type: vpnType,
-            cert_expire_days: vpnType === 'openvpn' ? parsedCertDays : undefined,
+            cert_expire_days: isAdmin && vpnType === 'openvpn' ? parsedCertDays : undefined,
             description: description.trim() || undefined,
             owner_id: isAdmin && ownerId ? ownerId : undefined,
           })
@@ -303,7 +297,7 @@ export default function CreateConfigDialog({
 
         <form onSubmit={(e) => void handleSubmit(e)} className="tg-mini-config-sheet-form">
           <DialogHeader className="shrink-0 space-y-2 px-4 pb-3 pt-2 text-left">
-            <DialogTitle className="text-base font-semibold">Новый профиль</DialogTitle>
+            <DialogTitle className="text-base font-semibold">Новый конфиг</DialogTitle>
             <DialogDescription className="text-xs leading-relaxed">
               Одно имя — несколько конфигураций на активном узле.
             </DialogDescription>
@@ -318,7 +312,7 @@ export default function CreateConfigDialog({
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="tg-mini-client-name">Имя профиля</Label>
+              <Label htmlFor="tg-mini-client-name">Имя конфига</Label>
               <Input
                 id="tg-mini-client-name"
                 value={clientName}
@@ -359,7 +353,7 @@ export default function CreateConfigDialog({
               </div>
             </div>
 
-            {selectedProtocols.includes('openvpn') && (
+            {isAdmin && selectedProtocols.includes('openvpn') && (
               <div className="space-y-2">
                 <Label htmlFor="tg-mini-cert-days">Срок сертификата OpenVPN (дней)</Label>
                 <Input
@@ -473,7 +467,7 @@ export default function CreateConfigDialog({
                 value={ownerId}
                 onChange={setOwnerId}
                 disabled={busy || quotaReached}
-                description="Владелец увидит все конфигурации профиля"
+                description="Владелец увидит все конфиги"
               />
             )}
 
