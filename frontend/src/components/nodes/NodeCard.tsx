@@ -26,6 +26,7 @@ export type NodeActionHandlers = {
   onTransportChange: (transport: NodeTransportId) => void
   onEdit: () => void
   onDelete: () => void
+  onAssignToUsers?: () => void
 }
 
 function statusDotClass(node: Node, isActive: boolean) {
@@ -153,6 +154,7 @@ function NodeCardBody({
         healthLoading={actions.healthLoading}
         activateLoading={actions.activateLoading}
         onActivate={actions.onActivate}
+        onAssignToUsers={actions.onAssignToUsers}
         onHealth={actions.onHealth}
         onUpdate={actions.onUpdate}
         onRestart={actions.onRestart}

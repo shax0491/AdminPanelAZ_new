@@ -961,6 +961,7 @@ export default function NodesPage() {
     onTransportChange: (transport) => handleTransportChange(n, transport),
     onEdit: () => openEdit(n),
     onDelete: () => handleDelete(n),
+    onAssignToUsers: canAssignToUsers(n) ? () => void navigate(`/users?bulkAddNode=${n.id}`) : undefined,
   })
 
   // Only a CO-LOCATED proxy (auto-installed alongside node_agent on the same

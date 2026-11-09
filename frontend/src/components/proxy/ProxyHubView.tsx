@@ -167,11 +167,6 @@ export default function ProxyHubView() {
     }
   }, [refreshNodes])
 
-  const activeNodeLabel = useMemo(() => {
-    if (!activeNode) return null
-    return activeNode.name
-  }, [activeNode])
-
   const remotesNode = useMemo(
     () => (remotesNodeId == null ? null : vpnNodes.find((n) => n.id === remotesNodeId) ?? null),
     [remotesNodeId, vpnNodes],
@@ -219,25 +214,65 @@ export default function ProxyHubView() {
 
       <section className="space-y-3">
         <div className="space-y-1">
-          <h3 className="text-sm font-semibold tracking-tight">Адреса подключения (активный VPN)</h3>
+          <h3 className="text-sm font-semibold tracking-tight">Адреса подключения (VPN)</h3>
           <p className="text-xs text-muted-foreground">
-            Список remote OpenVPN для{' '}
-            {activeNodeLabel ? (
-              <span className="font-medium text-foreground">{activeNodeLabel}</span>
-            ) : (
-              'активного узла'
-            )}
-            . Полный блок setup — в{' '}
+            Список remote OpenVPN хранится отдельно на каждом VPN-узле. Полный блок setup — в{' '}
             <Link
               to={`/antizapret#${ANTIZAPRET_REMOTES_HASH}`}
               className="font-medium text-primary underline-offset-4 hover:underline"
             >
               Конфиг AntiZapret
-            </Link>
-            .
+            </Link>{' '}
+            (там тоже для активного узла).
           </p>
         </div>
-        <RemoteHostsCard nodeId={activeNode?.id ?? null} variant="card" />
+
+        {vpnNodes.length === 0 ? (
+          <SettingsAlert variant="warning" title="Нет VPN-узлов">
+            Добавьте VPN-узел на странице Узлы — без него список remote задать нельзя.
+          </SettingsAlert>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid max-w-lg gap-1.5">
+              <Label htmlFor="proxy-remotes-vpn">VPN-узел для списка remote</Label>
+              <Select
+                value={remotesNodeId != null ? String(remotesNodeId) : undefined}
+                onValueChange={(value) => setRemotesNodeId(Number(value))}
+              >
+                <SelectTrigger id="proxy-remotes-vpn">
+                  <SelectValue placeholder="Выберите VPN-узел" />
+                </SelectTrigger>
+                <SelectContent>
+                  {vpnNodes.map((node) => (
+                    <SelectItem key={node.id} value={String(node.id)}>
+                      {vpnSelectLabel(node, syncGroups)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {remotesNodeLabel && (
+                <p className="text-xs text-muted-foreground">
+                  Редактируется:{' '}
+                  <span className="font-medium text-foreground">{remotesNodeLabel}</span>
+                  {proxiesLinkedToRemotes.length > 0
+                    ? ` · прокси: ${proxiesLinkedToRemotes.map((p) => p.name).join(', ')}`
+                    : ' · прокси не привязан (можно оставить только зарубежные адреса)'}
+                </p>
+              )}
+            </div>
+            <RemoteHostsCard
+              key={remotesNodeId ?? 'none'}
+              nodeId={remotesNodeId}
+              variant="card"
+              missingNodeMessage="Выберите VPN-узел в списке выше."
+              cardDescription={
+                remotesNodeLabel
+                  ? `Список remote OpenVPN для «${remotesNode?.name ?? ''}». Первый адрес — слот входа (RU-прокси, если нужен). Нельзя совпадать с доменом панели.`
+                  : undefined
+              }
+            />
+          </div>
+        )}
       </section>
 
       <section className="space-y-3">

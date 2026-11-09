@@ -1373,7 +1373,9 @@ export default function MonitoringPage() {
                       <CardDescription>
                         {totalConnections === 0
                           ? 'Нет активных подключений'
-                          : onlineOnly
+                          : connectionsView === 'users'
+                            ? `${connectionUserGroups.length} пользователей · ${onlineUserGroupsCount} онлайн · ${visibleCount} подключений`
+                            : onlineOnly
                             ? `${visibleCount} онлайн${filteredTotalCount > visibleCount ? ` из ${filteredTotalCount}` : ''}`
                             : `${visibleCount} из ${openvpnClients.length + wireguardPeers.length + amneziawg2Peers.length + amneziawg3Peers.length} записей`}
                       </CardDescription>
