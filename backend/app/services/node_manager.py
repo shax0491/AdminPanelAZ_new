@@ -429,6 +429,7 @@ def purge_node_related(db: Session, node_id: int) -> None:
         ClientTemplate,
         AlertRule,
         FailoverPoolMember,
+        UserNodeAssignment,
     ):
         db.query(model).filter(model.node_id == node_id).delete(synchronize_session=False)
 

@@ -220,3 +220,23 @@ def test_to_response_nulls_owner_id_for_grantee(monkeypatch):
     own = configs_router._to_response(config, db, viewer=SimpleNamespace(id=1, role=UserRole.user))
     assert own.owner_id == 1
     assert own.owner_username == "alice"
+
+
+def test_nginx_privacy_log_subprocess_gets_root_dir_and_env_file(monkeypatch):
+    """nginx_common_init требует ROOT_DIR и ENV_FILE; без ROOT_DIR шаг падал на каждом старте."""
+    import app.config as config
+
+    monkeypatch.setattr(
+        config, "get_settings", lambda: SimpleNamespace(domain="panel.example.test", behind_nginx=True)
+    )
+    captured: dict = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["env"] = kwargs["env"]
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(privacy_upgrade.subprocess, "run", fake_run)
+
+    assert privacy_upgrade.ensure_nginx_privacy_log() is True
+    assert captured["env"]["ROOT_DIR"] == str(privacy_upgrade._PROJECT_ROOT)
+    assert captured["env"]["ENV_FILE"].replace("\\", "/").endswith("backend/.env")

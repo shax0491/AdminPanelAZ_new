@@ -209,6 +209,7 @@ rm -f "${{NGINX_PRIVACY_LOG_BAK:-}}"
     run_env = os.environ.copy()
     run_env["DOMAIN"] = domain
     run_env["ENV_FILE"] = str(_PROJECT_ROOT / "backend" / ".env")
+    run_env["ROOT_DIR"] = str(_PROJECT_ROOT)
     try:
         result = subprocess.run(
             ["sudo", "-n", "bash", "-c", script],
