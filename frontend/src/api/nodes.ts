@@ -15,6 +15,9 @@ import type {
   BackgroundTaskAccepted,
   NodeSyncGroup,
   NodeSyncVerifyResult,
+  EgressGuardStatus,
+  ReverseTunnelLink,
+  ReverseTunnelStatus,
 } from '../types'
 
 export async function auditNodeDualStack(nodeId: number) {
@@ -309,6 +312,39 @@ export async function applyNodeSyncGroupSharedDomain(id: number) {
 
 export async function verifyNodeSyncGroup(id: number) {
   return apiFetch<NodeSyncVerifyResult>(`/nodes/sync-groups/${id}/verify`, {
+    method: 'POST',
+  })
+}
+
+export async function getNodeEgressStatus(id: Node['id']): Promise<EgressGuardStatus> {
+  return apiFetch<EgressGuardStatus>(`/nodes/${id}/egress-status`)
+}
+
+function isHttpNotFound(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { status?: number }).status === 404
+  )
+}
+
+export async function getNodeReverseStatus(id: Node['id']): Promise<ReverseTunnelStatus | null> {
+  try {
+    return await apiFetch<ReverseTunnelStatus>(`/nodes/${id}/reverse-tunnel/status`)
+  } catch (err) {
+    if (isHttpNotFound(err)) return null
+    throw err
+  }
+}
+
+export async function provisionNodeReverse(id: Node['id']): Promise<ReverseTunnelLink> {
+  return apiFetch<ReverseTunnelLink>(`/nodes/${id}/reverse-tunnel/provision`, {
+    method: 'POST',
+  })
+}
+
+export async function activateNodeReverse(id: Node['id']): Promise<ReverseTunnelLink> {
+  return apiFetch<ReverseTunnelLink>(`/nodes/${id}/reverse-tunnel/activate`, {
     method: 'POST',
   })
 }

@@ -10,6 +10,8 @@ import type { Node, NodeSyncGroup, NodeTransportId } from '@/types'
 import NodeActions from './NodeActions'
 import NodeConnectionErrorAlert from './NodeConnectionErrorAlert'
 import NodeDualStackControls from './NodeDualStackControls'
+import { NodeEgressGuardStatus } from './NodeEgressGuardStatus'
+import { NodeReverseTunnelControls } from './NodeReverseTunnelControls'
 import NodeTransportBadge from './NodeTransportBadge'
 import { formatLastSeen, getNodeMeta } from './nodeHelpers'
 import { isMtproxyNode, isProxyNode, usesProxyAgent } from './nodeKind'
@@ -147,6 +149,8 @@ function NodeCardBody({
         <NodeProxySection node={node} nodes={nodes} syncGroups={syncGroups} onUpdated={onProxyUpdated} />
       )}
       <NodeDualStackControls node={node} onUpdated={onProxyUpdated ?? (() => {})} />
+      <NodeEgressGuardStatus node={node} />
+      <NodeReverseTunnelControls node={node} onUpdated={onProxyUpdated ?? (() => {})} />
       <NodeActions
         node={node}
         isActive={actions.isActive}

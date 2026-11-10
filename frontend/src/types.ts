@@ -3357,3 +3357,79 @@ export interface SendMessageResult {
   delivered: boolean
   warning: string | null
 }
+
+export interface EgressLayer {
+  name: string
+  iface: string
+  v4: string[]
+  v6: string[]
+}
+
+export interface EgressBaseRule {
+  family: string
+  args: string
+}
+
+export interface EgressJumpFirst {
+  filter: boolean
+  filter6?: boolean
+  mangle: boolean
+  mangle6?: boolean
+  nat: boolean
+  nat6?: boolean
+}
+
+export type EgressRouteState = 'live' | 'dead' | 'missing'
+export type EgressLayerV6Status =
+  | 'disabled'
+  | 'no_v6_subnets'
+  | 'profile_without_v6'
+  | 'profile_missing'
+  | 'active'
+export interface EgressLayerV6 {
+  name: string
+  iface: string
+  v6_status: EgressLayerV6Status
+}
+
+export interface EgressGuardStatus {
+  installed: boolean
+  errors: string[]
+  has_ipv6?: boolean
+  egress_ifaces?: string[]
+  ingress_ips?: string[]
+  layers?: EgressLayer[]
+  base_rules?: EgressBaseRule[]
+  jump_first?: EgressJumpFirst
+  fwmark_rule?: boolean
+  blackhole?: boolean
+  egress_routes?: Record<string, EgressRouteState>
+  guard_active?: boolean
+  handshake_ages?: Record<string, number | null>
+  reverse?: { iface: string; exists: boolean; handshake_age: number | null }
+  panel_isolation?: boolean
+  egress_ifaces_v6?: Record<string, boolean | null>
+  layers_v6?: EgressLayerV6[]
+}
+
+export interface ReverseTunnelLink {
+  id: number
+  proxy_node_id: number
+  exit_node_id: number
+  listen_port: number
+  tunnel_ipv4: string
+  tunnel_ipv6: string
+  relay_public_key: string
+  exit_public_key: string
+  state: string
+  last_error: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ReverseTunnelStatus {
+  link_id: number
+  state: string
+  exit: Record<string, unknown> | null
+  watchdog: Record<string, unknown> | null
+}
