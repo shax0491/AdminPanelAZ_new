@@ -6,6 +6,7 @@ import io
 import json
 import os
 import secrets
+import subprocess
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +26,7 @@ from app.services.antizapret_settings import build_schema, filter_known_keys, re
 from app.services.cidr.service import CidrRoutingService
 from app.services.node_health import NODE_AGENT_VERSION, build_health_payload
 from app.services.dual_stack_runtime import DualStackRuntime, NetworkOperationError
+from app.services.egress_guard_status import collect_egress_status
 from app.services.reverse_tunnel import ReverseTunnelRuntime
 
 dual_stack_runtime = DualStackRuntime()
@@ -320,6 +322,22 @@ def _dual_stack_call(fn, *args):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except NetworkOperationError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+def _egress_runner(argv: list[str]) -> tuple[int, str]:
+    """argv-список без shell, таймаут 5 с: статус egress-guard строго read-only."""
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=5)
+    except subprocess.TimeoutExpired:
+        return 124, ""
+    except OSError as exc:
+        return 127, str(exc)
+    return proc.returncode, proc.stdout
+
+
+@app.get("/egress/status")
+def egress_status(_: None = Depends(verify_api_key)):
+    return collect_egress_status(_egress_runner)
 
 
 @app.get("/dual-stack/capabilities")

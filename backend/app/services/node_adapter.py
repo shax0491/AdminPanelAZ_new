@@ -1595,6 +1595,10 @@ class RemoteNodeAdapter(NodeAdapter):
     def dual_stack_capabilities(self) -> dict[str, Any]:
         return self._request("GET", "/dual-stack/capabilities", timeout=30.0)
 
+    def egress_status(self) -> dict[str, Any]:
+        """Read-only статус egress-guard (az-guard) ноды, см. services/egress_guard_status."""
+        return self._request("GET", "/egress/status", timeout=20.0)
+
     def probe_dual_stack(self, family: int, target: str) -> dict[str, Any]:
         return self._request(
             "GET",

@@ -614,6 +614,20 @@ def node_reverse_tunnel_status(node_id: int, _: User = Depends(require_admin), d
     return reverse_tunnel_status(db, _node_for_dual_stack(node_id, db))
 
 
+@router.get("/{node_id}/egress-status")
+def node_egress_status(node_id: int, _: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Read-only статус egress-guard (az-guard) vpn-узла: цепочки, правила, egress-интерфейсы, IPv6, реверс, изоляция панели."""
+    _require_nodes_module(db)
+    node = _node_for_dual_stack(node_id, db)
+    if node.node_kind != "vpn":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="egress-guard есть только у vpn-узлов")
+    adapter = get_adapter_for_node(node)
+    fn = getattr(adapter, "egress_status", None)
+    if fn is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Узел не поддерживает статус egress-guard")
+    return fn()
+
+
 @router.post("/{node_id}/dual-stack/audit")
 def audit_dual_stack(node_id: int, _: User = Depends(require_admin), db: Session = Depends(get_db)):
     from app.services.dual_stack_panel import audit_node_network
