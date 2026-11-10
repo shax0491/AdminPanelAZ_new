@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.auth import get_tg_mini_user, require_tg_mini_admin
@@ -220,10 +220,11 @@ def mini_get_telegram_settings(
 def mini_update_telegram_settings(
     payload: TelegramSettingsUpdate,
     request: Request,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     admin: User = Depends(require_tg_mini_admin),
 ):
-    return update_telegram_settings(payload, request, db, admin)
+    return update_telegram_settings(payload, request, background, db, admin)
 
 
 @router.get("/self-service", response_model=SelfServiceLimitsResponse)

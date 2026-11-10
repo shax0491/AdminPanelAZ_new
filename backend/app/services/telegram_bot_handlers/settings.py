@@ -92,10 +92,16 @@ def _apply_telegram_patch(
     log_action_name: str = "settings_telegram_update",
     log_details: str,
 ) -> Any:
+    from fastapi import BackgroundTasks
+
     from app.routers.settings_telegram import update_telegram_settings
 
     try:
-        result = update_telegram_settings(payload, _make_bot_request(ctx), ctx.db, ctx.user)
+        background = BackgroundTasks()
+        result = update_telegram_settings(payload, _make_bot_request(ctx), background, ctx.db, ctx.user)
+        # No HTTP response here to trigger Starlette's after-response hook: run the queued best-effort tasks now.
+        for task in background.tasks:
+            task.func(*task.args, **task.kwargs)
         _log_bot_action(ctx, log_action_name, log_details)
         return result
     except HTTPException as exc:

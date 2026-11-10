@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.services.admin_panel_notifications import write_admin_panel_notification
 from app.services.app_setting_store import _get_setting, _set_setting
+from app.services.background_gate import run_background_step
 from app.services.node_update import (
     ahead_count,
     fetch_remote,
@@ -73,7 +74,7 @@ async def run_panel_update_check_loop() -> None:
     await asyncio.sleep(INITIAL_DELAY_SECONDS)
     while True:
         try:
-            await asyncio.to_thread(_check_once)
+            await run_background_step(_check_once)
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 — проверка обновлений не должна ронять воркер
