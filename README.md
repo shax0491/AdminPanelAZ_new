@@ -173,7 +173,37 @@ curl -fsSL https://raw.githubusercontent.com/shax0491/AdminPanelAZ_new/refs/head
 - **Сервер** — live CPU/RAM/диск, **история ресурсов** за 1 / 7 / 30 дней, vnStat ([инструкция](docs/server-monitor.md))
 - **Локальная GeoIP** — MaxMind GeoLite2 в `data/geoip/` ([инструкция](docs/GeoIP.md))
 
-### 🔐 Безопасность и администрирование
+### 🌐 Dual-Stack, Egress-Guard и Reverse-Tunnel в панели
+
+Раздел **Узлы → карточка узла** (нужны роль admin и включённый модуль «Узлы»).
+
+### Dual-Stack / IPv6
+* Бейджи **IPv4 / IPv6** с задержкой и адресами узла; кнопка **«Проверить IPv4/IPv6»** запускает аудит (`POST /nodes/{id}/dual-stack/audit`).
+* **Транспорт**: `Auto (Dual-Stack)`, `Force IPv6`, `Force IPv4` (недоступные семейства отключены), у привязанного relay — `Reverse Tunnel`.
+* **Выходной шлюз** (VPN-узлы): Native Dual-Stack, Proton VPN (v4+v6), Cloudflare WARP, IPv4 Only, IPv6 Prefer.
+* **Ротировать IPv6 адрес (из /64)** — если хостер выдаёт /64.
+* Включение IPv6 на самом узле (sysctl, ip -6 rule, ip6tables) делается установщиком `setup.sh` (вопрос Dual-Stack) — см. README [AntiZapret-VPN_new](https://github.com/shax0491/AntiZapret-VPN_new).
+
+### Egress-Guard (статус, только чтение)
+Блок **«Egress-Guard»** (VPN-узлы): кнопка «Обновить» запрашивает `GET /nodes/{id}/egress-status` (агент узла отдаёт `GET /egress/status`, без SSH-команд из панели и без секретов). Показывает: guard установлен/активен, jump-цепочки первыми (filter/mangle/nat, v4+v6), fwmark-правило и blackhole, состояние каждого egress (`live`/`dead`/`missing`) с возрастом handshake, слои (интерфейс, v4/v6-подсети, статус IPv6 слоя), изоляцию порта панели, состояние реверс-интерфейса `azr1`, список ошибок сбора. Если `installed=false` — guard не установлен (см. установщик).
+> Включение/выключение и настройка слоёв guard пока выполняются на узле (`setup.sh` / `az-guard-install.sh`, с автооткатом 300 с); мутирующих API у node-agent для этого намеренно нет — ошибка в правилах из панели могла бы отрезать сам доступ к узлу.
+
+### Reverse-Tunnel
+Для relay-узла (proxy), привязанного к VPN-узлу: блок **Reverse-Tunnel** → **«Обновить»** (статус и watchdog), **«Подготовить»** (`POST /nodes/{id}/reverse-tunnel/provision`: ключи, порт, `tunnel_ipv4/ipv6`; приватные ключи зашифрованы и в ответах отсутствуют), **«Активировать»** (`POST …/activate`, с подтверждением: переключает транспорт relay на адрес туннеля). Публичные ключи, порт и адреса показываются с кнопкой копирования. Состояния: `standby` → `active`; `last_error` выводится в блоке.
+Пошаговый сценарий и генерация шаблона на exit-узле — в README AntiZapret-VPN_new (раздел «Reverse-Tunnel по шагам»).
+
+### Mihomo и IPv6
+Флаг IPv6 домашнего Mihomo живёт на сервере-сборщике конфигов (`mihomo/mh-ipv6.sh on|off|status`), а не в панели: включайте `on` только если провайдер выдаёт префикс (PD) и роутер раздаёт IPv6 в LAN через Mihomo — иначе v6-трафик устройств пойдёт мимо VPN.
+
+### API (кратко)
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/nodes/{id}/egress-status` | статус egress-guard (409 для не-VPN узлов) |
+| POST | `/nodes/{id}/dual-stack/audit` · `/transport` · `/rotate-ipv6` | аудит, транспорт, ротация IPv6 |
+| PATCH | `/nodes/{id}/egress` | выходной шлюз (native/proton/warp/…) |
+| GET/POST | `/nodes/{id}/reverse-tunnel/status` · `/provision` · `/activate` | реверс-туннель |
+
+## 🔐 Безопасность и администрирование
 
 - Роли: администратор, пользователь ([пользователи](docs/nastrojki/polzovateli.md))
 - 2FA, белый список IP, защита от перебора паролей ([безопасность](docs/nastrojki/bezopasnost.md))
