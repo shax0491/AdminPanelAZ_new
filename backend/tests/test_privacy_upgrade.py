@@ -233,10 +233,13 @@ def test_nginx_privacy_log_subprocess_gets_root_dir_and_env_file(monkeypatch):
 
     def fake_run(cmd, **kwargs):
         captured["env"] = kwargs["env"]
+        captured["cmd"] = cmd
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(privacy_upgrade.subprocess, "run", fake_run)
 
     assert privacy_upgrade.ensure_nginx_privacy_log() is True
+    # sudo -n сбрасывает окружение, поэтому переменные должны быть в самой команде
+    assert f"ROOT_DIR={privacy_upgrade._PROJECT_ROOT}" in captured["cmd"]
     assert captured["env"]["ROOT_DIR"] == str(privacy_upgrade._PROJECT_ROOT)
     assert captured["env"]["ENV_FILE"].replace("\\", "/").endswith("backend/.env")

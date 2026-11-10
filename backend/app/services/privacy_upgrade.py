@@ -212,7 +212,8 @@ rm -f "${{NGINX_PRIVACY_LOG_BAK:-}}"
     run_env["ROOT_DIR"] = str(_PROJECT_ROOT)
     try:
         result = subprocess.run(
-            ["sudo", "-n", "bash", "-c", script],
+            # sudo сбрасывает окружение: переменные для nginx-common.sh передаём через env.
+            ["sudo", "-n", "env", *(f"{k}={run_env[k]}" for k in ("DOMAIN", "ENV_FILE", "ROOT_DIR")), "bash", "-c", script],
             cwd=str(_PROJECT_ROOT),
             capture_output=True,
             text=True,
