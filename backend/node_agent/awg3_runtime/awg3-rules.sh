@@ -20,6 +20,8 @@ add(){ t=$1; shift; iptables -w -t $t -C "$@" 2>/dev/null || iptables -w -t $t -
 del(){ t=$1; shift; while iptables -w -t $t -C "$@" 2>/dev/null; do iptables -w -t $t -D "$@"; done; }
 rule_add(){ ip rule del "$@" 2>/dev/null; ip rule add "$@" || true; }
 rule_del(){ ip rule del "$@" 2>/dev/null || true; }
+# nft-правила подсетей AWG3 в хуках antizapret (комментарий awg3) - удаляем по handle, чтобы не плодить дубли
+nft_awg_del(){ for ch in mapping_hook warp_hook; do nft -a list chain ip antizapret $ch 2>/dev/null | grep "comment \"awg3" | sed "s/.*# handle //" | while read -r h; do nft delete rule ip antizapret $ch handle $h 2>/dev/null; done; done; }
 # удаляет ВСЕ nat-правила подсети на warp-интерфейс, какой бы адрес в них ни стоял
 # (после смены ключа Proton адрес другой, и удаление по "--to-source <новый адрес>" старое правило не находило)
 purge_warp_nat(){ iptables -w -t nat -S POSTROUTING | grep -F -- "-s $1 " | grep -F -- "-o $2 " | sed 's/^-A /-D /' | while read -r r; do iptables -w -t nat $r; done; }
@@ -31,6 +33,8 @@ if [ "$1" = "down" ]; then
   del nat PREROUTING -s $S -p udp --dport 53 -j DNAT --to-destination 127.1.1.1
   del nat PREROUTING -s $S -p tcp --dport 53 -j DNAT --to-destination 127.1.1.1
   del nat PREROUTING -s $S ! -d 198.18.0.0/15 -j CONNMARK --set-xmark 0x1/0xffffffff
+  nft_awg_del
+  # прежние iptables-цепочки (до перехода на nft): добиваем остатки
   del nat PREROUTING -s $S -d 198.18.0.0/15 -j ANTIZAPRET-MAPPING
   del filter FORWARD -s $S -m connmark --mark 0x1 -m set ! --match-set antizapret-forward dst -j DROP
   del mangle FORWARD -s $S -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
@@ -55,7 +59,9 @@ add nat PREROUTING -i $OUT -p udp --dport 51900:51999 -j REDIRECT --to-ports 518
 add nat PREROUTING -s $S -p udp --dport 53 -j DNAT --to-destination 127.1.1.1
 add nat PREROUTING -s $S -p tcp --dport 53 -j DNAT --to-destination 127.1.1.1
 add nat PREROUTING -s $S ! -d 198.18.0.0/15 -j CONNMARK --set-xmark 0x1/0xffffffff
-add nat PREROUTING -s $S -d 198.18.0.0/15 -j ANTIZAPRET-MAPPING
+nft_awg_del
+del nat PREROUTING -s $S -d 198.18.0.0/15 -j ANTIZAPRET-MAPPING
+nft add rule ip antizapret mapping_hook ip saddr $S ip daddr 198.18.0.0/15 dnat to ip daddr map @mapping comment \"awg3-split\" 2>/dev/null || true
 iptables -w -C FORWARD -s $S -m connmark --mark 0x1 -m set ! --match-set antizapret-forward dst -j DROP 2>/dev/null || iptables -w -I FORWARD 2 -s $S -m connmark --mark 0x1 -m set ! --match-set antizapret-forward dst -j DROP
 add mangle FORWARD -s $S -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 add nat POSTROUTING -s $S -o $OUT -j MASQUERADE
@@ -74,7 +80,7 @@ case "$ANTIZAPRET_WARP" in
     ;;
   3|4)
     rule_add from $S fwmark 0x2 lookup 13335 priority 10000
-    add mangle PREROUTING -s $S -d 198.18.0.0/15 -j ANTIZAPRET-WARP
+    nft add rule ip antizapret warp_hook ip saddr $S ip daddr 198.18.0.0/15 ip daddr @warp meta mark set 0x2 comment \"awg3-split-warp\" 2>/dev/null || true
     warp_snat $S warp-antizapret "$AZ_WARP_IP" -m mark --mark 0x2
     # как в up.sh для 10.29: помеченный пакет, не ушедший в WARP, режем, а не отдаём в main
     iptables -w -C FORWARD -s $S -m mark --mark 0x2 ! -o warp-antizapret -j DROP 2>/dev/null || iptables -w -I FORWARD 2 -s $S -m mark --mark 0x2 ! -o warp-antizapret -j DROP
@@ -83,7 +89,8 @@ esac
 # full
 add nat PREROUTING -s $F -p udp --dport 53 -j DNAT --to-destination 127.2.2.2
 add nat PREROUTING -s $F -p tcp --dport 53 -j DNAT --to-destination 127.2.2.2
-add nat PREROUTING -s $F -d 198.18.0.0/15 -j ANTIZAPRET-MAPPING
+del nat PREROUTING -s $F -d 198.18.0.0/15 -j ANTIZAPRET-MAPPING
+nft add rule ip antizapret mapping_hook ip saddr $F ip daddr 198.18.0.0/15 dnat to ip daddr map @mapping comment \"awg3-full\" 2>/dev/null || true
 add mangle FORWARD -s $F -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 add nat POSTROUTING -s $F -o $OUT -j MASQUERADE
 # policy routing and WARP for full: same as 10.28 in up.sh (VPN_WARP 2 = all)
