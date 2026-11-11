@@ -2520,6 +2520,12 @@ run_install_flow() {
     fi
   fi
 
+  # MSS 1200 на SYN-ACK с :443 — фикс «Telegram handshake timeout» для клиентов Tele2 (464XLAT)
+  if install_node_selected || install_proxy_selected; then
+    install_set_step "MSS-кламп для tcp/443"
+    bash "$ROOT_DIR/scripts/setup-mss-clamp.sh" || warn "setup-mss-clamp.sh завершился с ошибкой (можно повторить вручную)"
+  fi
+
   if install_controller_selected && { [[ "$WITH_SYSTEMD" == true ]] || [[ "$WITH_DAEMON" == true ]]; }; then
     install_set_step "Проверка запуска backend"
     verify_controller_running
