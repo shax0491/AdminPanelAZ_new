@@ -12,6 +12,10 @@ PUBLIC_ROUTE_ROUTERS: dict[str, str] = {
     "mikrotik-awg2": "mikrotik_awg2",
     "keenetic-awg3": "keenetic_awg3",
     "mikrotik-awg3": "mikrotik_awg3",
+    "keenetic-ipv6": "keenetic_wg6",
+    "keenetic-awg2-ipv6": "keenetic_awg2_6",
+    "keenetic-awg3-ipv6": "keenetic_awg3_6",
+    "mikrotik-ipv6": "mikrotik_wg6",
 }
 
 DEFAULT_OPENVPN_GROUP = r"GROUP_UDP\TCP"

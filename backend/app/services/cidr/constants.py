@@ -98,4 +98,9 @@ RESULT_FILES = {
     "mikrotik_awg2": "mikrotik-amneziawg2-routes.txt",
     "keenetic_awg3": "keenetic-amneziawg3-routes.txt",
     "mikrotik_awg3": "mikrotik-amneziawg3-routes.txt",
+    # IPv6-маршруты (parse.sh узла с 12.11.2026): fd00:30::/64 + подсети include-ips6
+    "keenetic_wg6": "keenetic-wireguard-routes6.txt",
+    "keenetic_awg2_6": "keenetic-amneziawg2-routes6.txt",
+    "keenetic_awg3_6": "keenetic-amneziawg3-routes6.txt",
+    "mikrotik_wg6": "mikrotik-wireguard-routes6.txt",
 }

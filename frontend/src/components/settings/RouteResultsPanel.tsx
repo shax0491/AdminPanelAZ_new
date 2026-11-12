@@ -21,6 +21,8 @@ import type { RouteResultFileEntry } from '@/types'
 const KEENETIC_DNS =
   'DNS_IP_1 и DNS_IP_2 замените на DNS-серверы, прописанные в роутере (например 1.1.1.1 и 8.8.8.8): запросы к ним пойдут в туннель, и ответит DNS AntiZapret.'
 
+const KEENETIC_IPV6 = 'Командная строка Keenetic (IPv6): вставьте строки целиком. Работает при IPv6-режиме c и профиле клиента dual; включает подменную сеть fd00:30::/64 и подсети из include-ips6.'
+
 const ROUTER_META: Record<
   string,
   { label: string; initial: string; hint: string; howto: string }
@@ -57,6 +59,22 @@ const ROUTER_META: Record<
     label: 'MikroTik (AmneziaWG 3)', initial: 'M3', hint: 'AmneziaWG 3',
     howto: 'Шлюз 10.9.0.1. Вставьте строки в терминал MikroTik.',
   },
+  keenetic_wg6: {
+    label: 'Keenetic (IPv6)', initial: 'K6', hint: 'WireGuard / AmneziaWG 1.5, IPv6',
+    howto: 'Шлюз fd29:8::1. ' + KEENETIC_IPV6,
+  },
+  keenetic_awg2_6: {
+    label: 'Keenetic (AmneziaWG 2 IPv6)', initial: 'K26', hint: 'AmneziaWG 2, IPv6',
+    howto: 'Шлюз fd29:9::1. ' + KEENETIC_IPV6,
+  },
+  keenetic_awg3_6: {
+    label: 'Keenetic (AmneziaWG 3 IPv6)', initial: 'K36', hint: 'AmneziaWG 3, IPv6',
+    howto: 'Шлюз fd29:7::1. ' + KEENETIC_IPV6,
+  },
+  mikrotik_wg6: {
+    label: 'MikroTik (IPv6)', initial: 'M6', hint: 'WireGuard / AmneziaWG 1.5, IPv6',
+    howto: 'Шлюз fd29:8::1. Вставьте строки в терминал MikroTik; работает при IPv6-режиме c и профиле клиента dual.',
+  },
 }
 
 const PUBLIC_SLUGS: Record<string, string> = {
@@ -68,6 +86,10 @@ const PUBLIC_SLUGS: Record<string, string> = {
   mikrotik_awg2: 'mikrotik-awg2',
   keenetic_awg3: 'keenetic-awg3',
   mikrotik_awg3: 'mikrotik-awg3',
+  keenetic_wg6: 'keenetic-ipv6',
+  keenetic_awg2_6: 'keenetic-awg2-ipv6',
+  keenetic_awg3_6: 'keenetic-awg3-ipv6',
+  mikrotik_wg6: 'mikrotik-ipv6',
 }
 
 // Same filenames as backend RESULT_FILES; a router key the node does not report yet
@@ -81,6 +103,10 @@ const ROUTER_FILENAMES: Record<string, string> = {
   mikrotik_awg2: 'mikrotik-amneziawg2-routes.txt',
   keenetic_awg3: 'keenetic-amneziawg3-routes.txt',
   mikrotik_awg3: 'mikrotik-amneziawg3-routes.txt',
+  keenetic_wg6: 'keenetic-wireguard-routes6.txt',
+  keenetic_awg2_6: 'keenetic-amneziawg2-routes6.txt',
+  keenetic_awg3_6: 'keenetic-amneziawg3-routes6.txt',
+  mikrotik_wg6: 'mikrotik-wireguard-routes6.txt',
 }
 
 function withMissingRouterFiles(files: RouteResultFileEntry[]): RouteResultFileEntry[] {
