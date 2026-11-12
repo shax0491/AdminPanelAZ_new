@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getIpv6Status } from '@/api/ipv6'
+import { getIpv6Status, getNodesIpv6Summary, type NodeIpv6Summary } from '@/api/ipv6'
 import { Badge } from '@/components/ui/badge'
 import { useNode } from '@/context/NodeContext'
 import { cn } from '@/lib/utils'
@@ -10,12 +10,12 @@ export type Ipv6BadgeInfo = { tone: 'ok' | 'safe' | 'error'; text: string }
 const EGRESS_LABEL: Record<string, string> = { native: 'Native', warp: 'WARP', proton: 'Proton', relay: 'Relay' }
 
 /** Что показать про IPv6 узла: Dual-Stack / защита от утечек (только IPv4) / ошибка выхода (откат на IPv4). */
-export function ipv6BadgeInfo(s: Ipv6Status | null): Ipv6BadgeInfo | null {
-  if (!s) return null
+export function ipv6BadgeInfo(s: NodeIpv6Summary | null): Ipv6BadgeInfo | null {
+  if (!s || s.enabled === undefined) return null
   const wanted = s.enabled && s.requested_mode !== 'a'
   if (wanted && s.effective_mode === 'a') return { tone: 'error', text: 'IPv6: Ошибка выхода (Откат на IPv4)' }
   if (s.enabled && s.effective_mode !== 'a') {
-    return { tone: 'ok', text: `IPv6: Dual-Stack (${EGRESS_LABEL[s.active_egress || s.egress] ?? 'Native'})` }
+    return { tone: 'ok', text: `IPv6: Dual-Stack (${EGRESS_LABEL[s.active_egress || s.egress || 'native'] ?? 'Native'})` }
   }
   return { tone: 'safe', text: 'IPv6: Защита от утечек (Только IPv4)' }
 }
@@ -48,7 +48,38 @@ export function ActiveNodeIpv6Badge() {
   return <Ipv6Badge status={useIpv6Status()} className="hidden lg:inline-flex" />
 }
 
-export default function Ipv6Badge({ status, className }: { status: Ipv6Status | null; className?: string }) {
+// Один запрос на все карточки «Узлов»; кэш 30 с, чтобы не опрашивать агентов при каждом рендере.
+let summaryCache: { at: number; data: Promise<Record<string, NodeIpv6Summary>> } | null = null
+
+function loadSummary(): Promise<Record<string, NodeIpv6Summary>> {
+  if (!summaryCache || Date.now() - summaryCache.at > 30_000) {
+    summaryCache = { at: Date.now(), data: getNodesIpv6Summary().catch(() => ({})) }
+  }
+  return summaryCache.data
+}
+
+/** Бейдж IPv6 на карточке узла в разделе «Узлы». */
+export function NodeIpv6Badge({ nodeId }: { nodeId: number }) {
+  const [item, setItem] = useState<NodeIpv6Summary | null | undefined>(undefined)
+  useEffect(() => {
+    let alive = true
+    void loadSummary().then((m) => alive && setItem(m[String(nodeId)] ?? null))
+    return () => {
+      alive = false
+    }
+  }, [nodeId])
+  if (item === undefined) return null
+  if (!item || item.error) {
+    return (
+      <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-normal text-muted-foreground" title={item?.error}>
+        IPv6: нет данных
+      </Badge>
+    )
+  }
+  return <Ipv6Badge status={item} />
+}
+
+export default function Ipv6Badge({ status, className }: { status: NodeIpv6Summary | null; className?: string }) {
   const info = ipv6BadgeInfo(status)
   if (!info) return null
   return (

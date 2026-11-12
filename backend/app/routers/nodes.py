@@ -583,6 +583,27 @@ def list_node_transports(_: User = Depends(require_admin)):
     return NodeTransportsResponse(items=list_transports())
 
 
+_IPV6_SUMMARY_KEYS = ("enabled", "requested_mode", "effective_mode", "egress", "active_egress", "reason")
+
+
+@router.get("/ipv6-summary")
+def nodes_ipv6_summary(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """Краткий IPv6-статус всех VPN-узлов (для бейджей на карточках): {node_id: {...} | {"error": ...}}."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    nodes = [n for n in db.query(Node).all() if (n.node_kind or "vpn") == "vpn"]
+
+    def one(node: Node) -> tuple[int, dict]:
+        try:
+            full = get_adapter_for_node(node).get_ipv6_status()
+            return node.id, {k: full.get(k) for k in _IPV6_SUMMARY_KEYS}
+        except Exception as exc:  # noqa: BLE001 - узел недоступен/старый агент: бейдж покажет «нет данных»
+            return node.id, {"error": str(exc)[:120] or type(exc).__name__}
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        return {str(i): v for i, v in pool.map(one, nodes)}
+
+
 def _node_for_dual_stack(node_id: int, db: Session) -> Node:
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:

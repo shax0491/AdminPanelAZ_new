@@ -1,6 +1,14 @@
 import { apiFetch } from './http'
 import type { Ipv6Status } from '@/types'
 
+export type NodeIpv6Summary = Partial<Pick<Ipv6Status, 'enabled' | 'requested_mode' | 'effective_mode' | 'egress' | 'active_egress' | 'reason'>> & {
+  error?: string
+}
+
+export async function getNodesIpv6Summary(): Promise<Record<string, NodeIpv6Summary>> {
+  return apiFetch<Record<string, NodeIpv6Summary>>('/nodes/ipv6-summary')
+}
+
 export async function getIpv6Status(): Promise<Ipv6Status> {
   return apiFetch<Ipv6Status>('/ipv6')
 }

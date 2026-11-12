@@ -22,7 +22,7 @@ import type { RouteResultFileEntry } from '@/types'
 const KEENETIC_DNS =
   'DNS_IP_1 и DNS_IP_2 замените на DNS-серверы, прописанные в роутере (например 1.1.1.1 и 8.8.8.8): запросы к ним пойдут в туннель, и ответит DNS AntiZapret.'
 
-const KEENETIC_IPV6 = 'Только командная строка Keenetic (CLI): импорт из файла в веб-интерфейсе принимает лишь IPv4 (route ADD), поэтому строки `ipv6 route` вставляйте в CLI целиком. Работает при IPv6-режиме c и профиле клиента dual; включает fd00:30::/64 и подсети из include-ips6.'
+const KEENETIC_IPV6 = 'Вставить список команд в веб-консоль Keenetic: http://192.168.1.1/a (импорт из файла в веб-интерфейсе принимает лишь IPv4). Строки `ipv6 route ... auto` вставляйте целиком, последняя команда сохраняет конфигурацию. Работает при IPv6-режиме c и профиле клиента dual; включает fd00:30::/64 и подсети из include-ips6.'
 
 const ROUTER_META: Record<
   string,

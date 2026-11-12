@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Check, ChevronDown, Globe, Server } from 'lucide-react'
+import { NodeIpv6Badge } from '@/components/dashboard/Ipv6Badge'
 import NodeProxySection from '@/components/nodes/NodeProxySection'
 import ProxyLinkBadge from '@/components/proxy/ProxyLinkBadge'
 import { NodeStatusBadge } from '@/components/NodeSelector'
@@ -141,6 +142,7 @@ function NodeCardBody({
           </Badge>
         )}
         <NodeTransportBadge node={node} />
+        {!isProxy && <NodeIpv6Badge nodeId={node.id} />}
       </div>
       {node.status === 'offline' && meta.lastError && (
         <NodeConnectionErrorAlert node={node} lastError={meta.lastError} />
