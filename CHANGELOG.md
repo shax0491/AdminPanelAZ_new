@@ -61,6 +61,7 @@
 
 ### ✨ Added
 
+- **Скачивание маршрутов IPv6:** готовые файлы `keenetic-wireguard-routes6.txt`, `keenetic-amneziawg2-routes6.txt`, `keenetic-amneziawg3-routes6.txt` (Keenetic CLI `ipv6 route`, шлюзы `fd29:8::1`/`fd29:9::1`/`fd29:7::1`) и `mikrotik-wireguard-routes6.txt` (`/ipv6 route add`) в «Настройки → Выдача VPN-профилей → Скачивание маршрутов»; внутри `fd00:30::/64` и подсети `include-ips6`. Нужен node agent с этой версией и `parse.sh` от 12.11.2026.
 - **IPv6 клиентов AWG 3.0 и профиль клиента:** при профиле `dual` (или `IPV6_PROFILE_DEFAULT=dual` + `ENABLE_IPV6=y`) AWG 3.0 выдаёт адрес `fd29:7::N` (split, AllowedIPs `fd00:30::/64` + подсети `include-ips6`) или `fd28:7::N` (full, `::/0`) и пишет IPv6 пира на сервере; `awg3-up.sh` агента ставит IPv6-адреса интерфейса awg1. Селектор профиля `default/ipv4/dual` в модалке создания и в карточке клиента (OpenVPN, AWG 1.5, AWG 2.0, AWG 3.0), `PUT /api/client-ipv6/{client}`, агент `POST /awg3/clients/{name}/ipv6/refresh`.
 - **IPv6 AntiZapret:** параметры setup `ENABLE_IPV6`, `IPV6_MODE` (a/b/c), `IPV6_EGRESS`, `IPV6_PROFILE_DEFAULT` в «Конфиг AntiZapret»; файлы `include-ips6.txt`, `exclude-ips6.txt`, `ipv6-profile.txt` в Редакторе файлов; карточка «IPv6» (статус узла и применение) и `GET /api/ipv6`, `POST /api/ipv6/apply`. Node agent `1.26.0` (`GET /ipv6/status`).
 - **Блок AAAA NODATA** не срабатывает в IPv6-режимах b/c (глобальная `ipv6_dual` из kresd.conf).
