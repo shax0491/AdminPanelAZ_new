@@ -5,6 +5,7 @@ import {
 } from '@/api/client'
 import RemoteHostsCard from '@/components/proxy/RemoteHostsCard'
 import DnsAaaaCard from '@/components/routing/DnsAaaaCard'
+import Ipv6StatusCard from '@/components/routing/Ipv6StatusCard'
 import DnsServersCard from '@/components/routing/DnsServersCard'
 import OpenVpnTuningCard from '@/components/routing/OpenVpnTuningCard'
 import OpenVpnBufferGuardCard from '@/components/routing/OpenVpnBufferGuardCard'
@@ -311,6 +312,7 @@ export default function OpenVpnPanelTab({
         <div className="grid gap-4 xl:grid-cols-2">
           <DnsServersCard activeNodeId={activeNodeId} disabled={disabled} />
           <DnsAaaaCard activeNodeId={activeNodeId} disabled={disabled} />
+          <Ipv6StatusCard activeNodeId={activeNodeId} disabled={disabled} />
         </div>
       </section>
 

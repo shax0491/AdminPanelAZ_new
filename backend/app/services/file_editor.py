@@ -27,6 +27,9 @@ EDITABLE_FILES: dict[str, str] = {
     "deny3_rpz": "deny3-rpz.txt",
     "warp_rpz": "warp-rpz.txt",
     "proxy_rpz": "proxy-rpz.txt",
+    "include_ips6": "include-ips6.txt",
+    "exclude_ips6": "exclude-ips6.txt",
+    "ipv6_profile": "ipv6-profile.txt",
     "kresd_custom": "custom.lua",
     "kresd_custom2": "custom2.lua",
     "kresd_custom3": "custom3.lua",
@@ -51,6 +54,9 @@ FILE_TITLES: dict[str, str] = {
     "deny3_rpz": "RPZ — блокировка (Proxy DNS)",
     "warp_rpz": "RPZ — через WARP",
     "proxy_rpz": "RPZ — через AntiZapret",
+    "include_ips6": "IPv6 — включить подсети",
+    "exclude_ips6": "IPv6 — исключить подсети",
+    "ipv6_profile": "IPv6 — профили клиентов (имя ipv4|dual)",
     "kresd_custom": "DNS-политики (AntiZapret)",
     "kresd_custom2": "DNS-политики (полный VPN)",
     "kresd_custom3": "DNS-политики (Proxy DNS)",
@@ -82,10 +88,14 @@ FILES_SINCE_AGENT_1_11: frozenset[str] = frozenset(
 # Агент старше 1.14.0 отвечает на эти имена 400: в его allowlist файлов их нет.
 FILES_SINCE_AGENT_1_14: frozenset[str] = frozenset({"custom3.lua", "deny3-rpz.txt"})
 
+# IPv6-списки и профили клиентов — AntiZapret-VPN с 12.11.2026, node agent 1.26.0.
+FILES_SINCE_AGENT_1_26: frozenset[str] = frozenset({"include-ips6.txt", "exclude-ips6.txt", "ipv6-profile.txt"})
+
 # Каждое имя с планкой → версия node agent, которая его впервые принимает.
 MIN_AGENT_VERSION_FOR_FILE: dict[str, str] = {
     **dict.fromkeys(FILES_SINCE_AGENT_1_11, "1.11.0"),
     **dict.fromkeys(FILES_SINCE_AGENT_1_14, "1.14.0"),
+    **dict.fromkeys(FILES_SINCE_AGENT_1_26, "1.26.0"),
 }
 AGENT_GATED_FILES: frozenset[str] = frozenset(MIN_AGENT_VERSION_FOR_FILE)
 

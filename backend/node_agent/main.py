@@ -22,6 +22,7 @@ from app.paths import get_cidr_list_dir
 from app.services.antizapret import AntiZapretService
 from app.services.atomic_file import atomic_write_text
 from app.services.antizapret_backup import resolve_backup_archive
+from app.services.ipv6_status import read_ipv6_status
 from app.services.antizapret_settings import build_schema, filter_known_keys, read_antizapret_settings, update_antizapret_settings
 from app.services.cidr.service import CidrRoutingService
 from app.services.node_health import NODE_AGENT_VERSION, build_health_payload
@@ -1258,6 +1259,11 @@ def routing_results(_: None = Depends(verify_api_key)):
 @app.get("/routing/results/{key}")
 def routing_result_content(key: str, _: None = Depends(verify_api_key)):
     return cidr_service.get_result_content(key)
+
+
+@app.get("/ipv6/status")
+def ipv6_status(_: None = Depends(verify_api_key)):
+    return read_ipv6_status(ANTIZAPRET_PATH / "setup")
 
 
 @app.get("/routing/antizapret-settings")

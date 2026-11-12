@@ -2360,6 +2360,19 @@ export type DnsAaaaTarget = 'antizapret' | 'vpn'
 
 export type DnsAaaaState = Record<DnsAaaaTarget, DnsAaaaMode>
 
+export type Ipv6Status = {
+  enabled: boolean
+  requested_mode: string
+  effective_mode: string
+  egress: string
+  active_egress: string
+  egress_interface: string
+  profile_default: string
+  reason: string
+  native_default_route: boolean
+  fake6_mappings: number
+}
+
 export interface DnsServersOption {
   value: string
   label: string

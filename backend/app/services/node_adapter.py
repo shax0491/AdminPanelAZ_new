@@ -315,6 +315,9 @@ class NodeAdapter(ABC):
     @abstractmethod
     def get_antizapret_settings(self) -> dict[str, str]: ...
 
+    def get_ipv6_status(self) -> dict[str, Any]:
+        raise NotImplementedError("статус IPv6 доступен только на VPN-узле")
+
     @abstractmethod
     def update_antizapret_settings(self, updates: dict) -> dict: ...
 
@@ -1165,6 +1168,11 @@ class LocalNodeAdapter(NodeAdapter):
 
     def get_antizapret_settings(self) -> dict[str, str]:
         return read_antizapret_settings(self._service.base_path / "setup")
+
+    def get_ipv6_status(self) -> dict[str, Any]:
+        from app.services.ipv6_status import read_ipv6_status
+
+        return read_ipv6_status(self._service.base_path / "setup")
 
     def update_antizapret_settings(self, updates: dict) -> dict:
         return update_antizapret_settings(self._service.base_path / "setup", updates)
@@ -2213,6 +2221,9 @@ class RemoteNodeAdapter(NodeAdapter):
     def get_antizapret_settings(self) -> dict[str, str]:
         data = self._request("GET", "/routing/antizapret-settings")
         return data.get("settings", {})
+
+    def get_ipv6_status(self) -> dict[str, Any]:
+        return self._request("GET", "/ipv6/status")
 
     def update_antizapret_settings(self, updates: dict) -> dict:
         return self._request("PUT", "/routing/antizapret-settings", json=choice_updates_for_agent(updates))
