@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getMessageUnreadCount } from '@/api/messages'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { LogOut, Menu, Moon, Radio, Shield, Sun, User } from 'lucide-react'
+import { ActiveNodeIpv6Badge } from '@/components/dashboard/Ipv6Badge'
 import NodeSelector from '@/components/NodeSelector'
 import NotificationBell from '@/components/notifications/NotificationBell'
 import ActiveNodeChangedBanner from '@/components/ActiveNodeChangedBanner'
@@ -305,6 +306,7 @@ export default function Layout() {
             <div className="hidden sm:block">
               <NodeSelector />
             </div>
+            <ActiveNodeIpv6Badge />
             {/* Один экземпляр: два колокола давали дубли тостов и SSE. */}
             <NotificationBell />
             <span className="mono hidden text-xs text-muted-foreground sm:inline">

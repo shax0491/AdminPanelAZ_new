@@ -5,6 +5,7 @@ import {
   getRoutingResultContent,
   getRoutingResults,
 } from '@/api/client'
+import { useIpv6Status } from '@/components/dashboard/Ipv6Badge'
 import AppDialog from '@/components/shared/AppDialog'
 import Spinner from '@/components/ui/Spinner'
 import { Badge } from '@/components/ui/badge'
@@ -21,7 +22,7 @@ import type { RouteResultFileEntry } from '@/types'
 const KEENETIC_DNS =
   'DNS_IP_1 и DNS_IP_2 замените на DNS-серверы, прописанные в роутере (например 1.1.1.1 и 8.8.8.8): запросы к ним пойдут в туннель, и ответит DNS AntiZapret.'
 
-const KEENETIC_IPV6 = 'Командная строка Keenetic (IPv6): вставьте строки целиком. Работает при IPv6-режиме c и профиле клиента dual; включает подменную сеть fd00:30::/64 и подсети из include-ips6.'
+const KEENETIC_IPV6 = 'Только командная строка Keenetic (CLI): импорт из файла в веб-интерфейсе принимает лишь IPv4 (route ADD), поэтому строки `ipv6 route` вставляйте в CLI целиком. Работает при IPv6-режиме c и профиле клиента dual; включает fd00:30::/64 и подсети из include-ips6.'
 
 const ROUTER_META: Record<
   string,
@@ -134,8 +135,10 @@ function RouterFileRow({
   onDownload,
   onPreview,
   onCopyLink,
+  ipv6Off,
 }: {
   file: RouteResultFileEntry
+  ipv6Off: boolean
   showPublicLinks: boolean
   downloading: boolean
   onDownload: () => void
@@ -168,6 +171,11 @@ function RouterFileRow({
               <Badge variant={ready ? 'success' : 'secondary'} className="text-[10px]">
                 {ready ? 'Готов' : 'Нет файла'}
               </Badge>
+              {ipv6Off && meta?.label.includes('IPv6') && (
+                <Badge variant="outline" className="border-amber-500/40 text-[10px] text-amber-600 dark:text-amber-400">
+                  IPv6 на этом узле выключен
+                </Badge>
+              )}
             </div>
             <p className="text-xs text-muted-foreground">
               {ready ? `${file.line_count} строк` : 'Сгенерируйте в «Маршрутизация»'}
@@ -200,6 +208,7 @@ function RouterFileRow({
 
 export default function RouteResultsPanel({ showPublicLinks = false }: RouteResultsPanelProps) {
   const { error: notifyError, success } = useNotifications()
+  const ipv6Status = useIpv6Status()
   const [files, setFiles] = useState<RouteResultFileEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -330,6 +339,7 @@ export default function RouteResultsPanel({ showPublicLinks = false }: RouteResu
               onDownload={() => void downloadFile(file.key)}
               onPreview={() => void openPreview(file.key)}
               onCopyLink={() => void copyPublicLink(file.key)}
+              ipv6Off={ipv6Status != null && !ipv6Status.enabled}
             />
           ))}
         </ul>
