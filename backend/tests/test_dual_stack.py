@@ -174,3 +174,14 @@ def test_reverse_wireguard_client_is_persistent_and_dual_stack():
     assert "Address = 10.250.0.2/30, fdaf:250::2/64" in result
     assert "Endpoint = 77.37.174.115:52999" in result
     assert "PersistentKeepalive = 15" in result
+
+
+def test_snapshot_ignores_tunnel_interface_ipv6_as_native():
+    """/128 на proton/warp/wg - адрес туннеля, а не нативный IPv6 сервера (иначе ложное «IPv6: offline»)."""
+    tunnel_only = [{"ifname": "proton", "addr_info": [{"local": "2a07:b944::2:2", "prefixlen": 128, "scope": "global"}]}]
+    assert parse_network_snapshot(ADDRS4, tunnel_only, [])["has_ipv6"] is False
+
+    both = tunnel_only + [{"ifname": "ens3", "addr_info": [{"local": "2a0c:4ac1:4:2a5::d", "prefixlen": 64, "scope": "global"}]}]
+    result = parse_network_snapshot(ADDRS4, both, [])
+    assert result["ipv6_address"] == "2a0c:4ac1:4:2a5::d"
+    assert result["network_interface"] == "ens3"

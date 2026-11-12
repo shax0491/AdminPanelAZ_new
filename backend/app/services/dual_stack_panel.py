@@ -173,15 +173,10 @@ def set_node_egress_mode(db: Session, node: Node, mode: str) -> Node:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Egress настраивается на VPN-узле")
     adapter = _adapter(node)
     if mode in {"native", "proton", "warp"}:
-        if mode in {"proton", "warp"}:
-            adapter.set_warp_provider(mode)
-        adapter.set_warp_modes(antizapret="1" if mode == "native" else "2", vpn="1" if mode == "native" else "2")
-        result = adapter.apply_warp_changes()
-        if not result.get("success", False):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Не удалось применить egress: {result.get('output', 'unknown error')}",
-            )
+        # селектор карточки = IPV6_EGRESS (выход IPv6 антизапрета); режимы WARP/Proton туннелей (ANTIZAPRET_WARP/VPN_WARP)
+        # настраиваются отдельно на вкладке «Конфиг антизапрета» и здесь не меняются
+        adapter.update_antizapret_settings({"IPV6_EGRESS": mode})
+        adapter.restart_service("antizapret")
     elif mode == "ipv4_only":
         adapter.set_dual_stack_transport("force_ipv4")
     else:

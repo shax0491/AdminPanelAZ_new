@@ -180,7 +180,7 @@ curl -fsSL https://raw.githubusercontent.com/shax0491/AdminPanelAZ_new/refs/head
 ### Dual-Stack / IPv6
 * Бейджи **IPv4 / IPv6** с задержкой и адресами узла; кнопка **«Проверить IPv4/IPv6»** запускает аудит (`POST /nodes/{id}/dual-stack/audit`).
 * **Транспорт**: `Auto (Dual-Stack)`, `Force IPv6`, `Force IPv4` (недоступные семейства отключены), у привязанного relay — `Reverse Tunnel`.
-* **Выходной шлюз** (VPN-узлы): Native Dual-Stack, Proton VPN (v4+v6), Cloudflare WARP, IPv4 Only, IPv6 Prefer.
+* **Выходной шлюз** (VPN-узлы): Native Dual-Stack, Proton VPN (v4+v6), Cloudflare WARP, IPv4 Only, IPv6 Prefer. Первые три пишут `IPV6_EGRESS` в настройки антизапрета и перезапускают `antizapret`; режимы туннелей Proton/WARP (`ANTIZAPRET_WARP`, `VPN_WARP`) селектор не меняет, они задаются на вкладке «Конфиг антизапрета». В проверке IPv4/IPv6 туннельные интерфейсы (`proton`, `warp*`, `wg*`, `awg*` и др.) не считаются нативным IPv6 сервера.
 * **Ротировать IPv6 адрес (из /64)** — если хостер выдаёт /64.
 * Включение IPv6 на самом узле (sysctl, ip -6 rule, ip6tables) делается установщиком `setup.sh` (вопрос Dual-Stack) — см. README [AntiZapret-VPN_new](https://github.com/shax0491/AntiZapret-VPN_new).
 

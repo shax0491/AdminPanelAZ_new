@@ -376,3 +376,31 @@ def test_node_without_audit_reports_no_telemetry_instead_of_defaults(db):
     assert response.dual_stack_telemetry is False
     assert response.has_ipv4 is None and response.has_ipv6 is None
     assert response.ipv6_rotation_supported is None
+
+
+def test_egress_selector_writes_ipv6_egress_and_keeps_warp_tunnels(db, monkeypatch):
+    """Селектор карточки = IPV6_EGRESS; режимы Proton/WARP туннелей (ANTIZAPRET_WARP/VPN_WARP) он не трогает."""
+    from app.services import dual_stack_panel
+
+    calls = []
+
+    class Adapter:
+        def update_antizapret_settings(self, updates):
+            calls.append(("settings", updates))
+
+        def restart_service(self, name):
+            calls.append(("restart", name))
+
+        def set_warp_modes(self, **kwargs):  # pragma: no cover - не должен вызываться
+            calls.append(("warp_modes", kwargs))
+
+        def set_warp_provider(self, provider):  # pragma: no cover - не должен вызываться
+            calls.append(("warp_provider", provider))
+
+    monkeypatch.setattr(dual_stack_panel, "_adapter", lambda node: Adapter())
+    node = make_node(db)
+
+    dual_stack_panel.set_node_egress_mode(db, node, "native")
+
+    assert calls == [("settings", {"IPV6_EGRESS": "native"}), ("restart", "antizapret")]
+    assert node.egress_mode == "native"

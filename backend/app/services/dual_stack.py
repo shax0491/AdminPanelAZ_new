@@ -37,8 +37,14 @@ def _addresses(snapshot: list[dict[str, Any]]) -> list[tuple[str, dict[str, Any]
     ]
 
 
+# туннельные интерфейсы (выход IPv6 через Proton/WARP, клиентские сети): их /128 - не нативный IPv6 сервера
+_TUNNEL_IF_PREFIXES = ("proton", "warp", "wg", "awg", "nwg", "antizapret", "vpn", "tun", "tap", "docker", "br-", "veth")
+
+
 def _public_ipv6(item: tuple[str, dict[str, Any]]) -> bool:
-    _ifname, info = item
+    ifname, info = item
+    if ifname.startswith(_TUNNEL_IF_PREFIXES):
+        return False
     try:
         address = ipaddress.IPv6Address(str(info["local"]).split("%", 1)[0])
     except ValueError:
