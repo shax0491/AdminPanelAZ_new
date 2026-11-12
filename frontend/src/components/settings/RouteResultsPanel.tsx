@@ -22,7 +22,7 @@ import type { RouteResultFileEntry } from '@/types'
 const KEENETIC_DNS =
   'DNS_IP_1 и DNS_IP_2 замените на DNS-серверы, прописанные в роутере (например 1.1.1.1 и 8.8.8.8): запросы к ним пойдут в туннель, и ответит DNS AntiZapret.'
 
-const KEENETIC_IPV6 = 'Вставить список команд в веб-консоль Keenetic: http://192.168.1.1/a (импорт из файла в веб-интерфейсе принимает лишь IPv4). Строки `ipv6 route ... auto` вставляйте целиком, последняя команда сохраняет конфигурацию. Работает при IPv6-режиме c и профиле клиента dual; включает fd00:30::/64 и подсети из include-ips6.'
+const KEENETIC_IPV6 = 'В Keenetic на вкладке IPv6-маршруты нет кнопки импорта из файла: либо добавьте одну подсеть fd00:30::/64 кнопкой «+ Добавить», либо вставьте скопированные команды разом в веб-консоль http://192.168.1.1/a (последняя команда сохраняет конфигурацию). Работает при IPv6-режиме c и профиле клиента dual; включает fd00:30::/64 и подсети из include-ips6.'
 
 const ROUTER_META: Record<
   string,
@@ -110,6 +110,15 @@ const ROUTER_FILENAMES: Record<string, string> = {
   mikrotik_wg6: 'mikrotik-wireguard-routes6.txt',
 }
 
+// В Keenetic на вкладке IPv6-маршрутов нет импорта из файла: команды вставляются целиком в веб-консоль http://192.168.1.1/a
+const KEENETIC_CLI_KEYS = new Set(['keenetic_wg6', 'keenetic_awg2_6', 'keenetic_awg3_6'])
+
+/** Подставляет свой интерфейс/шлюз вместо шлюза слоя в строках `ipv6 route <prefix> <gw> auto`. */
+export function applyKeeneticTarget(content: string, target: string): string {
+  if (!target) return content
+  return content.replace(/^(ipv6 route \S+) \S+( auto)$/gm, `$1 ${target}$2`)
+}
+
 function withMissingRouterFiles(files: RouteResultFileEntry[]): RouteResultFileEntry[] {
   const present = new Set(files.map((f) => f.key))
   const missing = Object.keys(PUBLIC_SLUGS)
@@ -135,9 +144,11 @@ function RouterFileRow({
   onDownload,
   onPreview,
   onCopyLink,
+  onCopyCli,
   ipv6Off,
 }: {
   file: RouteResultFileEntry
+  onCopyCli: (target: string) => void
   ipv6Off: boolean
   showPublicLinks: boolean
   downloading: boolean
@@ -147,6 +158,7 @@ function RouterFileRow({
 }) {
   const meta = ROUTER_META[file.key]
   const ready = file.exists
+  const [cliTarget, setCliTarget] = useState('')
 
   return (
     <li
@@ -194,6 +206,21 @@ function RouterFileRow({
             <Eye size={14} />
             Просмотр
           </Button>
+          {KEENETIC_CLI_KEYS.has(file.key) && (
+            <div className="flex w-full flex-wrap items-center gap-2">
+              <input
+                className="h-8 w-44 rounded-md border border-input bg-background px-2 text-xs"
+                placeholder="Интерфейс или шлюз (по умолчанию шлюз слоя)"
+                title="Например Wireguard0; пусто — шлюз слоя из файла"
+                value={cliTarget}
+                onChange={(e) => setCliTarget(e.target.value.trim())}
+              />
+              <Button size="sm" variant="secondary" className="gap-1.5" disabled={!ready} onClick={() => onCopyCli(cliTarget)}>
+                <Copy size={14} />
+                Скопировать команды для 192.168.1.1/a
+              </Button>
+            </div>
+          )}
           {showPublicLinks && PUBLIC_SLUGS[file.key] && (
             <Button size="sm" variant="secondary" className="gap-1.5" disabled={!ready} onClick={onCopyLink}>
               <Copy size={14} />
@@ -277,6 +304,16 @@ export default function RouteResultsPanel({ showPublicLinks = false }: RouteResu
     triggerDownload(previewContent, previewFilename)
   }
 
+  const copyCliCommands = async (key: string, target: string) => {
+    try {
+      const { content } = await getRoutingResultContent(key)
+      await navigator.clipboard.writeText(applyKeeneticTarget(content, target))
+      success('Команды скопированы — вставьте в веб-консоль Keenetic: http://192.168.1.1/a')
+    } catch {
+      notifyError('Не удалось скопировать команды')
+    }
+  }
+
   const copyPublicLink = async (key: string) => {
     const url = buildPublicRouteUrl(key)
     if (!url) return
@@ -339,6 +376,7 @@ export default function RouteResultsPanel({ showPublicLinks = false }: RouteResu
               onDownload={() => void downloadFile(file.key)}
               onPreview={() => void openPreview(file.key)}
               onCopyLink={() => void copyPublicLink(file.key)}
+              onCopyCli={(target) => void copyCliCommands(file.key, target)}
               ipv6Off={ipv6Status != null && !ipv6Status.enabled}
             />
           ))}

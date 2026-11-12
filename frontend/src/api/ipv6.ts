@@ -1,8 +1,12 @@
 import { apiFetch } from './http'
 import type { Ipv6Status } from '@/types'
 
-export type NodeIpv6Summary = Partial<Pick<Ipv6Status, 'enabled' | 'requested_mode' | 'effective_mode' | 'egress' | 'active_egress' | 'reason'>> & {
+export type NodeIpv6Summary = Partial<Pick<Ipv6Status, 'enabled' | 'requested_mode' | 'effective_mode' | 'egress' | 'active_egress' | 'reason' | 'fake6_mappings'>> & {
   error?: string
+}
+
+export async function applyNodeIpv6(nodeId: number, enable: boolean): Promise<NodeIpv6Summary> {
+  return apiFetch<NodeIpv6Summary>(`/nodes/${nodeId}/ipv6/apply?enable=${enable}`, { method: 'POST' })
 }
 
 export async function getNodesIpv6Summary(): Promise<Record<string, NodeIpv6Summary>> {

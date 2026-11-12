@@ -583,7 +583,30 @@ def list_node_transports(_: User = Depends(require_admin)):
     return NodeTransportsResponse(items=list_transports())
 
 
-_IPV6_SUMMARY_KEYS = ("enabled", "requested_mode", "effective_mode", "egress", "active_egress", "reason")
+_IPV6_SUMMARY_KEYS = ("enabled", "requested_mode", "effective_mode", "egress", "active_egress", "reason", "fake6_mappings")
+
+
+@router.post("/{node_id}/ipv6/apply")
+def apply_node_ipv6(
+    node_id: int,
+    enable: bool = Query(False, description="Сначала включить IPv6: ENABLE_IPV6=y, режим c, выход native/Proton/WARP"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Применить IPv6 АнтиЗапрета на узле (перезапуск antizapret); enable=true заодно включает его в настройках."""
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Узел не найден")
+    adapter = get_adapter_for_node(node)
+    if enable:
+        current = adapter.get_ipv6_status()
+        egress = current.get("egress") or "native"
+        if not current.get("native_default_route") and egress == "native":
+            egress = "proton"  # нет нативного IPv6: идём через туннели warp-antizapret / warp-vpn
+        adapter.update_antizapret_settings({"ENABLE_IPV6": "y", "IPV6_MODE": "c", "IPV6_EGRESS": egress})
+    adapter.restart_service("antizapret")
+    log_action(db, action="ipv6_apply", user_id=current_user.id, username=current_user.username, details=f"node={node_id} enable={enable}")
+    return {k: v for k, v in adapter.get_ipv6_status().items() if k in _IPV6_SUMMARY_KEYS}
 
 
 @router.get("/ipv6-summary")

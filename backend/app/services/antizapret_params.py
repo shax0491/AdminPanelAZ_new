@@ -141,9 +141,9 @@ ANTIZAPRET_PARAMS = [
         "title": "Режим IPv6",
         "description": "Для работы нужен ENABLE_IPV6=y. Списки IPv6 — Редактор файлов: «IPv6 — включить/исключить подсети»",
         "options": [
-            {"value": "a", "label": "a — только IPv4"},
-            {"value": "b", "label": "b — полный VPN получает IPv6, split без IPv6"},
-            {"value": "c", "label": "c — b + Fake-IPv6 для заблокированных доменов в split"},
+            {"value": "a", "label": "Только IPv4 — блокировать AAAA заблокированных сайтов (Режим A)"},
+            {"value": "b", "label": "Только Полный VPN с IPv6 (Режим B)"},
+            {"value": "c", "label": "Полный Dual-Stack: Полный VPN + Fake-IPv6 в AntiZapret (Режим C, рекомендуется)"},
         ],
     },
     {
@@ -153,11 +153,12 @@ ANTIZAPRET_PARAMS = [
         "default": "native",
         "html_id": "IPV6_EGRESS-select",
         "title": "Выход IPv6",
-        "description": "native — нативный IPv6 узла; proton — интерфейс proton с IPv6; relay — IPv6 через туннель v6up до другого узла",
+        "description": "Нативный IPv6 узла; Proton/WARP — IPv6 через туннели warp-antizapret (split) и warp-vpn (full); relay — IPv6 через туннель v6up до другого узла",
         "options": [
-            {"value": "native", "label": "native — нативный IPv6 узла"},
-            {"value": "proton", "label": "proton — через Proton"},
-            {"value": "relay", "label": "relay — через другой узел"},
+            {"value": "native", "label": "Нативный IPv6 узла"},
+            {"value": "proton", "label": "Через Proton (warp-antizapret / warp-vpn)"},
+            {"value": "warp", "label": "Через WARP (warp-antizapret / warp-vpn)"},
+            {"value": "relay", "label": "Через другой узел (relay)"},
         ],
     },
     {
@@ -169,8 +170,8 @@ ANTIZAPRET_PARAMS = [
         "title": "Профиль клиентов по умолчанию",
         "description": "dual — клиенты получают IPv6, ipv4 — только IPv4. Для отдельных клиентов — Редактор файлов: «IPv6 — профили клиентов»",
         "options": [
-            {"value": "dual", "label": "dual — IPv4 + IPv6"},
-            {"value": "ipv4", "label": "ipv4 — только IPv4"},
+            {"value": "dual", "label": "Dual-Stack (IPv4 + IPv6)"},
+            {"value": "ipv4", "label": "Только IPv4"},
         ],
     },
     {

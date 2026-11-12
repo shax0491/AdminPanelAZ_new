@@ -6,6 +6,7 @@ import {
   updateAntizapretSettings,
 } from '@/api/client'
 import { applyWarpChanges } from '@/api/warpGeo'
+import { getIpv6Status } from '@/api/ipv6'
 import HaReplicaBanner from '@/components/dashboard/HaReplicaBanner'
 import { firstNonEmptyRemoteHost } from '@/components/proxy/RemoteHostsCard'
 import OpenVpnPanelTab from '@/components/routing/OpenVpnPanelTab'
@@ -413,7 +414,8 @@ function ChoiceSettingRow({
           )}
           {options.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
-              {opt.value}) {opt.label}
+              {/^\d+$/.test(opt.value) ? `${opt.value}) ` : ""}
+              {opt.label}
             </SelectItem>
           ))}
         </SelectContent>
@@ -877,6 +879,20 @@ export default function AntizapretConfigTab() {
 
   const handleDraftChange = useCallback(
     (key: string, value: string) => {
+      if (key === "ENABLE_IPV6" && value === "y") {
+        // Включение IPv6: режим a -> c, выход - native при нативном IPv6 узла, иначе туннель Proton/WARP
+        setDraft((prev) => ({ ...prev, ENABLE_IPV6: "y" }));
+        void getIpv6Status()
+          .then((s) =>
+            setDraft((prev) => {
+              const warpOn = ["2", "3", "4"].includes(prev.ANTIZAPRET_WARP ?? "");
+              const egress = s.native_default_route ? "native" : warpOn ? (prev.WARP_PROVIDER === "proton" ? "proton" : "warp") : "native";
+              return { ...prev, IPV6_MODE: !prev.IPV6_MODE || prev.IPV6_MODE === "a" ? "c" : prev.IPV6_MODE, IPV6_EGRESS: egress };
+            }),
+          )
+          .catch(() => setDraft((prev) => ({ ...prev, IPV6_MODE: !prev.IPV6_MODE || prev.IPV6_MODE === "a" ? "c" : prev.IPV6_MODE })));
+        return;
+      }
       if (key === "OPENVPN_BACKUP_TCP" && value === "y" && httpsIs443) {
         confirm({
           title: "Конфликт с портом 443",

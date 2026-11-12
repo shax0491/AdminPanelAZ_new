@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getIpv6Status, getNodesIpv6Summary, type NodeIpv6Summary } from '@/api/ipv6'
+import { applyNodeIpv6, getIpv6Status, getNodesIpv6Summary, type NodeIpv6Summary } from '@/api/ipv6'
 import { Badge } from '@/components/ui/badge'
 import { useNode } from '@/context/NodeContext'
 import { cn } from '@/lib/utils'
@@ -61,6 +61,7 @@ function loadSummary(): Promise<Record<string, NodeIpv6Summary>> {
 /** Бейдж IPv6 на карточке узла в разделе «Узлы». */
 export function NodeIpv6Badge({ nodeId }: { nodeId: number }) {
   const [item, setItem] = useState<NodeIpv6Summary | null | undefined>(undefined)
+  const [busy, setBusy] = useState(false)
   useEffect(() => {
     let alive = true
     void loadSummary().then((m) => alive && setItem(m[String(nodeId)] ?? null))
@@ -76,7 +77,36 @@ export function NodeIpv6Badge({ nodeId }: { nodeId: number }) {
       </Badge>
     )
   }
-  return <Ipv6Badge status={item} />
+  const run = async () => {
+    setBusy(true)
+    try {
+      setItem(await applyNodeIpv6(nodeId, !item.enabled))
+      summaryCache = null
+    } catch {
+      setItem({ ...item, reason: 'Не удалось применить IPv6' })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <Ipv6Badge status={item} />
+      {item.enabled && (
+        <span className="text-[10px] text-muted-foreground">
+          режим {item.effective_mode} · выход {item.active_egress || item.egress} · подмен {item.fake6_mappings ?? 0}
+        </span>
+      )}
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void run()}
+        className="rounded border border-input px-1.5 py-0.5 text-[10px] hover:bg-muted disabled:opacity-50"
+        title="Перезапускает antizapret на узле"
+      >
+        {busy ? '…' : item.enabled ? 'Применить IPv6' : 'Включить IPv6'}
+      </button>
+    </span>
+  )
 }
 
 export default function Ipv6Badge({ status, className }: { status: NodeIpv6Summary | null; className?: string }) {
