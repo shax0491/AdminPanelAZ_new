@@ -34,7 +34,7 @@ run_flow() {
       install_preflight_ports install_system_deps ensure_executable_scripts setup_env setup_node_env \
       setup_proxy_env setup_backend seed_admin_user_from_env seed_wizard_db_settings setup_frontend \
       setup_runtime_dirs setup_systemd setup_ddns_if_selected disable_openvpn_backup_tcp_if_port_conflict \
-      setup_nginx_if_selected setup_firewall_if_selected \
+      setup_nginx_if_selected setup_firewall_if_selected setup_mss_clamp \
       setup_node_agent_systemd setup_proxy_agent_systemd verify_controller_running setup_console_command print_post_install; do
       eval "${fn}() { :; }"
     done
