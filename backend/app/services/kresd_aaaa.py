@@ -15,7 +15,7 @@ AAAA_TARGETS: dict[str, str] = {"antizapret": "kresd_custom", "vpn": "kresd_cust
 BLOCK_START = "-- [ADMINPANEL-AAAA-NODATA-START]"
 BLOCK_END = "-- [ADMINPANEL-AAAA-NODATA-END]"
 
-NODATA_BLOCK = f"""{BLOCK_START} Managed by AdminPanelAZ: answer AAAA with NODATA instead of ::
+_NODATA_BLOCK_V1 = f"""{BLOCK_START} Managed by AdminPanelAZ: answer AAAA with NODATA instead of ::
 do
 \tlocal nodata = policy.ANSWER({{[kres.type.SOA] = {{rdata = kres.parse_rdata({{'SOA . . 1 1 1 1 86400'}}), ttl = 86400}}}}, true)
 \tlocal rule = policy.add(function(_, query)
@@ -43,12 +43,18 @@ end
 {BLOCK_END}
 """
 
+# IPv6 dual-stack (режимы b/c): kresd.conf выставляет глобальную ipv6_dual, тогда AAAA не режется этим правилом
+NODATA_BLOCK = _NODATA_BLOCK_V1.replace(
+    "if query.stype == kres.type.AAAA then", "if query.stype == kres.type.AAAA and not ipv6_dual then"
+)
+_NODATA_BLOCKS = (NODATA_BLOCK, _NODATA_BLOCK_V1)
+
 
 def aaaa_mode(content: str) -> AaaaMode:
     starts, ends = content.count(BLOCK_START), content.count(BLOCK_END)
     if starts == 0 and ends == 0:
         return "zero"
-    if starts == 1 and ends == 1 and NODATA_BLOCK in content:
+    if starts == 1 and ends == 1 and any(b in content for b in _NODATA_BLOCKS):
         return "nodata"
     return "custom"
 
@@ -60,12 +66,14 @@ def with_aaaa_nodata(content: str, enabled: bool) -> str:
         raise ValueError("AAAA block was edited by hand")
     if enabled:
         if mode == "nodata":
-            return content
+            # старый блок без ipv6_dual обновляем до нового
+            return content.replace(_NODATA_BLOCK_V1, NODATA_BLOCK)
         base = content.rstrip("\n")
         return f"{base}\n\n{NODATA_BLOCK}" if base else NODATA_BLOCK
     if mode == "zero":
         return content
-    before, after = content.split(NODATA_BLOCK, 1)
+    block = next(b for b in _NODATA_BLOCKS if b in content)
+    before, after = content.split(block, 1)
     if before.endswith("\n\n"):
         before = before[:-1]
     return before + after
