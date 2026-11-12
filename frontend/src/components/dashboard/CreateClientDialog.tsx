@@ -8,6 +8,8 @@ import {
   setClientAccessUntil,
   wgSetTrafficLimit,
 } from '@/api/client'
+import { setClientIpv6Profile, type ClientIpv6Profile } from '@/api/ipv6'
+import ClientIpv6Select from '@/components/dashboard/ClientIpv6Select'
 import ConfigOwnerSelect from '@/components/dashboard/ConfigOwnerSelect'
 import { Button } from '@/components/ui/button'
 import {
@@ -120,6 +122,7 @@ export default function CreateClientDialog({
   const [limitValue, setLimitValue] = useState('50')
   const [limitUnit, setLimitUnit] = useState('GB')
   const [limitPeriodDays, setLimitPeriodDays] = useState('')
+  const [ipv6Profile, setIpv6Profile] = useState<ClientIpv6Profile>('default')
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -139,6 +142,7 @@ export default function CreateClientDialog({
     setLimitValue('50')
     setLimitUnit('GB')
     setLimitPeriodDays('')
+    setIpv6Profile('default')
   }
 
   const closeForm = () => {
@@ -246,6 +250,14 @@ export default function CreateClientDialog({
 
     try {
       await withProgress(async () => {
+        if (isAdmin && ipv6Profile !== 'default') {
+          try {
+            // до создания: client.sh и AWG3 читают профиль при выдаче адреса и AllowedIPs
+            await setClientIpv6Profile(trimmedName, ipv6Profile, false)
+          } catch (err) {
+            onWarning(`Профиль IPv6 не записан: ${err instanceof ApiError ? err.message : 'ошибка'}`)
+          }
+        }
         for (const vpnType of ordered) {
           try {
             const result = await createConfig({
@@ -536,6 +548,22 @@ export default function CreateClientDialog({
                 />
               </div>
             </div>
+
+            {isAdmin && (
+              <div className="space-y-2">
+                <Label htmlFor="createIpv6Profile" className="lg:text-base">
+                  IPv6
+                </Label>
+                <ClientIpv6Select
+                  id="createIpv6Profile"
+                  className={fieldClass}
+                  value={ipv6Profile}
+                  onChange={setIpv6Profile}
+                  disabled={submitting}
+                />
+                <p className={hintClass}>Для всех выбранных конфигураций (OpenVPN, AWG 1.5/2/3). Действует, если IPv6 включён на узле.</p>
+              </div>
+            )}
 
             {isAdmin && (
               <ConfigOwnerSelect

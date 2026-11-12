@@ -44,6 +44,13 @@ MODES: dict[str, dict] = {
 }
 DEFAULT_MODE = "split"
 
+# IPv6 (AntiZapret-VPN 12.11.2026): подсети слоёв, профиль клиента ipv4|dual, настройки узла.
+IPV6_SUBNETS = {"split": "fd29:7::", "full": "fd28:7::"}
+SETUP_FILE = Path("/root/antizapret/setup")
+IPV6_PROFILE_FILE = Path("/root/antizapret/config/ipv6-profile.txt")
+IPV6_IPS_FILE = Path("/etc/wireguard/ips6")  # ", fd00:30::/64, подсети из include-ips6" (parse.sh, режим c)
+IPV6_MODE_FILE = Path("/etc/knot-resolver/ipv6-mode")  # эффективный режим (up.sh)
+
 Runner = Callable[[list[str], str | None], str]
 
 
@@ -99,6 +106,75 @@ def read_mtu(conf_dir: Path = AWG3_CONF_DIR) -> int:
 
 def _mode_of(record: dict) -> str:
     return record.get("mode", DEFAULT_MODE)
+
+
+def _setup_value(key: str, default: str = "") -> str:
+    try:
+        text = SETUP_FILE.read_text(encoding="utf-8")
+    except OSError:
+        return default
+    m = re.search(rf"^{re.escape(key)}=(.+)$", text, re.M)
+    return m.group(1).strip().strip("\"'") if m else default
+
+
+def ipv6_effective_mode() -> str:
+    try:
+        return IPV6_MODE_FILE.read_text(encoding="utf-8").strip() or "a"
+    except OSError:
+        return "a"
+
+
+def ipv6_enabled() -> bool:
+    """ENABLE_IPV6=y; без явного значения - как в up.sh: включено, если IPV6_MODE не a."""
+    raw = _setup_value("ENABLE_IPV6", "").lower()
+    if raw:
+        return raw == "y"
+    return _setup_value("IPV6_MODE", "a") != "a"
+
+
+def client_ipv6_profile(client: str) -> str:
+    """Профиль клиента из ipv6-profile.txt ("имя ipv4|dual"), иначе IPV6_PROFILE_DEFAULT (dual)."""
+    chosen = ""
+    try:
+        for line in IPV6_PROFILE_FILE.read_text(encoding="utf-8").splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and parts[0] == client:
+                chosen = parts[1]
+    except OSError:
+        pass
+    if chosen in ("ipv4", "dual"):
+        return chosen
+    default = _setup_value("IPV6_PROFILE_DEFAULT", "dual")
+    return default if default in ("ipv4", "dual") else "dual"
+
+
+def ipv6_active(client: str) -> bool:
+    return ipv6_enabled() and client_ipv6_profile(client) == "dual"
+
+
+def ip6_of(mode: str, ip: str) -> str:
+    """fd29:7::N (split) / fd28:7::N (full), N - последний октет IPv4 в hex, как у AWG 1.5/2.0 в client.sh."""
+    return f"{IPV6_SUBNETS[mode]}{int(ip.rsplit('.', 1)[1]):x}"
+
+
+def v6_allowed_for(mode: str) -> list[str]:
+    """AllowedIPs клиента по IPv6: full - ::/0 (режимы b/c); split - fd00:30::/64 + подсети списков (режим c)."""
+    eff = ipv6_effective_mode()
+    if mode == "full":
+        return ["::/0"] if eff in ("b", "c") else []
+    if eff != "c":
+        return []
+    try:
+        text = IPV6_IPS_FILE.read_text(encoding="utf-8").replace(",", "\n")
+    except OSError:
+        return ["fd00:30::/64"]
+    return [ln.strip() for ln in text.splitlines() if ln.strip()] or ["fd00:30::/64"]
+
+
+def peer_allowed_ips(client: str, mode: str, ip: str) -> str:
+    """AllowedIPs пира на сервере: IPv4 клиента, плюс его IPv6, если у клиента профиль dual."""
+    base = f"{ip}/32"
+    return f"{base}, {ip6_of(mode, ip)}/128" if ipv6_active(base_name(client)) else base
 
 
 # One client = two registry records: "<name>_az" (antizapret, split) and "<name>_vpn" (full VPN).
@@ -171,11 +247,12 @@ def obfuscation_lines(server_conf_text: str) -> list[str]:
     return [f"{k} = {values[k]}" for k in AWG3_OBFUSCATION_KEYS if k in values]
 
 
-def allowed_ips_for(mode: str, split_allowed_ips: list[str]) -> list[str]:
+def allowed_ips_for(mode: str, split_allowed_ips: list[str], v6_allowed: list[str] | None = None) -> list[str]:
+    extra = list(v6_allowed or [])
     if mode == "full":
-        return ["0.0.0.0/0"]
+        return ["0.0.0.0/0", *extra]
     subnet = str(MODES["split"]["subnet"])
-    return [subnet, *[ip for ip in split_allowed_ips if ip != subnet]]
+    return [subnet, *[ip for ip in split_allowed_ips if ip != subnet], *extra]
 
 
 def build_config(
@@ -190,11 +267,13 @@ def build_config(
     split_allowed_ips: list[str],
     mtu: int = MTU_DEFAULT,
     port: int = PORT,
+    client_ip6: str | None = None,
+    v6_allowed: list[str] | None = None,
 ) -> str:
     lines = [
         "[Interface]",
         f"PrivateKey = {client_private}",
-        f"Address = {client_ip}/32",
+        f"Address = {client_ip}/32" + (f", {client_ip6}/128" if client_ip6 else ""),
         f"MTU = {mtu}",
         f"DNS = {MODES[mode]['server_ip']}",
         *obfuscation,
@@ -203,15 +282,22 @@ def build_config(
         f"PublicKey = {server_public}",
         f"PresharedKey = {psk}",
         f"Endpoint = {endpoint_host}:{port}",
-        f"AllowedIPs = {', '.join(allowed_ips_for(mode, split_allowed_ips))}",
+        f"AllowedIPs = {', '.join(allowed_ips_for(mode, split_allowed_ips, v6_allowed if client_ip6 else None))}",
         "PersistentKeepalive = 15",
         "",
     ]
     return "\n".join(lines)
 
 
-def _peer_block(name: str, public: str, psk: str, ip: str) -> str:
-    return f"\n[Peer]\n# {name}\nPublicKey = {public}\nPresharedKey = {psk}\nAllowedIPs = {ip}/32\n"
+def _peer_block(name: str, public: str, psk: str, allowed: str) -> str:
+    return f"\n[Peer]\n# {name}\nPublicKey = {public}\nPresharedKey = {psk}\nAllowedIPs = {allowed}\n"
+
+
+def _v6_for_config(record_name: str, mode: str, ip: str) -> dict:
+    """client_ip6 и v6_allowed для build_config; пусто, если у клиента нет IPv6."""
+    if not ipv6_active(base_name(record_name)):
+        return {}
+    return {"client_ip6": ip6_of(mode, ip), "v6_allowed": v6_allowed_for(mode)}
 
 
 def create_client(
@@ -244,10 +330,11 @@ def create_client(
     ip = _next_ip(mode, used)
     port = _random_port({int(c.get("port", PORT)) for c in clients.values()})
 
-    run(["awg", "set", IFACE, "peer", public, "preshared-key", "/dev/stdin", "allowed-ips", f"{ip}/32"], psk)
+    allowed = peer_allowed_ips(name, mode, ip)
+    run(["awg", "set", IFACE, "peer", public, "preshared-key", "/dev/stdin", "allowed-ips", allowed.replace(" ", "")], psk)
 
     with store.server_conf.open("a", encoding="utf-8") as fh:
-        fh.write(_peer_block(name, public, psk, ip))
+        fh.write(_peer_block(name, public, psk, allowed))
 
     clients[name] = {"mode": mode, "public_key": public, "ip": ip, "port": port, "psk": psk, "private_key": private}
     store.save_clients(clients)
@@ -263,6 +350,7 @@ def create_client(
         split_allowed_ips=split_allowed_ips,
         mtu=read_mtu(store.conf_dir),
         port=port,
+        **_v6_for_config(name, mode, ip),
     )
     profile = _write_profile(store, mode, name, config)
     return {"name": name, "mode": mode, "ip": ip, "port": port, "public_key": public, "config": config, "profile": str(profile)}
@@ -295,6 +383,7 @@ def get_client_config(
         split_allowed_ips=split_allowed_ips,
         mtu=read_mtu(store.conf_dir),
         port=int(c.get("port", PORT)),
+        **_v6_for_config(name, _mode_of(c), c["ip"]),
     )
     _write_profile(store, _mode_of(c), name, config)
     return config
@@ -310,6 +399,8 @@ def list_clients(store: Awg3Store | None = None) -> list[dict]:
             "port": int(c.get("port", PORT)),
             "public_key": c["public_key"],
             "suspended": bool(c.get("suspended", False)),
+            "ipv6_profile": client_ipv6_profile(base_name(n)),
+            "ip6": ip6_of(_mode_of(c), c["ip"]) if ipv6_active(base_name(n)) else None,
         }
         for n, c in sorted(store.load_clients().items())
     ]
@@ -397,15 +488,51 @@ def _unsuspend_record(name: str, *, store: Awg3Store | None = None, run: Runner 
     record = clients[name]
     if not record.get("suspended"):
         return False
+    allowed = peer_allowed_ips(name, _mode_of(record), record["ip"])
     run(
-        ["awg", "set", IFACE, "peer", record["public_key"], "preshared-key", "/dev/stdin", "allowed-ips", f"{record['ip']}/32"],
+        ["awg", "set", IFACE, "peer", record["public_key"], "preshared-key", "/dev/stdin", "allowed-ips", allowed.replace(" ", "")],
         record["psk"],
     )
     with store.server_conf.open("a", encoding="utf-8") as fh:
-        fh.write(_peer_block(name, record["public_key"], record["psk"], record["ip"]))
+        fh.write(_peer_block(name, record["public_key"], record["psk"], allowed))
     record["suspended"] = False
     store.save_clients(clients)
     return True
+
+
+def _set_peer_allowed_in_conf(store: "Awg3Store", public: str, allowed: str) -> None:
+    text = store.server_conf.read_text(encoding="utf-8")
+    blocks = text.split("\n[Peer]\n")
+    for i, block in enumerate(blocks[1:], start=1):
+        if f"PublicKey = {public}" in block:
+            blocks[i] = re.sub(r"^AllowedIPs = .*$", f"AllowedIPs = {allowed}", block, flags=re.M)
+    store.server_conf.write_text("\n[Peer]\n".join(blocks), encoding="utf-8")
+
+
+def refresh_client_ipv6(
+    name: str,
+    *,
+    endpoint_host: str,
+    split_allowed_ips: list[str],
+    store: "Awg3Store | None" = None,
+    run: Runner | None = None,
+) -> list[str]:
+    """Применить профиль ipv4|dual клиента: AllowedIPs пира (живьём и в awg1.conf) и профиль-файл."""
+    store = store or Awg3Store()
+    run = run or _default_runner
+    refreshed: list[str] = []
+    for record in records_for(name, store):
+        clients = store.load_clients()
+        if record not in clients:
+            raise Awg3ClientError(f"client '{record}' not found")
+        c = clients[record]
+        if not c.get("suspended"):
+            allowed = peer_allowed_ips(record, _mode_of(c), c["ip"])
+            run(["awg", "set", IFACE, "peer", c["public_key"], "allowed-ips", allowed.replace(" ", "")], None)
+            _set_peer_allowed_in_conf(store, c["public_key"], allowed)
+        get_client_config(record, endpoint_host=endpoint_host, split_allowed_ips=split_allowed_ips, store=store, run=run)
+        refreshed.append(record)
+    return refreshed
 
 
 # Written by setup.sh: the address clients connect to (WIREGUARD_HOST, else the public IP).

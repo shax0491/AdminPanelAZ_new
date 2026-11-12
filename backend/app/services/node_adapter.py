@@ -737,6 +737,15 @@ class LocalNodeAdapter(NodeAdapter):
             split_allowed_ips=awg3_clients.split_allowed_from_file(),
         )
 
+    def awg3_refresh_ipv6(self, client_name: str) -> list[str]:
+        from app.services import awg3_clients
+
+        return awg3_clients.refresh_client_ipv6(
+            client_name,
+            endpoint_host=awg3_clients.endpoint_from_env(),
+            split_allowed_ips=awg3_clients.split_allowed_from_file(),
+        )
+
     def awg3_delete_client(self, client_name: str) -> None:
         from app.services import awg3_clients
 
@@ -1748,6 +1757,9 @@ class RemoteNodeAdapter(NodeAdapter):
 
     def awg3_client_config(self, client_name: str) -> str:
         return self._request("GET", f"/awg3/clients/{client_name}/config")["config"]
+
+    def awg3_refresh_ipv6(self, client_name: str) -> list[str]:
+        return self._request("POST", f"/awg3/clients/{client_name}/ipv6/refresh").get("refreshed", [])
 
     def awg3_delete_client(self, client_name: str) -> None:
         self._request("DELETE", f"/awg3/clients/{client_name}")

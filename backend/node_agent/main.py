@@ -746,6 +746,17 @@ def awg3_client_config_endpoint(client_name: str, _: None = Depends(verify_api_k
     return {"name": client_name, "config": text}
 
 
+@app.post("/awg3/clients/{client_name}/ipv6/refresh")
+def awg3_refresh_ipv6_endpoint(client_name: str, _: None = Depends(verify_api_key)):
+    done = _awg3_call(
+        _awg3.refresh_client_ipv6,
+        client_name,
+        endpoint_host=_awg3_call(_awg3.endpoint_from_env),
+        split_allowed_ips=_awg3_call(_awg3.split_allowed_from_file),
+    )
+    return {"name": client_name, "refreshed": done}
+
+
 @app.delete("/awg3/clients/{client_name}")
 def awg3_delete_client_endpoint(client_name: str, _: None = Depends(verify_api_key)):
     _awg3_call(_awg3.delete_client, client_name)

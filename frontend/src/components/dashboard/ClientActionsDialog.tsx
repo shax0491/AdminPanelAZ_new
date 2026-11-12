@@ -47,6 +47,7 @@ import {
   orderedProfileProtocols,
   setProfileTrafficLimits,
 } from '@/lib/profileTrafficLimit'
+import ClientIpv6Control from '@/components/dashboard/ClientIpv6Control'
 import ConfigOwnerSelect from '@/components/dashboard/ConfigOwnerSelect'
 import UnlockCodeCreateDialog from '@/components/dashboard/UnlockCodeCreateDialog'
 import ConfirmDialog, { ConfirmDialogHost } from '@/components/shared/ConfirmDialog'
@@ -1260,6 +1261,20 @@ export default function ClientActionsDialog({
                     'Сейчас ограничение не задано.'
                   )}
                 </p>
+              </ProfileSection>
+            )}
+
+            {isAdmin && (
+              <ProfileSection
+                title="IPv6"
+                description="Профиль клиента на узле: по умолчанию, только IPv4 или dual. Конфиги WG/AWG перегенерируются; OpenVPN — при переподключении."
+              >
+                <ClientIpv6Control
+                  clientName={config.client_name}
+                  disabled={haReplicaReadonly}
+                  onSuccess={onNotifySuccess}
+                  onError={onNotifyError}
+                />
               </ProfileSection>
             )}
 

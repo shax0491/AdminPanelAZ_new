@@ -8,3 +8,21 @@ export async function getIpv6Status(): Promise<Ipv6Status> {
 export async function applyIpv6(): Promise<Ipv6Status> {
   return apiFetch<Ipv6Status>('/ipv6/apply', { method: 'POST' })
 }
+
+export type ClientIpv6Profile = 'default' | 'ipv4' | 'dual'
+
+export async function getClientIpv6Profiles(): Promise<Record<string, 'ipv4' | 'dual'>> {
+  return (await apiFetch<{ profiles: Record<string, 'ipv4' | 'dual'> }>('/client-ipv6')).profiles
+}
+
+export async function setClientIpv6Profile(
+  client: string,
+  profile: ClientIpv6Profile,
+  regenerate = true,
+): Promise<{ notes: string[] }> {
+  return apiFetch<{ notes: string[] }>(`/client-ipv6/${encodeURIComponent(client)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ profile, regenerate }),
+  })
+}

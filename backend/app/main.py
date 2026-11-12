@@ -41,6 +41,7 @@ from app.routers import (
     configs,
     configs_bulk,
     dns_aaaa,
+    client_ipv6,
     ipv6,
     mtproxy,
     edit_files,
@@ -339,6 +340,7 @@ app.include_router(alert_rules.router, prefix=_API_PREFIX)
 app.include_router(openvpn_buffer_guard.router, prefix=_API_PREFIX)
 app.include_router(dns_aaaa.router, prefix=_API_PREFIX)
 app.include_router(ipv6.router, prefix=_API_PREFIX)
+app.include_router(client_ipv6.router, prefix=_API_PREFIX)
 app.include_router(mtproxy.router, prefix=_API_PREFIX)
 app.include_router(settings_router.router, prefix=_API_PREFIX)
 app.include_router(maintenance.router, prefix=_API_PREFIX)
