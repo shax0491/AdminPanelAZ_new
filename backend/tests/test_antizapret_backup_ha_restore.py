@@ -106,3 +106,21 @@ def test_extract_archive_uses_temp_dir_not_root(tmp_path, monkeypatch):
     finally:
         if extract_root.resolve() != Path("/root"):
             shutil.rmtree(extract_root, ignore_errors=True)
+
+
+def test_create_backup_uses_current_client_sh_backup_option(tmp_path, monkeypatch):
+    install_dir = tmp_path / "antizapret"
+    install_dir.mkdir()
+    client_sh = install_dir / "client.sh"
+    client_sh.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    client_sh.chmod(0o755)
+    service = AntizapretBackupService(install_dir=install_dir)
+    run = MagicMock(return_value=MagicMock(returncode=0, stdout="recreated at backup.tar.gz", stderr=""))
+    monkeypatch.setattr("app.services.antizapret_backup.subprocess.run", run)
+    monkeypatch.setattr(service, "_resolve_archive_path", lambda _stdout: str(tmp_path / "backup.tar.gz"))
+    monkeypatch.setattr(service, "_verify_archive", lambda _path: None)
+
+    result = service.create_backup()
+
+    assert run.call_args.args[0] == [str(client_sh), "5"]
+    assert result["archive_name"] == "backup.tar.gz"

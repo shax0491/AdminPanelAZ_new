@@ -93,11 +93,14 @@ export default function NodeDualStackControls({
               onChange={(event) => void run('egress', () => setNodeEgressMode(node.id, event.target.value))}
             >
               <option value="native">Native Dual-Stack</option>
-              <option value="proton">Proton VPN (v4+v6)</option>
-              <option value="warp">Cloudflare WARP (v4+v6)</option>
+              <option value="proton">Proton VPN</option>
+              <option value="warp">Cloudflare WARP</option>
               <option value="ipv4_only">IPv4 Only</option>
               <option value="ipv6_prefer">IPv6 Prefer</option>
             </select>
+            <p className="text-xs text-muted-foreground">
+              IPv6 через Proton/WARP доступен только при реальном IPv6 на интерфейсе выходного туннеля.
+            </p>
           </div>
         )}
       </div>

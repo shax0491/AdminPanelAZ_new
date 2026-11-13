@@ -23,6 +23,7 @@ def node(**overrides):
         "sni": "example.com",
         "pub": "public",
         "sid": "short",
+        "ipv6_probe_status": "online",
     }
     value.update(overrides)
     return value
@@ -108,3 +109,13 @@ def test_dual_stack_dns_check_has_hard_timeout_and_is_cached(monkeypatch):
     assert time.monotonic() - started < 1.5
     assert "ds.example.com" not in first and "ds.example.com" not in second
     assert calls == ["ds.example.com"]  # второй вызов - из кэша
+
+
+def test_subscription_omits_ipv6_with_failed_probe():
+    module = load_builder()
+    result = module.build_subscription(
+        [node(port_proton=0, ipv6_address="2001:db8::10", ipv6_probe_status="offline")]
+    )
+
+    assert result.count("type: vless") == 1
+    assert "2001:db8::10" not in result

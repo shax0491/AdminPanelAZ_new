@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 from datetime import datetime
@@ -15,18 +16,35 @@ from app.services.reverse_tunnel import pick_direct_ipv4
 
 TRANSPORT_MODES = {"auto", "force_ipv6", "force_ipv4", "reverse"}
 EGRESS_MODES = {"native", "proton", "warp", "ipv4_only", "ipv6_prefer"}
-MH_NODES_FILE = Path(os.environ.get("MH_NODES_FILE", "/opt/mh-app/nodes.json"))
+PRODUCTION_MH_NODES_FILE = Path("/opt/mh-app/nodes.json")
+MH_NODES_FILE = Path(os.environ.get("MH_NODES_FILE", str(PRODUCTION_MH_NODES_FILE)))
+MH_REGISTRY_SYNC_TEST_MODE = os.environ.get("MH_REGISTRY_SYNC_TEST_MODE", "").lower() in {"1", "true", "yes"}
 
 
 def _sync_mh_registry(node: Node) -> None:
+    if MH_REGISTRY_SYNC_TEST_MODE and MH_NODES_FILE == PRODUCTION_MH_NODES_FILE:
+        raise ValueError("тестовый режим sync не может использовать production registry")
     if node.node_kind != "vpn" or not MH_NODES_FILE.is_file():
         return
+    if not MH_REGISTRY_SYNC_TEST_MODE:
+        addresses = [(node.ipv4_address or node.host, 4, "IPv4")]
+        if node.has_ipv6 and node.ipv6_address:
+            addresses.append((node.ipv6_address, 6, "IPv6"))
+        for value, family, label in addresses:
+            try:
+                address = ipaddress.ip_address(str(value))
+            except ValueError as exc:
+                raise ValueError(f"{label} адрес некорректен для production registry") from exc
+            if address.version != family or not address.is_global:
+                raise ValueError(f"{label} тестовый/documentation/non-global адрес запрещён в production registry")
     data = json.loads(MH_NODES_FILE.read_text(encoding="utf-8"))
     changed = False
     for item in data.get("nodes", []):
         if item.get("key") != node.name:
             continue
         item["ipv4_address"] = node.ipv4_address or node.host
+        item["ipv4_probe_status"] = node.ipv4_probe_status
+        item["ipv6_probe_status"] = node.ipv6_probe_status
         if node.has_ipv6 and node.ipv6_address:
             item["ipv6_address"] = node.ipv6_address
         else:

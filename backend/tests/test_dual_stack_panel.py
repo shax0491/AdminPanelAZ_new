@@ -11,6 +11,14 @@ from app.database import Base
 from app.models import Node, NodeStatus
 
 
+@pytest.fixture(autouse=True)
+def isolated_mh_registry(tmp_path, monkeypatch):
+    from app.services import dual_stack_panel
+
+    monkeypatch.setattr(dual_stack_panel, "MH_NODES_FILE", tmp_path / "nodes.json")
+    monkeypatch.setattr(dual_stack_panel, "MH_REGISTRY_SYNC_TEST_MODE", True, raising=False)
+
+
 @pytest.fixture
 def db():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
@@ -221,6 +229,8 @@ def test_audit_updates_mh_registry_without_overwriting_other_node_fields(db, mon
     saved = json.loads(registry.read_text())["nodes"][0]
     assert saved["ipv6_address"] == "2001:db8::1"
     assert saved["ipv4_address"] == "198.51.100.10"
+    assert saved["ipv4_probe_status"] == "online"
+    assert saved["ipv6_probe_status"] == "online"
     assert saved["uuid"] == "keep"
 
 
@@ -404,3 +414,34 @@ def test_egress_selector_writes_ipv6_egress_and_keeps_warp_tunnels(db, monkeypat
 
     assert calls == [("settings", {"IPV6_EGRESS": "native"}), ("restart", "antizapret")]
     assert node.egress_mode == "native"
+
+def test_mh_test_mode_refuses_production_registry_before_any_file_access(db, monkeypatch):
+    from pathlib import Path
+    from app.services import dual_stack_panel
+
+    monkeypatch.setattr(dual_stack_panel, "MH_NODES_FILE", Path("/opt/mh-app/nodes.json"))
+    monkeypatch.setattr(dual_stack_panel, "MH_REGISTRY_SYNC_TEST_MODE", True, raising=False)
+    monkeypatch.setattr(Path, "is_file", lambda _self: False)
+
+    with pytest.raises(ValueError, match="тестов"):
+        dual_stack_panel._sync_mh_registry(make_node(db))
+
+
+@pytest.mark.parametrize("field", ["ipv4_address", "ipv6_address"])
+def test_mh_production_sync_rejects_documentation_address(db, monkeypatch, tmp_path, field):
+    import json
+    from app.services import dual_stack_panel
+
+    registry = tmp_path / "nodes.json"
+    registry.write_text(json.dumps({"nodes": [{"key": "DE1", "host": "198.51.100.10"}]}))
+    monkeypatch.setattr(dual_stack_panel, "MH_NODES_FILE", registry)
+    monkeypatch.setattr(dual_stack_panel, "MH_REGISTRY_SYNC_TEST_MODE", False, raising=False)
+    node = make_node(db)
+    setattr(node, field, "2001:db8::1")
+    if field == "ipv6_address":
+        node.has_ipv6 = True
+
+    with pytest.raises(ValueError, match="тестов|documentation|IPv4"):
+        dual_stack_panel._sync_mh_registry(node)
+
+    assert "ipv4_address" not in json.loads(registry.read_text())["nodes"][0]

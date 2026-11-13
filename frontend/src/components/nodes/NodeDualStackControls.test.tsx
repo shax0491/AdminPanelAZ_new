@@ -93,4 +93,13 @@ describe('NodeDualStackControls', () => {
     )
     expect(screen.getByRole('option', { name: /Reverse Tunnel/ })).not.toBeNull()
   })
+
+  it('does not claim Proton/WARP IPv6 without measured tunnel capability', () => {
+    render(<NodeDualStackControls node={node()} onUpdated={vi.fn()} />)
+
+    expect(screen.getByRole('option', { name: 'Proton VPN' })).not.toBeNull()
+    expect(screen.getByRole('option', { name: 'Cloudflare WARP' })).not.toBeNull()
+    expect(screen.queryByText(/Proton VPN \(v4\+v6\)/)).toBeNull()
+    expect(screen.getByText(/IPv6 на интерфейсе выходного туннеля/)).not.toBeNull()
+  })
 })

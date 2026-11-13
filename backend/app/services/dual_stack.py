@@ -120,10 +120,16 @@ def migrate_xray_config(
     if transport_mode not in {"auto", "force_ipv6", "force_ipv4"}:
         raise ValueError("Недопустимый режим транспорта Xray")
     result = copy.deepcopy(source)
-    for inbound in result.get("inbounds", []):
-        inbound["listen"] = "::"
+    verified_ipv6 = (
+        str(ipaddress.IPv6Address(ipv6_address))
+        if ipv6_address and transport_mode != "force_ipv4"
+        else None
+    )
+    if verified_ipv6:
+        for inbound in result.get("inbounds", []):
+            inbound["listen"] = "::"
     strategy = {
-        "auto": "UseIPv6v4",
+        "auto": "UseIPv6v4" if verified_ipv6 else "UseIPv4",
         "force_ipv6": "UseIPv6",
         "force_ipv4": "UseIPv4",
     }[transport_mode]
@@ -131,10 +137,32 @@ def migrate_xray_config(
         if outbound.get("protocol") != "freedom" or outbound.get("tag") != "direct":
             continue
         outbound.setdefault("settings", {})["domainStrategy"] = strategy
-        if ipv6_address and transport_mode != "force_ipv4":
-            outbound["sendThrough"] = str(ipaddress.IPv6Address(ipv6_address))
-        else:
+        send_through = outbound.get("sendThrough")
+        try:
+            if send_through is not None and ipaddress.ip_address(str(send_through)).version != 4:
+                outbound.pop("sendThrough", None)
+        except ValueError:
             outbound.pop("sendThrough", None)
+    result["outbounds"] = [
+        outbound for outbound in result.get("outbounds", []) if outbound.get("tag") != "direct-v6"
+    ]
+    if verified_ipv6:
+        result["outbounds"].append(
+            {
+                "tag": "direct-v6",
+                "protocol": "freedom",
+                "settings": {"domainStrategy": "UseIPv6"},
+                "sendThrough": verified_ipv6,
+            }
+        )
+        routing = result.setdefault("routing", {})
+        rules = [
+            rule
+            for rule in routing.get("rules", [])
+            if rule.get("outboundTag") != "direct-v6"
+        ]
+        rules.insert(0, {"type": "field", "ip": ["::/0"], "outboundTag": "direct-v6"})
+        routing["rules"] = rules
     return result
 
 

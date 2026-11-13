@@ -51,6 +51,8 @@ def build_subscription(nodes: list[dict[str, Any]]) -> str:
     for node in nodes:
         ipv4_host = str(node.get("ipv4_address") or node["host"])
         ipv6 = node.get("ipv6_address") or node.get("ipv6")
+        if ipv6 and node.get("ipv6_probe_status") != "online":
+            ipv6 = None
         dual_stack_host = node.get("dual_stack_host") or node.get("ds_host")
         if dual_stack_host and ipv6 and not _dual_stack_dns_matches(str(dual_stack_host), ipv4_host, str(ipv6).split("/")[0]):
             dual_stack_host = None

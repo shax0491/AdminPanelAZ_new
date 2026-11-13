@@ -104,11 +104,11 @@ def test_capability_payload_contains_both_reachability_families():
     assert result["ipv6_probe"]["error"] == "timeout"
 
 
-def test_xray_dual_stack_binds_all_inbounds_and_prefers_ipv6_for_native_egress():
+def test_xray_dual_stack_never_uses_ipv6_source_for_direct_ipv4():
     source = {
         "inbounds": [{"tag": "in-direct", "port": 8443, "protocol": "vless"}],
         "outbounds": [
-            {"tag": "direct", "protocol": "freedom"},
+            {"tag": "direct", "protocol": "freedom", "sendThrough": "2a0d:1234:0:6df::old"},
             {"tag": "proton", "protocol": "freedom", "sendThrough": "10.2.0.2"},
         ],
     }
@@ -119,11 +119,32 @@ def test_xray_dual_stack_binds_all_inbounds_and_prefers_ipv6_for_native_egress()
         ipv6_address="2a0d:1234:0:6df::abcd",
     )
 
+    direct = next(outbound for outbound in result["outbounds"] if outbound["tag"] == "direct")
+    direct_v6 = next(outbound for outbound in result["outbounds"] if outbound["tag"] == "direct-v6")
     assert result["inbounds"][0]["listen"] == "::"
-    assert result["outbounds"][0]["sendThrough"] == "2a0d:1234:0:6df::abcd"
-    assert result["outbounds"][0]["settings"]["domainStrategy"] == "UseIPv6v4"
-    assert result["outbounds"][1]["sendThrough"] == "10.2.0.2"
+    assert "sendThrough" not in direct
+    assert direct["settings"]["domainStrategy"] == "UseIPv6v4"
+    assert direct_v6["sendThrough"] == "2a0d:1234:0:6df::abcd"
+    assert direct_v6["settings"]["domainStrategy"] == "UseIPv6"
+    assert next(outbound for outbound in result["outbounds"] if outbound["tag"] == "proton")["sendThrough"] == "10.2.0.2"
+    assert {"type": "field", "ip": ["::/0"], "outboundTag": "direct-v6"} in result["routing"]["rules"]
     assert source["inbounds"][0] == {"tag": "in-direct", "port": 8443, "protocol": "vless"}
+
+
+def test_xray_without_verified_ipv6_keeps_working_ipv4_config():
+    source = {
+        "inbounds": [{"tag": "in-direct", "listen": "0.0.0.0"}],
+        "outbounds": [{"tag": "direct", "protocol": "freedom", "sendThrough": "2a0d:1234:0:6df::old"}],
+    }
+
+    result = migrate_xray_config(source, transport_mode="auto", ipv6_address=None)
+
+    assert result["inbounds"] == source["inbounds"]
+    assert result["outbounds"] == [{
+        "tag": "direct",
+        "protocol": "freedom",
+        "settings": {"domainStrategy": "UseIPv4"},
+    }]
 
 
 def test_xray_force_ipv4_does_not_bind_outbound_to_rotated_ipv6():

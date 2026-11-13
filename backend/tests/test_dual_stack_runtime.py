@@ -13,6 +13,16 @@ def completed(args, returncode=0, stdout=""):
     return subprocess.CompletedProcess(args, returncode, stdout, "")
 
 
+@pytest.fixture(autouse=True)
+def stub_xray_egress_verification(monkeypatch):
+    monkeypatch.setattr(
+        DualStackRuntime,
+        "_verify_xray_egress",
+        lambda _self, _config, _capabilities: None,
+        raising=False,
+    )
+
+
 class FakeRunner:
     def __init__(self, snapshots, *, rotation_probe_ok=True):
         self.snapshots = snapshots
@@ -30,6 +40,11 @@ class FakeRunner:
         if args[0] == "ping":
             ok = self.rotation_probe_ok if "-I" in args else True
             return completed(args, returncode=0 if ok else 1)
+        if args[0] == "curl":
+            source = args[args.index("--interface") + 1] if "--interface" in args else (
+                "2a0d:1234:0:6df::ec5a" if "-6" in args else "91.200.100.5"
+            )
+            return completed(args, stdout=f"{source}\n")
         return completed(args)
 
 
@@ -52,6 +67,7 @@ def test_runtime_audit_returns_real_snapshot_and_both_probes():
     assert result["ipv6_probe"]["reachable"] is True
     assert any(call[:3] == ["ping", "-4", "-c"] for call in runner.calls)
     assert any(call[:3] == ["ping", "-6", "-c"] for call in runner.calls)
+    assert any(call[:3] == ["curl", "-6", "--fail"] for call in runner.calls)
 
 
 def test_rotation_verifies_new_source_and_atomically_updates_xray(tmp_path: Path):
@@ -72,8 +88,11 @@ def test_rotation_verifies_new_source_and_atomically_updates_xray(tmp_path: Path
 
     saved = json.loads(config.read_text())
     assert saved["inbounds"][0]["listen"] == "::"
-    assert saved["outbounds"][0]["sendThrough"] == result["ipv6_address"]
-    assert saved["outbounds"][0]["settings"]["domainStrategy"] == "UseIPv6v4"
+    direct = next(outbound for outbound in saved["outbounds"] if outbound["tag"] == "direct")
+    direct_v6 = next(outbound for outbound in saved["outbounds"] if outbound["tag"] == "direct-v6")
+    assert "sendThrough" not in direct
+    assert direct["settings"]["domainStrategy"] == "UseIPv6v4"
+    assert direct_v6["sendThrough"] == result["ipv6_address"]
     assert ["systemctl", "restart", "xray-az"] in runner.calls
     assert any(call[:3] == ["ip", "-6", "addr"] and "del" in call for call in runner.calls)
     assert list(tmp_path.glob("config.json.bak-rotation-*"))
@@ -194,3 +213,100 @@ def test_rotation_rewrites_awg_and_openvpn_client_endpoints(tmp_path: Path):
     expected = f"[{result['ipv6_address']}]"
     assert f"Endpoint = {expected}:51443" in awg.read_text()
     assert f"remote {result['ipv6_address']} 50443" in ovpn.read_text()
+
+
+class BrokenIpv6EgressRunner(FakeRunner):
+    def __call__(self, args, timeout=20):
+        if args[0] == "curl" and "-6" in args:
+            self.calls.append(args)
+            return completed(args, returncode=7, stdout="")
+        return super().__call__(args, timeout=timeout)
+
+
+def test_ipv6_online_requires_real_http_egress_not_only_ping():
+    runtime = DualStackRuntime(runner=BrokenIpv6EgressRunner(snapshots()))
+
+    result = runtime.audit()
+
+    assert result["ipv6_probe"]["reachable"] is False
+    assert result["ipv6_egress"]["reachable"] is False
+
+
+def test_ipv6_online_requires_gateway():
+    data = snapshots()
+    data["routes6"] = []
+    runtime = DualStackRuntime(runner=FakeRunner(data))
+
+    result = runtime.audit()
+
+    assert result["ipv6_address"] is not None
+    assert result["ipv6_gateway"] is None
+    assert result["ipv6_probe"]["reachable"] is False
+
+
+def test_auto_never_writes_ipv6_config_when_ipv6_http_probe_failed(tmp_path: Path):
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({
+        "inbounds": [{"listen": "0.0.0.0"}],
+        "outbounds": [{"tag": "direct", "protocol": "freedom"}],
+    }))
+    runner = BrokenIpv6EgressRunner(snapshots())
+    runtime = DualStackRuntime(
+        runner=runner,
+        xray_config_path=config,
+        xray_binary=Path("/xray"),
+        sysctl_path=tmp_path / "sysctl.conf",
+    )
+
+    result = runtime.apply_transport("auto")
+
+    saved = json.loads(config.read_text())
+    assert result["capabilities"]["ipv6_probe"]["reachable"] is False
+    assert saved["inbounds"][0]["listen"] == "0.0.0.0"
+    assert saved["outbounds"] == [{
+        "tag": "direct",
+        "protocol": "freedom",
+        "settings": {"domainStrategy": "UseIPv4"},
+    }]
+    assert not any(call[0] == "sysctl" for call in runner.calls)
+
+
+def test_xray_post_write_egress_failure_restores_original_and_restarts(tmp_path: Path, monkeypatch):
+    original = {
+        "inbounds": [{"listen": "0.0.0.0"}],
+        "outbounds": [{"tag": "direct", "protocol": "freedom", "settings": {"domainStrategy": "UseIPv4"}}],
+    }
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps(original))
+    runner = FakeRunner(snapshots())
+    runtime = DualStackRuntime(
+        runner=runner,
+        xray_config_path=config,
+        xray_binary=Path("/xray"),
+        sysctl_path=tmp_path / "sysctl.conf",
+    )
+
+    def failed_check(_config, _capabilities):
+        raise NetworkOperationError("проверка выхода IPv4 failed")
+
+    monkeypatch.setattr(runtime, "_verify_xray_egress", failed_check)
+    with pytest.raises(NetworkOperationError, match="проверка выхода IPv4"):
+        runtime.apply_transport("auto")
+
+    assert json.loads(config.read_text()) == original
+    assert runner.calls.count(["systemctl", "restart", "xray-az"]) == 2
+    assert runner.calls[-1] == ["systemctl", "is-active", "--quiet", "xray-az"]
+
+
+def test_egress_probe_url_is_injectable_for_isolated_runtime_qa(tmp_path: Path):
+    runner = FakeRunner(snapshots())
+    runtime = DualStackRuntime(
+        runner=runner,
+        egress_probe_url="http://egress.test:18080/",
+        xray_config_path=tmp_path / "missing.json",
+    )
+
+    result = runtime.probe_egress(4)
+
+    assert result["reachable"] is True
+    assert runner.calls[-1][-1] == "http://egress.test:18080/"

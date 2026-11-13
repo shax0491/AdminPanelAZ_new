@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import copy
 import ipaddress
 import json
 import os
+import socket
 import subprocess
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 from app.services.dual_stack import (
     endpoint,
@@ -37,8 +41,10 @@ class DualStackRuntime:
         rotation_script: Path | None = None,
         sysctl_path: Path | None = None,
         profile_root: Path | None = None,
+        egress_probe_url: str = "https://icanhazip.com",
     ):
         self._runner = runner or self._subprocess_runner
+        self.egress_probe_url = egress_probe_url
         self.xray_config_path = xray_config_path or Path("/opt/xray-az/config.json")
         self.xray_binary = xray_binary or Path("/opt/xray-az/xray")
         self.openvpn_config_dir = openvpn_config_dir or Path("/etc/openvpn/server")
@@ -90,6 +96,77 @@ class DualStackRuntime:
             "error": None if result.returncode == 0 else (result.stderr or result.stdout or "unreachable").strip(),
         }
 
+    def _curl_egress(
+        self,
+        family: int,
+        *,
+        source: str | None = None,
+        socks_port: int | None = None,
+        resolve_address: str | None = None,
+    ) -> dict[str, Any]:
+        args = [
+            "curl",
+            f"-{family}",
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--connect-timeout",
+            "5",
+            "--max-time",
+            "10",
+        ]
+        if source:
+            address = ipaddress.ip_address(source)
+            if address.version != family:
+                raise ValueError("Адрес source не соответствует семейству")
+            args.extend(["--interface", source])
+        if socks_port is not None:
+            proxy = f"[::1]:{socks_port}" if family == 6 else f"127.0.0.1:{socks_port}"
+            args.extend(["--socks5", proxy])
+        if resolve_address is not None:
+            address = ipaddress.ip_address(resolve_address)
+            if address.version != family:
+                raise ValueError("Адрес resolve не соответствует семейству")
+            url = urlsplit(self.egress_probe_url)
+            if not url.hostname:
+                raise ValueError("В egress probe URL отсутствует hostname")
+            port = url.port or (443 if url.scheme == "https" else 80)
+            args.extend(["--resolve", f"{url.hostname}:{port}:{address}"])
+        args.append(self.egress_probe_url)
+        try:
+            result = self._runner(args, timeout=15)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {"reachable": False, "family": family, "address": None, "error": str(exc)}
+        output = result.stdout.strip()
+        try:
+            observed = ipaddress.ip_address(output)
+            observed_address = str(observed)
+        except ValueError:
+            observed = None
+            observed_address = None
+        reachable = (
+            result.returncode == 0
+            and observed is not None
+            and observed.version == family
+            and (source is None or observed_address == str(ipaddress.ip_address(source)))
+        )
+        error = None
+        if not reachable:
+            error = (result.stderr or result.stdout or "egress unreachable").strip()
+            if result.returncode == 0 and observed is not None and source and observed_address != source:
+                error = f"Выходной адрес {observed_address} не совпадает с source {source}"
+        return {
+            "reachable": reachable,
+            "family": family,
+            "address": observed_address,
+            "error": error,
+        }
+
+    def probe_egress(self, family: int, source: str | None = None) -> dict[str, Any]:
+        if family not in (4, 6):
+            raise ValueError("family должен быть 4 или 6")
+        return self._curl_egress(family, source=source)
+
     def audit(self) -> dict[str, Any]:
         addrs4, addrs6, routes6 = self._snapshot()
         snapshot = network_capabilities(
@@ -100,9 +177,27 @@ class DualStackRuntime:
             ipv6_probe={"reachable": False, "error": "not-run"},
         )
         snapshot["ipv4_probe"] = self.probe(4, "1.1.1.1") if snapshot["has_ipv4"] else {"reachable": False}
-        snapshot["ipv6_probe"] = (
+        snapshot["ipv4_egress"] = (
+            self.probe_egress(4, snapshot["ipv4_address"])
+            if snapshot["ipv4_probe"].get("reachable")
+            else {"reachable": False, "family": 4, "address": None, "error": "IPv4 ping failed"}
+        )
+        ping6 = (
             self.probe(6, "2606:4700:4700::1111") if snapshot["has_ipv6"] else {"reachable": False}
         )
+        ipv6_address = snapshot.get("ipv6_address")
+        can_probe_egress = bool(ping6.get("reachable") and ipv6_address and snapshot.get("ipv6_gateway"))
+        snapshot["ipv6_egress"] = (
+            self.probe_egress(6, ipv6_address)
+            if can_probe_egress
+            else {"reachable": False, "family": 6, "address": None, "error": "IPv6 address/gateway/ping incomplete"}
+        )
+        reachable6 = bool(can_probe_egress and snapshot["ipv6_egress"]["reachable"])
+        snapshot["ipv6_probe"] = {
+            **ping6,
+            "reachable": reachable6,
+            "error": None if reachable6 else snapshot["ipv6_egress"].get("error") or ping6.get("error"),
+        }
         snapshot["audited_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         return snapshot
 
@@ -155,12 +250,15 @@ class DualStackRuntime:
 
     def apply_transport(self, transport_mode: str) -> dict[str, Any]:
         capabilities = self.audit()
-        if transport_mode == "force_ipv6" and not capabilities["ipv6_probe"].get("reachable"):
+        ipv6_online = bool(capabilities["ipv6_probe"].get("reachable"))
+        if transport_mode == "force_ipv6" and not ipv6_online:
             raise NetworkOperationError("Force IPv6 невозможен: на узле нет рабочего IPv6")
-        self.enable_ipv6_sysctl()
+        ipv6_address = capabilities.get("ipv6_address") if ipv6_online else None
+        if ipv6_online:
+            self.enable_ipv6_sysctl()
         changed: list[str] = []
         if self.xray_config_path.exists():
-            self._apply_xray(transport_mode, capabilities.get("ipv6_address"))
+            self._apply_xray(transport_mode, ipv6_address, capabilities=capabilities)
             changed.append("xray-az")
         for name in ("antizapret-udp", "antizapret-tcp", "vpn-udp", "vpn-tcp"):
             path = self.openvpn_config_dir / f"{name}.conf"
@@ -189,6 +287,7 @@ class DualStackRuntime:
         ipv6_address: str | None,
         *,
         backup_reason: str = "dual-stack",
+        capabilities: dict[str, Any],
     ) -> None:
         original_text = self.xray_config_path.read_text(encoding="utf-8")
         original = json.loads(original_text)
@@ -202,10 +301,129 @@ class DualStackRuntime:
             self._run([str(self.xray_binary), "run", "-test", "-config", str(self.xray_config_path)], timeout=30)
             self._run(["systemctl", "restart", "xray-az"], timeout=40)
             self._run(["systemctl", "is-active", "--quiet", "xray-az"], timeout=10)
+            self._verify_xray_egress(migrated, capabilities)
         except NetworkOperationError:
             self.xray_config_path.write_text(original_text, encoding="utf-8")
-            self._runner(["systemctl", "restart", "xray-az"], timeout=40)
+            self._run(["systemctl", "restart", "xray-az"], timeout=40)
+            self._run(["systemctl", "is-active", "--quiet", "xray-az"], timeout=10)
             raise
+
+    def _verify_xray_egress(self, config: dict[str, Any], capabilities: dict[str, Any]) -> None:
+        outbounds = [
+            outbound
+            for outbound in config.get("outbounds", [])
+            if outbound.get("tag") in {"direct", "direct-v6"}
+        ]
+        if not any(outbound.get("tag") == "direct" for outbound in outbounds):
+            return
+        families = [4] if capabilities.get("has_ipv4") else []
+        if any(outbound.get("tag") == "direct-v6" for outbound in outbounds):
+            families.append(6)
+        if not families:
+            return
+        ports: dict[int, int] = {}
+        inbounds = []
+        routing = copy.deepcopy(config.get("routing", {}))
+        probe_rules = []
+        for family in families:
+            listen = "::1" if family == 6 else "127.0.0.1"
+            address_family = socket.AF_INET6 if family == 6 else socket.AF_INET
+            with socket.socket(address_family, socket.SOCK_STREAM) as listener:
+                listener.bind((listen, 0))
+                ports[family] = listener.getsockname()[1]
+            inbound_tag = f"adminpanelaz-egress-v{family}"
+            inbounds.append(
+                {
+                    "tag": inbound_tag,
+                    "listen": listen,
+                    "port": ports[family],
+                    "protocol": "socks",
+                    "settings": {"auth": "noauth", "udp": False},
+                }
+            )
+            probe_rules.append(
+                {
+                    "type": "field",
+                    "inboundTag": [inbound_tag],
+                    "outboundTag": "direct" if family == 4 else "direct-v6",
+                }
+            )
+        routing["rules"] = probe_rules + routing.get("rules", [])
+        probe_url = urlsplit(self.egress_probe_url)
+        configured_hosts = config.get("dns", {}).get("hosts", {})
+        host_addresses = configured_hosts.get(probe_url.hostname, []) if probe_url.hostname else []
+        if isinstance(host_addresses, str):
+            host_addresses = [host_addresses]
+        with tempfile.TemporaryDirectory(prefix="adminpanelaz-xray-egress-") as temporary:
+            work = Path(temporary)
+            probe_path = work / "config.json"
+            probe_path.write_text(
+                json.dumps(
+                    {
+                        "log": {"loglevel": "debug"},
+                        "inbounds": inbounds,
+                        "outbounds": outbounds,
+                        "routing": routing,
+                        "dns": config.get("dns", {}),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with (work / "xray.log").open("w", encoding="utf-8") as log:
+                try:
+                    process = subprocess.Popen(
+                        [str(self.xray_binary), "run", "-config", str(probe_path)],
+                        stdout=log,
+                        stderr=log,
+                    )
+                except OSError as exc:
+                    raise NetworkOperationError(f"Не удалось запустить Xray post-check: {exc}") from exc
+                try:
+                    for family in families:
+                        expected = capabilities.get("ipv4_address") if family == 4 else next(
+                            outbound.get("sendThrough")
+                            for outbound in outbounds
+                            if outbound.get("tag") == "direct-v6"
+                        )
+                        resolve_address = None
+                        for address in host_addresses:
+                            try:
+                                parsed = ipaddress.ip_address(str(address))
+                            except ValueError:
+                                continue
+                            if parsed.version == family:
+                                resolve_address = str(parsed)
+                                break
+                        deadline = time.monotonic() + 12
+                        result: dict[str, Any] = {"reachable": False, "error": "Xray probe did not start"}
+                        while time.monotonic() < deadline:
+                            result = self._curl_egress(
+                                family,
+                                socks_port=ports[family],
+                                resolve_address=resolve_address,
+                            )
+                            if (
+                                result.get("reachable")
+                                and (not expected or result.get("address") == expected)
+                            ):
+                                break
+                            if process.poll() is not None:
+                                break
+                            time.sleep(0.2)
+                        else:
+                            result["error"] = result.get("error") or "timeout"
+                        if not result.get("reachable") or (expected and result.get("address") != expected):
+                            raise NetworkOperationError(
+                                f"проверка выхода IPv{family} после записи Xray не пройдена: "
+                                f"{result.get('error') or 'unexpected egress address'}"
+                            )
+                finally:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=5)
 
     def _rewrite_profile_endpoints(self, address: str) -> int:
         if not self.profile_root.is_dir():
@@ -263,7 +481,7 @@ class DualStackRuntime:
         gateway = capabilities.get("ipv6_gateway")
         try:
             if self.xray_config_path.exists():
-                self._apply_xray("auto", new, backup_reason="rotation")
+                self._apply_xray("auto", new, backup_reason="rotation", capabilities=capabilities)
             if gateway:
                 self._run(
                     ["ip", "-6", "route", "replace", "default", "via", gateway, "dev", interface, "src", new]
@@ -273,7 +491,7 @@ class DualStackRuntime:
         except Exception:
             if self.xray_config_path.exists():
                 try:
-                    self._apply_xray("auto", old, backup_reason="rotation-rollback")
+                    self._apply_xray("auto", old, backup_reason="rotation-rollback", capabilities=capabilities)
                 except Exception:
                     pass
             if gateway:

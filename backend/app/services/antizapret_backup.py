@@ -1,4 +1,4 @@
-"""AntiZapret full backup/restore via client.sh 8 (ported from AdminAntizapret)."""
+"""AntiZapret full backup/restore via client.sh 5 (ported from AdminAntizapret)."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ _BACKUP_ARCHIVE_NAME_RE = re.compile(r"backup[\w.\-]*\.tar\.gz")
 
 
 def resolve_backup_archive(name: str, search_dirs) -> Path | None:
-    """Find a client.sh 8 archive by bare filename, only directly inside ``search_dirs``."""
+    """Find a client.sh 5 archive by bare filename, only directly inside ``search_dirs``."""
     if not _BACKUP_ARCHIVE_NAME_RE.fullmatch(name or ""):
         return None
     for directory in search_dirs:
@@ -66,7 +66,7 @@ class AntizapretBackupService:
             raise PermissionError(f"client.sh не исполняемый: {client_sh}")
 
         result = subprocess.run(
-            [str(client_sh), "8"],
+            [str(client_sh), "5"],
             cwd=str(self.install_dir),
             capture_output=True,
             text=True,
@@ -77,7 +77,7 @@ class AntizapretBackupService:
             stderr = (result.stderr or "").strip()
             stdout = (result.stdout or "").strip()
             detail = stderr or stdout or f"код выхода {result.returncode}"
-            raise RuntimeError(f"client.sh 8 завершился с ошибкой: {detail}")
+            raise RuntimeError(f"client.sh 5 завершился с ошибкой: {detail}")
 
         archive_path = self._resolve_archive_path(result.stdout or "")
         self._verify_archive(archive_path)
@@ -87,7 +87,7 @@ class AntizapretBackupService:
         }
 
     def restore_backup(self, archive_path: str | Path) -> dict[str, str]:
-        """Restore AntiZapret state from client.sh 8 archive (setup.sh-compatible flow)."""
+        """Restore AntiZapret state from client.sh 5 archive (setup.sh-compatible flow)."""
         archive = Path(archive_path).resolve()
         self._verify_archive(str(archive))
 
@@ -254,7 +254,7 @@ class AntizapretBackupService:
         candidates = [p for p in glob.glob(pattern) if os.path.isfile(p)]
         if not candidates:
             raise FileNotFoundError(
-                f"Архив AntiZapret не найден после client.sh 8 (ожидался {pattern})"
+                f"Архив AntiZapret не найден после client.sh 5 (ожидался {pattern})"
             )
         return os.path.abspath(max(candidates, key=os.path.getmtime))
 
