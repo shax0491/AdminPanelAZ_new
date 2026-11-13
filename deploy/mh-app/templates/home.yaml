@@ -1,0 +1,503 @@
+# mihomo на роутере (Netcraze Ultra). Устройства из /opt/etc/mihomo/tproxy-clients: TCP и DNS перехватываются в mihomo
+# (nat REDIRECT, /opt/etc/ndm/netfilter.d/90-mihomo.sh). Серверы - ваши AntiZapret по AWG3 (клиент AT_Router_mihomo).
+# YouTube - через «Авто». Карточки: по умолчанию «Авто — самый быстрый» (url-test раз в 30 мин, lazy), страну можно закрепить. Чтобы не держать из дома
+# 4 VPN-туннеля разом: без persistent-keepalive (туннель поднимается при трафике), проверка серверов раз в 30 мин и
+# только у используемых групп (lazy).
+mixed-port: 7890
+redir-port: 7892
+tproxy-port: 7893
+allow-lan: true
+bind-address: "*"
+mode: rule
+log-level: info
+ipv6: true
+unified-delay: true
+tcp-concurrent: true
+# меньше нагрузки на роутер: не искать процесс на каждое соединение; keepalive держит туннели без мёртвых соединений
+find-process-mode: "off"
+keep-alive-idle: 600
+keep-alive-interval: 30
+geodata-loader: memconservative
+external-controller: 0.0.0.0:9090
+external-ui: ui
+# панель zashboard (без этой строки mihomo при обновлении панели скачивает MetaCubeXD)
+external-ui-url: "https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip"
+secret: "REDACTED"
+profile: {store-selected: true}
+geodata-mode: true
+geox-url:
+  geoip: "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat"
+  geosite: "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat"
+geo-auto-update: true
+geo-update-interval: 24
+tun: {enable: false}
+sniffer:
+  enable: true
+  override-destination: true
+  sniff:
+    TLS: {ports: [443, 8443]}
+    HTTP: {ports: [80, 8080-8880]}
+    QUIC: {ports: [443]}
+  # чужие MTProxy (fake-TLS с доменом-маской): сниффер подменил бы адрес прокси на домен маски
+  skip-dst-address: [213.155.28.3/32]
+dns:
+  enable: true
+  listen: 0.0.0.0:7874
+  ipv6: true
+  cache-algorithm: arc
+  use-hosts: true
+  # redir-host: устройствам отдаются настоящие адреса (UDP, звонки, игры работают как обычно), а mihomo помнит домен
+  enhanced-mode: redir-host
+  # как у AntiZapret: обычные сайты - российский DNS напрямую (адреса, которые работают из РФ: они и идут напрямую),
+  # заблокированное и всё, что идёт через VPN, - Cloudflare через «Авто» (зарубежные адреса, без утечки DNS)
+  default-nameserver: [62.76.76.62, 62.76.62.76]
+  nameserver: [77.88.8.8, 77.88.8.1]
+  proxy-server-nameserver: [62.76.76.62, 62.76.62.76]
+  nameserver-policy:
+    "+.ru,+.su,+.рф,geosite:category-ru,geosite:ru-available-only-inside": [62.76.76.62, 62.76.62.76, 77.88.8.8]
+    # YouTube - настоящие адреса у MSK-IX: адрес нужен только для доменных правил, сам трафик идёт через VPN
+    "+.youtube.com,+.googlevideo.com,+.ytimg.com,+.ggpht.com,+.youtu.be,+.youtube-nocookie.com,+.youtubekids.com,+.google.ru": [62.76.76.62, 62.76.62.76]
+    "rule-set:az-include,az-full,ru-blocked,my-vpn": ["1.1.1.1#Авто — самый быстрый"]
+    "geosite:ru-blocked,refilter,antifilter-download-community,openai,anthropic,category-ai-!cn,telegram,discord,instagram,facebook,twitter,whatsapp,tiktok,netflix,spotify,twitch,google,category-porn": ["1.1.1.1#Авто — самый быстрый"]
+proxy-providers:
+  az-vless:
+    type: http
+    url: "__MH_SUBSCRIPTION_URL__"
+    interval: 3600
+    path: ./providers/az-vless.yaml
+    health-check: {enable: true, url: "http://www.gstatic.com/generate_204", interval: 600}
+proxies:
+  - {"name": "Напрямую (провайдер)", "type": "direct"}
+proxy-groups:
+  - {"name": "Все серверы — проверка", "type": "select", "proxies": ["Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Speedtest.png", "use": ["az-vless"]}
+  - {"name": "Авто — самый быстрый", "type": "url-test", "use": ["az-vless"], "filter": "Proton", "url": "http://www.gstatic.com/generate_204", "interval": 300, "tolerance": 10, "lazy": false, "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png", "max-failed-times": 2}
+  - {"name": "Авто — без Proton", "type": "url-test", "use": ["az-vless"], "filter": "прямой", "url": "http://www.gstatic.com/generate_204", "interval": 300, "tolerance": 10, "lazy": false, "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
+  - {"name": "Авто Dual-Stack (v4+v6)", "type": "url-test", "use": ["az-vless"], "filter": "VLESS (прямой|IPv6|Dual-Stack)", "url": "http://www.gstatic.com/generate_204", "interval": 300, "tolerance": 10, "lazy": false, "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
+  - {"name": "DE прямой (для сайтов с Cloudflare)", "type": "url-test", "use": ["az-vless"], "filter": "DE[0-9] [|] VLESS прямой", "url": "http://www.gstatic.com/generate_204", "interval": 300, "tolerance": 10, "lazy": false, "hidden": true}
+  - {"name": "🇩🇪 DE2", "type": "select", "use": ["az-vless"], "filter": "DE2", "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
+  - {"name": "🇩🇪 DE1", "type": "select", "use": ["az-vless"], "filter": "DE1", "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
+  - {"name": "🇩🇪 DE4", "type": "select", "use": ["az-vless"], "filter": "DE4", "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
+  - {"name": "🇳🇱 NL2", "type": "select", "use": ["az-vless"], "filter": "NL2", "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
+  - {"name": "🇱🇻 LV1", "type": "select", "use": ["az-vless"], "filter": "LV1", "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
+  - {"name": "Заблокированное в РФ", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Russia.png"}
+  - {"name": "Исключения (без Proton)", "type": "select", "proxies": ["Фикс. выход (стабильный IP)", "Авто — без Proton", "Напрямую (провайдер)", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Bypass.png"}
+  - {"name": "Фикс. выход (стабильный IP)", "type": "fallback", "use": ["az-vless"], "filter": "(DE2|DE4|DE1|NL2) \\| VLESS прямой", "url": "http://www.gstatic.com/generate_204", "interval": 120, "lazy": false, "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Direct.png"}
+  - {"name": "YouTube", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/YouTube.png"}
+  - {"name": "Telegram", "type": "select", "proxies": ["Авто — без Proton", "Авто — самый быстрый", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Telegram.png"}
+  - {"name": "ИИ — ChatGPT и Claude", "type": "select", "use": ["az-vless"], "filter": "DE1|DE4|FI1|FR1", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/ChatGPT.png"}
+  - {"name": "Discord", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Discord.png"}
+  - {"name": "Google", "type": "select", "proxies": ["ИИ — ChatGPT и Claude", "Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Google_Search.png"}
+  - {"name": "GitHub", "type": "select", "proxies": ["Напрямую (провайдер)", "Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/GitHub.png"}
+  - {"name": "Spotify", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Spotify.png"}
+  - {"name": "Steam", "type": "select", "proxies": ["Напрямую (провайдер)", "Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Steam.png"}
+  - {"name": "Twitch", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Twitch.png"}
+  - {"name": "Instagram и Facebook", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Instagram.png"}
+  - {"name": "WhatsApp", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons@main/png/whatsapp.png"}
+  - {"name": "X (Twitter)", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Twitter.png"}
+  - {"name": "TikTok", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/TikTok.png"}
+  - {"name": "Netflix", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Netflix.png"}
+  - {"name": "Microsoft и Copilot", "type": "select", "proxies": ["Напрямую (провайдер)", "Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Microsoft.png"}
+  - {"name": "Apple", "type": "select", "proxies": ["Напрямую (провайдер)", "Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Apple.png"}
+  - {"name": "18+", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Pornhub.png"}
+  - {"name": "PlayStation — покупки", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/PlayStation.png"}
+  - {"name": "Nintendo — покупки", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Nintendo.png"}
+  - {"name": "Платежи и шлюзы", "type": "select", "proxies": ["Авто — без Proton", "Авто — самый быстрый", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/PayPal.png"}
+  - {"name": "Остальной интернет", "type": "select", "proxies": ["Напрямую (провайдер)", "Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Final.png"}
+rule-providers:
+  my-block:
+    type: file
+    behavior: domain
+    format: text
+    path: ./providers/my-block.txt
+  my-block-ips:
+    type: file
+    behavior: ipcidr
+    format: text
+    path: ./providers/my-block-ips.txt
+  my-direct:
+    type: file
+    behavior: domain
+    format: text
+    path: ./providers/my-direct.txt
+  my-direct-ips:
+    type: file
+    behavior: ipcidr
+    format: text
+    path: ./providers/my-direct-ips.txt
+  # сайты, которые блокируют VPN-адреса Proton: через VLESS «прямой» (адрес самого узла)
+  my-noproton:
+    type: file
+    behavior: domain
+    format: text
+    path: ./providers/my-noproton.txt
+  my-vpn:
+    type: file
+    behavior: domain
+    format: text
+    path: ./providers/my-vpn.txt
+  my-vpn-ips:
+    type: file
+    behavior: ipcidr
+    format: text
+    path: ./providers/my-vpn-ips.txt
+  # ваши списки AntiZapret из панели (DE3 собирает каждые 30 мин), обновляются сами
+  az-include:
+    type: http
+    behavior: domain
+    format: text
+    url: "https://de3.example.com/lists/REDACTED/az-include.txt"
+    path: ./providers/az-include.txt
+    interval: 3600
+  az-include-ips:
+    type: http
+    behavior: ipcidr
+    format: text
+    url: "https://de3.example.com/lists/REDACTED/az-include-ips.txt"
+    path: ./providers/az-include-ips.txt
+    interval: 3600
+  az-route-ips:
+    type: http
+    behavior: ipcidr
+    format: text
+    url: "https://de3.example.com/lists/REDACTED/az-route-ips.txt"
+    path: ./providers/az-route-ips.txt
+    interval: 3600
+  az-exclude:
+    type: http
+    behavior: domain
+    format: text
+    url: "https://de3.example.com/lists/REDACTED/az-exclude.txt"
+    path: ./providers/az-exclude.txt
+    interval: 3600
+  az-exclude-ips:
+    type: http
+    behavior: ipcidr
+    format: text
+    url: "https://de3.example.com/lists/REDACTED/az-exclude-ips.txt"
+    path: ./providers/az-exclude-ips.txt
+    interval: 3600
+  # реестр блокировок как у AntiZapret: antifilter + community + bol-van (DE3 собирает раз в сутки)
+  az-adblock:
+    type: http
+    behavior: domain
+    format: mrs
+    url: "https://de3.example.com/lists/REDACTED/az-adblock.mrs"
+    path: ./providers/az-adblock.mrs
+    interval: 86400
+  az-adblock-allow:
+    type: http
+    behavior: domain
+    format: mrs
+    url: "https://de3.example.com/lists/REDACTED/az-adblock-allow.mrs"
+    path: ./providers/az-adblock-allow.mrs
+    interval: 86400
+  az-full:
+    type: http
+    behavior: domain
+    format: mrs
+    url: "https://de3.example.com/lists/REDACTED/az-full.mrs"
+    path: ./providers/az-full.mrs
+    interval: 86400
+  ru-blocked:
+    type: http
+    behavior: classical
+    format: text
+    url: "https://raw.githubusercontent.com/itdoginfo/allow-domains/main/Russia/inside-clashx.lst"
+    path: ./providers/ru-blocked.lst
+    interval: 43200
+  rcv-category-ru:
+    type: http
+    behavior: domain
+    format: mrs
+    url: "https://cdn.jsdelivr.net/gh/hydraponique/roscomvpn-geosite/release/mihomo/category-ru.mrs"
+    path: ./ruleset/category-ru.mrs
+    interval: 86400
+  rcv-whitelist:
+    type: http
+    behavior: domain
+    format: mrs
+    url: "https://cdn.jsdelivr.net/gh/hydraponique/roscomvpn-geosite/release/mihomo/whitelist.mrs"
+    path: ./ruleset/whitelist.mrs
+    interval: 86400
+  rcv-direct-ips:
+    type: http
+    behavior: ipcidr
+    format: mrs
+    url: "https://cdn.jsdelivr.net/gh/hydraponique/roscomvpn-geoip/release/mihomo/direct.mrs"
+    path: ./ruleset/direct-ips.mrs
+    interval: 86400
+  rcv-ru-apps:
+    type: http
+    behavior: classical
+    format: yaml
+    url: "https://raw.githubusercontent.com/roscomvpn/custom-category/release/mihomo/ru-apps.yaml"
+    path: ./ruleset/ru-apps.yaml
+    interval: 86400
+rules:
+  # alphavps.com: Cloudflare 1020 блокирует Proton/WARP - ведём через «Исключения» (чистый прямой выход DE, не домашний провайдер) (03.11)
+  - DOMAIN-SUFFIX,alphavps.com,Исключения (без Proton)
+  # медиа-стек Лампы/Filmix/трекеры (03.11): мимо Proton (его IPv6-выход режут CDN), чистый прямой выход DE
+  - DOMAIN-SUFFIX,filmix.my,Исключения (без Proton)
+  - DOMAIN-SUFFIX,filmix.ac,Исключения (без Proton)
+  - DOMAIN-SUFFIX,filmix.fm,Исключения (без Proton)
+  - DOMAIN-SUFFIX,filmix.tv,Исключения (без Proton)
+  - DOMAIN-SUFFIX,filmix.biz,Исключения (без Proton)
+  - DOMAIN-SUFFIX,filmix.net,Исключения (без Proton)
+  - DOMAIN-SUFFIX,filmix.me,Исключения (без Proton)
+  - DOMAIN-SUFFIX,filmixapp.cyou,Исключения (без Proton)
+  - DOMAIN-SUFFIX,filmixapp.com,Исключения (без Proton)
+  - DOMAIN-SUFFIX,megapeer.vip,Исключения (без Proton)
+  - DOMAIN-SUFFIX,bitru.org,Исключения (без Proton)
+  - DOMAIN-SUFFIX,rutor.info,Исключения (без Proton)
+  - DOMAIN-SUFFIX,rutor.is,Исключения (без Proton)
+  - DOMAIN-SUFFIX,nnmclub.to,Исключения (без Proton)
+  - DOMAIN-SUFFIX,bigfangroup.org,Исключения (без Proton)
+  - DOMAIN-SUFFIX,anifilm.pro,Исключения (без Proton)
+  - DOMAIN-SUFFIX,anilibria.tv,Исключения (без Proton)
+  - DOMAIN-SUFFIX,kinozal.tv,Исключения (без Proton)
+  # Домены, которые банит Proton или которым нужен один постоянный IP (RuTracker: cookie Cloudflare/сессия привязаны к IP; 03.11)
+  - DOMAIN-SUFFIX,rutracker.org,Исключения (без Proton)
+  - DOMAIN-SUFFIX,rutracker.net,Исключения (без Proton)
+  - DOMAIN-SUFFIX,rutracker.nl,Исключения (без Proton)
+  - DOMAIN-SUFFIX,rutracker.cr,Исключения (без Proton)
+  - DOMAIN-SUFFIX,t-ru.org,Исключения (без Proton)
+  - DOMAIN-SUFFIX,rutrk.org,Исключения (без Proton)
+  - DOMAIN-SUFFIX,imgur.com,Исключения (без Proton)
+  - DOMAIN-SUFFIX,danbooru.donmai.us,Исключения (без Proton)
+  - DOMAIN-SUFFIX,editmysite.com,Исключения (без Proton)
+  - DOMAIN-SUFFIX,screamingfrog.co.uk,Исключения (без Proton)
+  - DOMAIN-SUFFIX,ogs.google.com,ИИ — ChatGPT и Claude
+  - DOMAIN-SUFFIX,play.google.com,ИИ — ChatGPT и Claude
+  # 4pda.to напрямую у провайдера не открывается в браузере (ответ на TLS-запрос не приходит, curl проходит) - через VPN (30.10)
+  - DOMAIN-SUFFIX,4pda.to,Исключения (без Proton)
+  - DOMAIN-SUFFIX,4pda.ru,Исключения (без Proton)
+  # кухонный ТВ (AT_MiTVStick, 192.168.1.61): телеметрия и реклама Xiaomi/Google - REJECT (30.10, по просьбе)
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,mistat.xiaomi.com)),REJECT
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,mistat.intl.xiaomi.com)),REJECT
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,mistat.rus.xiaomi.com)),REJECT
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,mistat.india.xiaomi.com)),REJECT
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,ad.xiaomi.com)),REJECT
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,ad.intl.xiaomi.com)),REJECT
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,tracking.miui.com)),REJECT
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,tracking.intl.miui.com)),REJECT
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,adv.sec.miui.com)),REJECT
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,doubleclick.net)),REJECT
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,googleadservices.com)),REJECT
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,googlesyndication.com)),REJECT
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,adservice.google.com)),REJECT
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,google-analytics.com)),REJECT
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,googletagmanager.com)),REJECT
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,app-measurement.com)),REJECT
+  - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,crashlytics.com)),REJECT
+  - IP-CIDR,192.168.0.0/16,Напрямую (провайдер),no-resolve
+  - IP-CIDR,10.0.0.0/8,Напрямую (провайдер),no-resolve
+  - RULE-SET,my-block,REJECT
+  - RULE-SET,my-block-ips,REJECT
+  - RULE-SET,my-direct,Напрямую (провайдер)
+  - RULE-SET,my-direct-ips,Напрямую (провайдер)
+  # ECH Cloudflare (внешнее имя cloudflare-ech.com, сайт внутри зашифрован): не через Proton - Cloudflare блокирует его адреса (portal.qde.com 25.10)
+  - DOMAIN,cloudflare-ech.com,DE прямой (для сайтов с Cloudflare)
+  - RULE-SET,my-noproton,DE прямой (для сайтов с Cloudflare)
+  - RULE-SET,my-vpn,Заблокированное в РФ
+  - RULE-SET,my-vpn-ips,Заблокированное в РФ
+  # оплата целиком через карточку «Платежи и шлюзы»: сайт, платёжная форма, 3-D Secure, антифрод, капча - одним выходом
+  - DOMAIN-SUFFIX,cryptomus.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,bybit.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,bybitglobal.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,stripe.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,stripe.network,Платежи и шлюзы
+  - DOMAIN-SUFFIX,stripecdn.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,paypal.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,paypalobjects.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,paypal.me,Платежи и шлюзы
+  - DOMAIN-SUFFIX,braintreegateway.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,braintree-api.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,braintreepayments.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,adyen.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,adyenpayments.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,checkout.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,cko.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,worldpay.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,worldpay.net,Платежи и шлюзы
+  - DOMAIN-SUFFIX,global-payments.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,globalpay.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,authorize.net,Платежи и шлюзы
+  - DOMAIN-SUFFIX,cybersource.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,squareup.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,square.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,squarecdn.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,nuvei.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,safecharge.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,mollie.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,rapyd.net,Платежи и шлюзы
+  - DOMAIN-SUFFIX,dlocal.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,payu.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,payulatam.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,bluesnap.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,bambora.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,payline.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,ingenico.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,paysafe.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,skrill.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,neteller.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,payoneer.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,wise.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,transferwise.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,revolut.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,klarna.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,klarnaservices.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,afterpay.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,clearpay.co.uk,Платежи и шлюзы
+  - DOMAIN-SUFFIX,affirm.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,chargebee.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,chargebeestaticv2.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,recurly.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,paddle.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,paddle.net,Платежи и шлюзы
+  - DOMAIN-SUFFIX,fastspring.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,2checkout.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,verifone.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,avangate.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,digitalriver.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,cleverbridge.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,xsolla.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,lemonsqueezy.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,gumroad.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,zuora.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,chargify.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,cardinalcommerce.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,3dsecure.io,Платежи и шлюзы
+  - DOMAIN-SUFFIX,visa.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,visaonline.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,mastercard.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,mastercard.net,Платежи и шлюзы
+  - DOMAIN-SUFFIX,securecode.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,americanexpress.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,aexp-static.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,discover.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,jcb-global.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,unionpayintl.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,netcetera.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,gpayments.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,ravelin.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,ravelin.click,Платежи и шлюзы
+  - DOMAIN-SUFFIX,hcaptcha.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,arkoselabs.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,funcaptcha.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,sift.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,siftscience.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,riskified.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,signifyd.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,forter.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,kount.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,kount.net,Платежи и шлюзы
+  - DOMAIN-SUFFIX,online-metrix.net,Платежи и шлюзы
+  - DOMAIN-SUFFIX,threatmetrix.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,seon.io,Платежи и шлюзы
+  - DOMAIN-SUFFIX,fingerprint.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,fpjs.io,Платежи и шлюзы
+  - DOMAIN-SUFFIX,applepay.cdn-apple.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,smp-paymentservices.apple.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,apple-pay-gateway.apple.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,apple-pay-gateway-cert.apple.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,pay.google.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,payments.google.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,protonvpn.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,proton.me,Платежи и шлюзы
+  # реклама и трекеры (как ADBLOCK у AntiZapret); ваши списки «напрямую»/«VPN» выше - они важнее
+  - AND,((RULE-SET,az-adblock),(NOT,((RULE-SET,az-adblock-allow)))),REJECT
+  - DOMAIN-SUFFIX,example.org,Напрямую (провайдер)
+  - DOMAIN-SUFFIX,example.net,Напрямую (провайдер)
+  - DOMAIN-SUFFIX,example.com,Напрямую (провайдер)
+  - DOMAIN-SUFFIX,speed.cloudflare.com,Заблокированное в РФ
+  - DOMAIN-SUFFIX,speedtest.net,Заблокированное в РФ
+  - DOMAIN-SUFFIX,ookla.com,Заблокированное в РФ
+  - DOMAIN-SUFFIX,fast.com,Заблокированное в РФ
+  - DOMAIN-SUFFIX,nperf.com,Заблокированное в РФ
+  - DOMAIN-SUFFIX,youtubei.googleapis.com,Google
+  - DOMAIN,youtube.googleapis.com,Google
+  - GEOSITE,youtube,YouTube
+  - DOMAIN-SUFFIX,google.ru,YouTube
+  - RULE-SET,az-exclude,Напрямую (провайдер)
+  - RULE-SET,az-exclude-ips,Напрямую (провайдер)
+  - DOMAIN-SUFFIX,googleapis.com,Google
+  - DOMAIN-SUFFIX,googleusercontent.com,Google
+  - GEOSITE,telegram,Telegram
+  - DOMAIN-SUFFIX,telegramusercontent.com,Telegram
+  - GEOIP,telegram,Telegram,no-resolve
+  - GEOSITE,openai,ИИ — ChatGPT и Claude
+  - GEOSITE,anthropic,ИИ — ChatGPT и Claude
+  - GEOSITE,category-ai-!cn,ИИ — ChatGPT и Claude
+  - GEOSITE,discord,Discord
+  - DOMAIN-SUFFIX,discordsays.ai,Discord
+  - GEOSITE,github,GitHub
+  - GEOSITE,spotify,Spotify
+  - GEOSITE,steam,Steam
+  - GEOSITE,twitch,Twitch
+  - GEOSITE,instagram,Instagram и Facebook
+  - GEOSITE,facebook,Instagram и Facebook
+  - GEOSITE,whatsapp,WhatsApp
+  - GEOSITE,twitter,X (Twitter)
+  - GEOSITE,tiktok,TikTok
+  - GEOSITE,netflix,Netflix
+  - GEOSITE,microsoft,Microsoft и Copilot
+  - GEOSITE,apple,Apple
+  - DOMAIN-SUFFIX,dl.playstation.net,Напрямую (провайдер)
+  - DOMAIN-SUFFIX,cdn.nintendo.net,Напрямую (провайдер)
+  - DOMAIN-SUFFIX,d4c.nintendo.net,Напрямую (провайдер)
+  - DOMAIN-SUFFIX,playstation.com,PlayStation — покупки
+  - DOMAIN-SUFFIX,playstation.net,PlayStation — покупки
+  - DOMAIN-SUFFIX,sonyentertainmentnetwork.com,PlayStation — покупки
+  - DOMAIN-SUFFIX,nintendo.com,Nintendo — покупки
+  - DOMAIN-SUFFIX,nintendo.net,Nintendo — покупки
+  - DOMAIN-SUFFIX,nintendo-europe.com,Nintendo — покупки
+  - GEOSITE,category-porn,18+
+  - DOMAIN-SUFFIX,paypal.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,paypalobjects.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,paypal.me,Платежи и шлюзы
+  - DOMAIN-SUFFIX,cryptomus.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,bybit.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,bybitglobal.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,stripe.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,stripe.network,Платежи и шлюзы
+  - DOMAIN-SUFFIX,wise.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,transferwise.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,revolut.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,payoneer.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,braintreegateway.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,braintree-api.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,adyen.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,checkout.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,2checkout.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,paddle.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,skrill.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,klarna.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,xsolla.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,fastspring.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,lemonsqueezy.com,Платежи и шлюзы
+  - DOMAIN-SUFFIX,gumroad.com,Платежи и шлюзы
+  - RULE-SET,az-include,Заблокированное в РФ
+  - RULE-SET,az-include-ips,Заблокированное в РФ
+  - RULE-SET,az-route-ips,Заблокированное в РФ
+  - RULE-SET,ru-blocked,Заблокированное в РФ
+  - RULE-SET,az-full,Заблокированное в РФ
+  - GEOSITE,ru-blocked,Заблокированное в РФ
+  - GEOSITE,refilter,Заблокированное в РФ
+  - GEOSITE,antifilter-download-community,Заблокированное в РФ
+  - GEOIP,ru-blocked,Заблокированное в РФ,no-resolve
+  - DOMAIN-SUFFIX,jellyfin.org,Заблокированное в РФ
+  - DOMAIN-SUFFIX,samsungdm.com,Заблокированное в РФ
+  - DOMAIN-SUFFIX,ospserver.net,Заблокированное в РФ
+  - DOMAIN-SUFFIX,samsungotn.net,Заблокированное в РФ
+  - DOMAIN-SUFFIX,samsungapps.com,Заблокированное в РФ
+  - GEOSITE,google,Google
+  - IP-CIDR,198.18.0.0/15,Авто — самый быстрый
+  - RULE-SET,rcv-category-ru,Напрямую (провайдер)
+  - RULE-SET,rcv-whitelist,Напрямую (провайдер)
+  - RULE-SET,rcv-ru-apps,Напрямую (провайдер)
+  - RULE-SET,rcv-direct-ips,Напрямую (провайдер),no-resolve
+  - GEOSITE,category-ru,Напрямую (провайдер)
+  - GEOSITE,ru-available-only-inside,Напрямую (провайдер)
+  - GEOIP,ru,Напрямую (провайдер),no-resolve
+  # голые IPv6-адреса (без имени) - в туннель, а не в WAN провайдера; имена с AAAA сюда не попадают (no-resolve)
+  - MATCH,Остальной интернет
