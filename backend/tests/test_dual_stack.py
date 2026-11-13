@@ -138,7 +138,7 @@ def test_xray_without_verified_ipv6_keeps_working_ipv4_config():
     }
 
     result = migrate_xray_config(source, transport_mode="auto", ipv6_address=None)
-
+    assert result["inbounds"] == [{**i, "sniffing": {"enabled": True, "destOverride": ["http", "tls"], "routeOnly": True}} for i in source["inbounds"]]
     assert result["inbounds"] == source["inbounds"]
     assert result["outbounds"] == [{
         "tag": "direct",
