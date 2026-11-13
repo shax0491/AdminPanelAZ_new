@@ -33,7 +33,7 @@ geo-update-interval: 24
 tun: {enable: false}
 sniffer:
   enable: true
-  override-destination: true
+  override-destination: false
   sniff:
     TLS: {ports: [443, 8443]}
     HTTP: {ports: [80, 8080-8880]}
@@ -47,7 +47,7 @@ dns:
   cache-algorithm: arc
   use-hosts: true
   # redir-host: устройствам отдаются настоящие адреса (UDP, звонки, игры работают как обычно), а mihomo помнит домен
-  enhanced-mode: redir-host
+  enhanced-mode: normal
   # как у AntiZapret: обычные сайты - российский DNS напрямую (адреса, которые работают из РФ: они и идут напрямую),
   # заблокированное и всё, что идёт через VPN, - Cloudflare через «Авто» (зарубежные адреса, без утечки DNS)
   default-nameserver: [62.76.76.62, 62.76.62.76]

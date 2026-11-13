@@ -128,6 +128,10 @@ def migrate_xray_config(
     if verified_ipv6:
         for inbound in result.get("inbounds", []):
             inbound["listen"] = "::"
+    for inbound in result.get("inbounds", []):
+        # mihomo отдаёт на узел чистый IP: домен нужен xray только для роутинга, стек пакета не переписываем
+        if inbound.get("tag") in ("in-direct", "in-proton"):
+            inbound["sniffing"] = {"enabled": True, "destOverride": ["http", "tls"], "routeOnly": True}
     strategy = {
         "auto": "UseIPv6v4" if verified_ipv6 else "UseIPv4",
         "force_ipv6": "UseIPv6",
