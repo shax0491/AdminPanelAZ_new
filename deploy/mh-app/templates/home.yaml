@@ -69,6 +69,11 @@ proxy-providers:
 proxies:
   - {"name": "Напрямую (провайдер)", "type": "direct"}
 proxy-groups:
+  - {"name": "🌐 Режим IPv6 / IPv4", "type": "select", "proxies": ["🔄 Авто Dual-Stack (IPv4->v4, IPv6->v6)", "⚡ Приоритет IPv6 (Proton)", "🚀 Приоритет IPv6 (Прямой VPS)", "🛡️ Только IPv4 (Выкл IPv6 в туннеле)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
+  - {"name": "🔄 Авто Dual-Stack (IPv4->v4, IPv6->v6)", "type": "select", "proxies": ["PASS"], "hidden": true}
+  - {"name": "⚡ Приоритет IPv6 (Proton)", "type": "select", "proxies": ["Авто — самый быстрый"], "hidden": true}
+  - {"name": "🚀 Приоритет IPv6 (Прямой VPS)", "type": "select", "proxies": ["Авто — без Proton"], "hidden": true}
+  - {"name": "🛡️ Только IPv4 (Выкл IPv6 в туннеле)", "type": "select", "proxies": ["REJECT"], "hidden": true}
   - {"name": "Все серверы — проверка", "type": "select", "proxies": ["Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Speedtest.png", "use": ["az-vless"]}
   - {"name": "Авто — самый быстрый", "type": "url-test", "use": ["az-vless"], "filter": "Proton", "url": "http://www.gstatic.com/generate_204", "interval": 300, "tolerance": 10, "lazy": false, "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png", "max-failed-times": 2}
   - {"name": "Авто — без Proton", "type": "url-test", "use": ["az-vless"], "filter": "прямой", "url": "http://www.gstatic.com/generate_204", "interval": 300, "tolerance": 10, "lazy": false, "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
@@ -291,6 +296,9 @@ rules:
   - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,crashlytics.com)),REJECT
   - IP-CIDR,192.168.0.0/16,Напрямую (провайдер),no-resolve
   - IP-CIDR,10.0.0.0/8,Напрямую (провайдер),no-resolve
+  - IP-CIDR6,fc00::/7,Напрямую (провайдер),no-resolve
+  - IP-CIDR6,fe80::/10,Напрямую (провайдер),no-resolve
+  - AND,((IP-CIDR6,::/0,no-resolve),(NOT,((GEOIP,ru,no-resolve)))),🌐 Режим IPv6 / IPv4
   - RULE-SET,my-block,REJECT
   - RULE-SET,my-block-ips,REJECT
   - RULE-SET,my-direct,Напрямую (провайдер)
