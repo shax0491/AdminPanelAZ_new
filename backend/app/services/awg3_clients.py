@@ -157,6 +157,11 @@ def ip6_of(mode: str, ip: str) -> str:
     return f"{IPV6_SUBNETS[mode]}{int(ip.rsplit('.', 1)[1]):x}"
 
 
+def ip6_prefix_of(ip: str) -> str:
+    """fd29:7:N::/64 - личный префикс пира split-слоя (N - последний октет IPv4 в hex); сервер держит маршрут fd29:7::/32 на awg1."""
+    return f"fd29:7:{int(ip.rsplit('.', 1)[1]):x}::/64"
+
+
 def v6_allowed_for(mode: str) -> list[str]:
     """AllowedIPs клиента по IPv6: full - ::/0 (режимы b/c); split - fd00:30::/64 + подсети списков (режим c)."""
     eff = ipv6_effective_mode()
@@ -174,7 +179,12 @@ def v6_allowed_for(mode: str) -> list[str]:
 def peer_allowed_ips(client: str, mode: str, ip: str) -> str:
     """AllowedIPs пира на сервере: IPv4 клиента, плюс его IPv6, если у клиента профиль dual."""
     base = f"{ip}/32"
-    return f"{base}, {ip6_of(mode, ip)}/128" if ipv6_active(base_name(client)) else base
+    if not ipv6_active(base_name(client)):
+        return base
+    allowed = f"{base}, {ip6_of(mode, ip)}/128"
+    if mode == "split":  # персональный /64 для LAN за роутером (Netcraze: «IPv6-префикс /64»): fd29:7:N::/64
+        allowed += f", {ip6_prefix_of(ip)}"
+    return allowed
 
 
 # One client = two registry records: "<name>_az" (antizapret, split) and "<name>_vpn" (full VPN).

@@ -324,3 +324,13 @@ def test_transport_keys_are_shared_not_generated_per_client(store):
     line = "ContentPaddingAddition = 2"
     assert line in a and line in b
     assert "HeaderProtectionKey = HPK=" in a and "HeaderProtectionKey = HPK=" in b
+
+
+def test_split_dual_peer_gets_personal_ipv6_prefix(monkeypatch):
+    # LAN за роутером (Netcraze «IPv6-префикс /64»): пиру split-слоя в AllowedIPs - fd29:7::N/128 и fd29:7:N::/64 (N в hex)
+    monkeypatch.setattr(svc, "ipv6_active", lambda client: True)
+    assert svc.ip6_prefix_of("10.9.0.12") == "fd29:7:c::/64"
+    assert svc.peer_allowed_ips("home_az", "split", "10.9.0.3") == "10.9.0.3/32, fd29:7::3/128, fd29:7:3::/64"
+    assert svc.peer_allowed_ips("home_vpn", "full", "10.9.1.3") == "10.9.1.3/32, fd28:7::3/128"
+    monkeypatch.setattr(svc, "ipv6_active", lambda client: False)
+    assert svc.peer_allowed_ips("home_az", "split", "10.9.0.3") == "10.9.0.3/32"
