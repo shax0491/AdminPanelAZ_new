@@ -206,3 +206,22 @@ def test_snapshot_ignores_tunnel_interface_ipv6_as_native():
     result = parse_network_snapshot(ADDRS4, both, [])
     assert result["ipv6_address"] == "2a0c:4ac1:4:2a5::d"
     assert result["network_interface"] == "ens3"
+
+
+def test_xray_keeps_ipv6_priority_inbounds_with_route_only_false():
+    # in-direct-v6/in-proton-v6 (режим «Приоритет IPv6») не должны терять routeOnly=false при миграции
+    sniff = {"enabled": True, "destOverride": ["http", "tls", "quic"], "routeOnly": False}
+    source = {
+        "inbounds": [
+            {"tag": "in-direct", "port": 443, "sniffing": {"enabled": True}},
+            {"tag": "in-direct-v6", "port": 8449, "sniffing": dict(sniff)},
+            {"tag": "in-proton-v6", "port": 8450, "sniffing": dict(sniff)},
+        ],
+        "outbounds": [{"tag": "direct", "protocol": "freedom", "settings": {}}],
+        "routing": {"rules": []},
+    }
+    result = migrate_xray_config(source, transport_mode="auto", ipv6_address=None)
+    by_tag = {i["tag"]: i for i in result["inbounds"]}
+    assert by_tag["in-direct"]["sniffing"]["routeOnly"] is True
+    assert by_tag["in-direct-v6"]["sniffing"]["routeOnly"] is False
+    assert by_tag["in-proton-v6"]["sniffing"]["routeOnly"] is False
