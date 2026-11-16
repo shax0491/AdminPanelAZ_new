@@ -2319,6 +2319,15 @@ class NodeEgressUpdate(BaseModel):
     mode: str = Field(pattern="^(native|proton|warp|ipv4_only|ipv6_prefer)$")
 
 
+class NodeIpv4EgressUpdate(BaseModel):
+    mode: str = Field(pattern="^(direct|proton)$")
+    confirm: bool = False  # apply = up.sh узла, на секунды обрывает туннели
+
+
+class NodeDualStackEnabledUpdate(BaseModel):
+    enabled: bool
+
+
 class ReverseTunnelResponse(BaseModel):
     id: int
     proxy_node_id: int

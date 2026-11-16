@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.auth import require_admin
 from app.database import get_db
 from app.models import User
+from app.routers.client_ipv6 import guard_profile_file_write
 from app.schemas import MessageResponse
 from app.services.action_log import log_action
 from app.services.config_apply_queue import enqueue_doall_and_replicate
@@ -81,6 +82,8 @@ def save_edit_file(
             message="Файл сохранён, DNS-резолвер перезапущен; HA в фоне",
             task_id=task.id,
         )
+    if file_key == "ipv6_profile":  # до try: HTTP 409/502 не должен превращаться в общий 500
+        guard_profile_file_write(get_active_adapter(db), payload.content)
     try:
         adapter = get_active_adapter(db)
         adapter.write_config_file(_filename_for_key(file_key), payload.content)
@@ -116,6 +119,8 @@ def save_batch(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     adapter = get_active_adapter(db)
+    if "ipv6_profile" in payload.files:  # проверка до любой записи: отказ не оставляет частично применённый пакет
+        guard_profile_file_write(adapter, payload.files["ipv6_profile"])
     for key, content in payload.files.items():
         adapter.write_config_file(filenames[key], content)
     run_doall = payload.run_doall and any(not is_kresd_custom_key(key) for key in payload.files)

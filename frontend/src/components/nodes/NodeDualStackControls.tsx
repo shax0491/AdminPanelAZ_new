@@ -1,13 +1,18 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { RefreshCw, RotateCw } from 'lucide-react'
 import {
   auditNodeDualStack,
+  getNodeIpv4Egress,
   rotateNodeIpv6,
+  setNodeDualStackEnabled,
   setNodeEgressMode,
+  setNodeIpv4Egress,
   setNodeTransportMode,
 } from '@/api/client'
+import { getNodesIpv6Summary, type NodeIpv6Summary } from '@/api/ipv6'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import type { NodeIpv4Egress } from '@/api/nodes'
 import type { Node } from '@/types'
 
 function familyLabel(status?: string, latency?: number | null) {
@@ -26,6 +31,34 @@ export default function NodeDualStackControls({
   const [error, setError] = useState<string | null>(null)
   const isVpn = (node.node_kind ?? 'vpn') === 'vpn'
   const isLinkedRelay = node.node_kind === 'proxy' && node.linked_vpn_node_id != null
+  // Фактическое состояние узла (ENABLE_IPV6, выход IPv6), а не значение из БД: null = ещё не получено / узел не ответил
+  const [live, setLive] = useState<NodeIpv6Summary | null>(null)
+  const reload = useCallback(async () => {
+    try {
+      const all = await getNodesIpv6Summary()
+      const item = all[String(node.id)]
+      setLive(item && !item.error ? item : null)
+    } catch {
+      setLive(null)
+    }
+  }, [node.id])
+  useEffect(() => {
+    if (isVpn) void reload()
+  }, [isVpn, reload])
+  // IPv4-выход = существующий механизм WARP (провайдер + режимы): direct/proton выбираются, прочее только показывается
+  const [ipv4Egress, setIpv4Egress] = useState<NodeIpv4Egress>('unknown')
+  const reloadIpv4 = useCallback(async () => {
+    try {
+      setIpv4Egress((await getNodeIpv4Egress(node.id)).ipv4_egress)
+    } catch {
+      setIpv4Egress('unknown')
+    }
+  }, [node.id])
+  useEffect(() => {
+    if (isVpn) void reloadIpv4()
+  }, [isVpn, reloadIpv4])
+  const dualStack: 'on' | 'off' | 'unknown' = live == null || live.enabled == null ? 'unknown' : live.enabled ? 'on' : 'off'
+  const liveEgress = live?.active_egress || live?.egress || node.egress_mode
   const ipv6Only = node.ipv4_probe_status === 'offline' && node.ipv6_probe_status === 'online'
 
   const run = async (action: string, operation: () => Promise<unknown>) => {
@@ -34,6 +67,8 @@ export default function NodeDualStackControls({
     try {
       await operation()
       await onUpdated()
+      await reload()
+      await reloadIpv4()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Операция не выполнена')
     } finally {
@@ -64,7 +99,7 @@ export default function NodeDualStackControls({
           {node.ipv6_subnet_prefix ? ` /${node.ipv6_subnet_prefix}` : ''}
         </span>
       </div>
-      <div className={`grid gap-3 ${isVpn ? 'sm:grid-cols-2' : ''}`}>
+      <div className={`grid gap-3 ${isVpn ? 'sm:grid-cols-2 lg:grid-cols-4' : ''}`}>
         <div className="space-y-1">
           <label htmlFor={`transport-${node.id}`} className="text-xs font-medium">Транспорт</label>
           <select
@@ -83,23 +118,66 @@ export default function NodeDualStackControls({
         </div>
         {isVpn && (
           <div className="space-y-1">
-            <label htmlFor={`egress-${node.id}`} className="text-xs font-medium">Выходной шлюз</label>
+            <label htmlFor={`ipv4egress-${node.id}`} className="text-xs font-medium">IPv4: выход</label>
+            <select
+              id={`ipv4egress-${node.id}`}
+              name="ipv4_egress"
+              className="min-h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={ipv4Egress}
+              disabled={busy !== null || ipv4Egress === 'unknown' || ipv4Egress === 'pending'}
+              onChange={(event) => {
+                if (!window.confirm('Применение перезапустит туннели узла на несколько секунд. Продолжить?')) return
+                void run('ipv4egress', () => setNodeIpv4Egress(node.id, event.target.value as 'direct' | 'proton'))
+              }}
+            >
+              {ipv4Egress === 'unknown' && <option value="unknown">Неизвестно (узел не ответил)</option>}
+              {ipv4Egress === 'pending' && <option value="pending">Записано, не применено (вкладка WARP)</option>}
+              {ipv4Egress === 'custom' && <option value="custom">Особый (настроен на вкладке WARP)</option>}
+              <option value="direct">Прямой</option>
+              <option value="proton">Proton</option>
+            </select>
+            <p className="text-xs text-muted-foreground">Меняет только выход сервера для IPv4, клиентские конфиги не меняются.</p>
+          </div>
+        )}
+        {isVpn && (
+          <div className="space-y-1">
+            <label htmlFor={`dualstack-${node.id}`} className="text-xs font-medium">Dual-Stack сервера</label>
+            <select
+              id={`dualstack-${node.id}`}
+              name="dual_stack_enabled"
+              className="min-h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={dualStack}
+              disabled={busy !== null || dualStack === 'unknown'}
+              onChange={(event) => void run('dualstack', () => setNodeDualStackEnabled(node.id, event.target.value === 'on'))}
+            >
+              {dualStack === 'unknown' && <option value="unknown">Неизвестно (узел не ответил)</option>}
+              <option value="on">Вкл</option>
+              <option value="off">Выкл</option>
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Клиентский стек (IPv4 или Dual-Stack) выбирается при создании конфига. Выключение не ломает существующие конфиги: Dual-Stack-клиенты работают по IPv4.
+            </p>
+          </div>
+        )}
+        {isVpn && (
+          <div className="space-y-1">
+            <label htmlFor={`egress-${node.id}`} className="text-xs font-medium">Выход IPv6</label>
             <select
               id={`egress-${node.id}`}
               name="egress_mode"
               className="min-h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              value={node.egress_mode ?? 'native'}
-              disabled={busy !== null}
+              value={liveEgress === 'proton' || liveEgress === 'warp' ? liveEgress : 'native'}
+              disabled={busy !== null || dualStack !== 'on'}
               onChange={(event) => void run('egress', () => setNodeEgressMode(node.id, event.target.value))}
             >
-              <option value="native">Native Dual-Stack</option>
-              <option value="proton">Proton VPN</option>
-              <option value="warp">Cloudflare WARP</option>
-              <option value="ipv4_only">IPv4 Only</option>
-              <option value="ipv6_prefer">IPv6 Prefer</option>
+              <option value="native">Native</option>
+              <option value="proton">Proton</option>
+              {liveEgress === 'warp' && <option value="warp">Cloudflare WARP</option>}
             </select>
             <p className="text-xs text-muted-foreground">
-              IPv6 через Proton/WARP доступен только при реальном IPv6 на интерфейсе выходного туннеля.
+              {dualStack === 'on'
+                ? 'Меняет только выход сервера, клиентские конфиги не меняются. IPv6 через Proton требует IPv6 на интерфейсе туннеля.'
+                : 'Недоступно: включите Dual-Stack сервера.'}
             </p>
           </div>
         )}

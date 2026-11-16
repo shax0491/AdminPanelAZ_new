@@ -112,11 +112,16 @@ NODES_FILE = os.path.join(BASE, "nodes.json")
 SUB_TOKEN_FILE = os.path.join(BASE, "sub.token")
 
 
-def build_sub():
-    from subscription import build_subscription
+IPMODE_FILE = os.path.join(BASE, 'ipmode.state')
+CARD_MODE = '🌐 Сетевой режим'
+HOME_CONFIG = '/var/www/az-lists/home-config.yaml'
 
+
+def build_sub(prio=False):
+    """Подписка az-vless: единая сборка из subscription.py (её же проверяют тесты репозитория)."""
+    from subscription import build_subscription
     nodes = json.load(open(NODES_FILE, encoding="utf-8"))["nodes"]
-    return build_subscription(nodes)
+    return build_subscription(nodes, prio=prio)
 
 
 def mihomo(path, method="GET", body=None, timeout=15):
@@ -434,7 +439,8 @@ class H(BaseHTTPRequestHandler):
             if not (ip.startswith("192.168.") or ip.startswith("127.")) or "X-Forwarded-For" in self.headers or not real                     or not hmac.compare_digest(path[5:].encode(), real.encode()):
                 return self._send(404, {"error": "not found"})
             try:
-                self._send(200, build_sub(), "text/yaml; charset=utf-8")
+                prio = "follow=1" in self.path.partition("?")[2] and open(IPMODE_FILE, encoding="utf-8").read().strip() == "prio" if os.path.exists(IPMODE_FILE) else False
+                self._send(200, build_sub(prio), "text/yaml; charset=utf-8")
             except Exception as e:
                 self._send(500, {"error": "sub: %s" % type(e).__name__})
         elif path == "/api/rt/lists":
@@ -666,7 +672,31 @@ class H(BaseHTTPRequestHandler):
         self._send(404, {"error": "not found"})
 
 
+def mode_follow():
+    """Следит за карточкой «Сетевой режим» (раз в 2 с): prio -> подписка с ⚡-портами, ipv4 -> dns.ipv6=false."""
+    from netmode import follow_once, mode_of
+
+    def refresh():
+        mihomo("/providers/proxies/az-vless", "PUT", timeout=30)
+
+    def rebuild():
+        subprocess.run([sys.executable, os.path.join(BASE, "build_configs.py")], check=True, timeout=120)
+
+    def log(msg):
+        print(msg, file=sys.stderr, flush=True)
+
+    last = None
+    while True:
+        try:
+            cur = mode_of(mihomo("/proxies/" + urllib.parse.quote(CARD_MODE, safe=""), timeout=5).get("now", ""))
+            last = follow_once(last, cur, IPMODE_FILE, HOME_CONFIG, refresh, rebuild, MIHOMO, SECRET, log)
+        except Exception as e:  # noqa: BLE001 - опрос карточки (Mihomo недоступен): повторим на следующем тике
+            print("mode_follow:", e, file=sys.stderr, flush=True)
+        time.sleep(2)
+
+
 if __name__ == "__main__":
     if HOME_MIHOMO:
         threading.Thread(target=poller, daemon=True).start()
+        threading.Thread(target=mode_follow, daemon=True).start()
     ThreadingHTTPServer((CFG.get("bind", "127.0.0.1"), PORT), H).serve_forever()

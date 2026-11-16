@@ -3,14 +3,24 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Node } from '@/types'
 import NodeDualStackControls from './NodeDualStackControls'
-import { rotateNodeIpv6, setNodeTransportMode } from '@/api/client'
+import { getNodeIpv4Egress, setNodeIpv4Egress, rotateNodeIpv6, setNodeDualStackEnabled, setNodeEgressMode, setNodeTransportMode } from '@/api/client'
+import { getNodesIpv6Summary } from '@/api/ipv6'
 
 vi.mock('@/api/client', () => ({
   auditNodeDualStack: vi.fn(),
   setNodeTransportMode: vi.fn(),
   setNodeEgressMode: vi.fn(),
+  setNodeDualStackEnabled: vi.fn(),
+  getNodeIpv4Egress: vi.fn(),
+  setNodeIpv4Egress: vi.fn(),
   rotateNodeIpv6: vi.fn(),
 }))
+
+vi.mock('@/api/ipv6', () => ({ getNodesIpv6Summary: vi.fn() }))
+
+function live(over: Record<string, unknown> = {}) {
+  vi.mocked(getNodesIpv6Summary).mockResolvedValue({ '1': { enabled: true, egress: 'native', active_egress: 'native', effective_mode: 'c', ...over } })
+}
 
 function node(overrides: Partial<Node> = {}): Node {
   return {
@@ -40,7 +50,11 @@ function node(overrides: Partial<Node> = {}): Node {
 }
 
 describe('NodeDualStackControls', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    live()
+    vi.mocked(getNodeIpv4Egress).mockResolvedValue({ ipv4_egress: 'direct' })
+  })
   afterEach(cleanup)
 
   it('shows independent family health and IPv6-only active state', () => {
@@ -94,12 +108,66 @@ describe('NodeDualStackControls', () => {
     expect(screen.getByRole('option', { name: /Reverse Tunnel/ })).not.toBeNull()
   })
 
-  it('does not claim Proton/WARP IPv6 without measured tunnel capability', () => {
-    render(<NodeDualStackControls node={node()} onUpdated={vi.fn()} />)
+  it('shows live Dual-Stack and IPv6 egress from the node, not the DB card value', async () => {
+    live({ active_egress: 'proton', egress: 'proton' })
+    render(<NodeDualStackControls node={node({ egress_mode: 'native' })} onUpdated={vi.fn()} />)
 
-    expect(screen.getByRole('option', { name: 'Proton VPN' })).not.toBeNull()
-    expect(screen.getByRole('option', { name: 'Cloudflare WARP' })).not.toBeNull()
-    expect(screen.queryByText(/Proton VPN \(v4\+v6\)/)).toBeNull()
-    expect(screen.getByText(/IPv6 на интерфейсе выходного туннеля/)).not.toBeNull()
+    await waitFor(() => expect((screen.getByLabelText('Выход IPv6') as HTMLSelectElement).value).toBe('proton'))
+    expect((screen.getByLabelText('Dual-Stack сервера') as HTMLSelectElement).value).toBe('on')
+    expect(screen.queryByRole('option', { name: /IPv4 Only|IPv6 Prefer/ })).toBeNull()
+  })
+
+  it('blocks the IPv6 egress selector when Dual-Stack is off or unknown', async () => {
+    live({ enabled: false })
+    const { unmount } = render(<NodeDualStackControls node={node()} onUpdated={vi.fn()} />)
+    await waitFor(() => expect((screen.getByLabelText('Dual-Stack сервера') as HTMLSelectElement).value).toBe('off'))
+    expect(screen.getByLabelText('Выход IPv6')).toHaveProperty('disabled', true)
+    unmount()
+
+    vi.mocked(getNodesIpv6Summary).mockRejectedValue(new Error('down'))
+    render(<NodeDualStackControls node={node()} onUpdated={vi.fn()} />)
+    await waitFor(() => expect((screen.getByLabelText('Dual-Stack сервера') as HTMLSelectElement).value).toBe('unknown'))
+    expect(screen.getByLabelText('Выход IPv6')).toHaveProperty('disabled', true)
+    expect(screen.getByLabelText('Dual-Stack сервера')).toHaveProperty('disabled', true)
+  })
+
+  it('switches Dual-Stack and IPv6 egress through separate API calls', async () => {
+    vi.mocked(setNodeDualStackEnabled).mockResolvedValue({ enabled: false, changed: true })
+    vi.mocked(setNodeEgressMode).mockResolvedValue(node({ egress_mode: 'proton' }))
+    render(<NodeDualStackControls node={node()} onUpdated={vi.fn()} />)
+    await waitFor(() => expect(getNodesIpv6Summary).toHaveBeenCalled())
+    await screen.findByDisplayValue('Вкл')
+
+    fireEvent.change(screen.getByLabelText('Выход IPv6'), { target: { value: 'proton' } })
+    await waitFor(() => expect(setNodeEgressMode).toHaveBeenCalledWith(1, 'proton'))
+    fireEvent.change(screen.getByLabelText('Dual-Stack сервера'), { target: { value: 'off' } })
+    await waitFor(() => expect(setNodeDualStackEnabled).toHaveBeenCalledWith(1, false))
+  })
+
+  it('shows IPv4 exit separately and switches it through its own API after confirmation', async () => {
+    vi.mocked(setNodeIpv4Egress).mockResolvedValue({ ipv4_egress: 'proton', changed: true })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<NodeDualStackControls node={node()} onUpdated={vi.fn()} />)
+    await waitFor(() => expect((screen.getByLabelText('IPv4: выход') as HTMLSelectElement).value).toBe('direct'))
+
+    fireEvent.change(screen.getByLabelText('IPv4: выход'), { target: { value: 'proton' } })
+    await waitFor(() => expect(setNodeIpv4Egress).toHaveBeenCalledWith(1, 'proton'))
+    expect(setNodeEgressMode).not.toHaveBeenCalled()
+    expect(setNodeDualStackEnabled).not.toHaveBeenCalled()
+  })
+
+  it('does not switch IPv4 exit when the operator declines the confirmation', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(<NodeDualStackControls node={node()} onUpdated={vi.fn()} />)
+    await waitFor(() => expect((screen.getByLabelText('IPv4: выход') as HTMLSelectElement).value).toBe('direct'))
+    fireEvent.change(screen.getByLabelText('IPv4: выход'), { target: { value: 'proton' } })
+    expect(setNodeIpv4Egress).not.toHaveBeenCalled()
+  })
+
+  it('locks the IPv4 exit selector when the node state is unknown', async () => {
+    vi.mocked(getNodeIpv4Egress).mockRejectedValue(new Error('down'))
+    render(<NodeDualStackControls node={node()} onUpdated={vi.fn()} />)
+    await waitFor(() => expect((screen.getByLabelText('IPv4: выход') as HTMLSelectElement).value).toBe('unknown'))
+    expect(screen.getByLabelText('IPv4: выход')).toHaveProperty('disabled', true)
   })
 })

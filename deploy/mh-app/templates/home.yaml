@@ -10,7 +10,7 @@ allow-lan: true
 bind-address: "*"
 mode: rule
 log-level: info
-ipv6: true
+ipv6: false
 unified-delay: true
 tcp-concurrent: true
 # меньше нагрузки на роутер: не искать процесс на каждое соединение; keepalive держит туннели без мёртвых соединений
@@ -22,7 +22,7 @@ external-controller: 0.0.0.0:9090
 external-ui: ui
 # панель zashboard (без этой строки mihomo при обновлении панели скачивает MetaCubeXD)
 external-ui-url: "https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip"
-secret: "REDACTED"
+secret: "__MH_HOME_SECRET__"
 profile: {store-selected: true}
 geodata-mode: true
 geox-url:
@@ -43,7 +43,7 @@ sniffer:
 dns:
   enable: true
   listen: 0.0.0.0:7874
-  ipv6: true
+  ipv6: false
   cache-algorithm: arc
   use-hosts: true
   # redir-host: устройствам отдаются настоящие адреса (UDP, звонки, игры работают как обычно), а mihomo помнит домен
@@ -57,8 +57,14 @@ dns:
     "+.ru,+.su,+.рф,geosite:category-ru,geosite:ru-available-only-inside": [62.76.76.62, 62.76.62.76, 77.88.8.8]
     # YouTube - настоящие адреса у MSK-IX: адрес нужен только для доменных правил, сам трафик идёт через VPN
     "+.youtube.com,+.googlevideo.com,+.ytimg.com,+.ggpht.com,+.youtu.be,+.youtube-nocookie.com,+.youtubekids.com,+.google.ru": [62.76.76.62, 62.76.62.76]
+    "+.ifconfig.me,+.ifconfig.co,+.checkip.amazonaws.com,+.ident.me,+.icanhazip.com,+.ipify.org,+.api64.ipify.org,+.ipinfo.io,+.ip-api.com,+.myip.com,+.wtfismyip.com,+.ipecho.net,+.browserleaks.com,+.whoer.net,+.dnsleaktest.com,+.bash.ws": ["1.1.1.1#Авто — самый быстрый"]
     "rule-set:az-include,az-full,ru-blocked,my-vpn": ["1.1.1.1#Авто — самый быстрый"]
-    "geosite:ru-blocked,refilter,antifilter-download-community,openai,anthropic,category-ai-!cn,telegram,discord,instagram,facebook,twitter,whatsapp,tiktok,netflix,spotify,twitch,google,category-porn": ["1.1.1.1#Авто — самый быстрый"]
+    "geosite:google": ["1.1.1.1#Google"]
+    "geosite:instagram": ["1.1.1.1#Instagram"]
+    "+.instagram.com,+.cdninstagram.com,+.fbcdn.net": ["1.1.1.1#Instagram"]
+    "geosite:facebook": ["1.1.1.1#Facebook"]
+    "+.googleapis.com,+.gstatic.com,+.googleusercontent.com,+.clients6.google.com": ["1.1.1.1#Google"]
+    "geosite:ru-blocked,refilter,antifilter-download-community,openai,anthropic,category-ai-!cn,telegram,discord,twitter,whatsapp,tiktok,netflix,spotify,twitch,category-porn": ["1.1.1.1#Авто — самый быстрый"]
 proxy-providers:
   az-vless:
     type: http
@@ -67,18 +73,16 @@ proxy-providers:
     path: ./providers/az-vless.yaml
     health-check: {enable: true, url: "http://www.gstatic.com/generate_204", interval: 600}
 proxies:
-  - {"name": "Напрямую (провайдер)", "type": "direct"}
+  - {"name": "Напрямую (провайдер)", "type": "direct", "ip-version": "ipv4-prefer"}
 proxy-groups:
-  - {"name": "🌐 Режим IPv6 / IPv4", "type": "select", "proxies": ["🔄 Авто Dual-Stack (IPv4->v4, IPv6->v6)", "⚡ Приоритет IPv6 (Proton)", "🚀 Приоритет IPv6 (Прямой VPS)", "🛡️ Только IPv4 (Выкл IPv6 в туннеле)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
-  - {"name": "🔄 Авто Dual-Stack (IPv4->v4, IPv6->v6)", "type": "select", "proxies": ["PASS"], "hidden": true}
-  - {"name": "⚡ Приоритет IPv6 (Proton)", "type": "select", "proxies": ["Авто — самый быстрый"], "hidden": true}
-  - {"name": "🚀 Приоритет IPv6 (Прямой VPS)", "type": "select", "proxies": ["Авто — без Proton"], "hidden": true}
-  - {"name": "🛡️ Только IPv4 (Выкл IPv6 в туннеле)", "type": "select", "proxies": ["REJECT"], "hidden": true}
+  - {"name": "🌐 Сетевой режим", "type": "select", "proxies": ["🔄 Авто (IPv4 + IPv6)", "⚡ Приоритет IPv6", "🛡️ Только IPv4"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
+  - {"name": "🔄 Авто (IPv4 + IPv6)", "type": "select", "proxies": ["PASS"], "hidden": true}
+  - {"name": "⚡ Приоритет IPv6", "type": "select", "proxies": ["PASS"], "hidden": true}
+  - {"name": "🛡️ Только IPv4", "type": "select", "proxies": ["REJECT"], "hidden": true}
   - {"name": "Все серверы — проверка", "type": "select", "proxies": ["Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Speedtest.png", "use": ["az-vless"]}
-  - {"name": "Авто — самый быстрый", "type": "url-test", "use": ["az-vless"], "filter": "Proton", "url": "http://www.gstatic.com/generate_204", "interval": 300, "tolerance": 10, "lazy": false, "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png", "max-failed-times": 2}
-  - {"name": "Авто — без Proton", "type": "url-test", "use": ["az-vless"], "filter": "прямой", "url": "http://www.gstatic.com/generate_204", "interval": 300, "tolerance": 10, "lazy": false, "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
-  - {"name": "Авто Dual-Stack (v4+v6)", "type": "url-test", "use": ["az-vless"], "filter": "VLESS (прямой|IPv6|Dual-Stack)", "url": "http://www.gstatic.com/generate_204", "interval": 300, "tolerance": 10, "lazy": false, "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
-  - {"name": "DE прямой (для сайтов с Cloudflare)", "type": "url-test", "use": ["az-vless"], "filter": "DE[0-9] [|] VLESS прямой", "url": "http://www.gstatic.com/generate_204", "interval": 300, "tolerance": 10, "lazy": false, "hidden": true}
+  - {"name": "Авто — самый быстрый", "type": "url-test", "use": ["az-vless"], "filter": "Proton", "url": "http://www.gstatic.com/generate_204", "interval": 300, "tolerance": 50, "lazy": false, "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png", "max-failed-times": 2}
+  - {"name": "Авто — без Proton", "type": "url-test", "use": ["az-vless"], "filter": "прямой", "url": "http://www.gstatic.com/generate_204", "interval": 300, "tolerance": 50, "lazy": false, "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
+  - {"name": "DE прямой (для сайтов с Cloudflare)", "type": "url-test", "use": ["az-vless"], "filter": "DE[0-9] [|] VLESS прямой", "url": "http://www.gstatic.com/generate_204", "interval": 300, "tolerance": 50, "lazy": false, "hidden": true}
   - {"name": "🇩🇪 DE2", "type": "select", "use": ["az-vless"], "filter": "DE2", "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
   - {"name": "🇩🇪 DE1", "type": "select", "use": ["az-vless"], "filter": "DE1", "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
   - {"name": "🇩🇪 DE4", "type": "select", "use": ["az-vless"], "filter": "DE4", "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
@@ -86,17 +90,18 @@ proxy-groups:
   - {"name": "🇱🇻 LV1", "type": "select", "use": ["az-vless"], "filter": "LV1", "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
   - {"name": "Заблокированное в РФ", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Russia.png"}
   - {"name": "Исключения (без Proton)", "type": "select", "proxies": ["Фикс. выход (стабильный IP)", "Авто — без Proton", "Напрямую (провайдер)", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Bypass.png"}
-  - {"name": "Фикс. выход (стабильный IP)", "type": "fallback", "use": ["az-vless"], "filter": "(DE2|DE4|DE1|NL2) \\| VLESS прямой", "url": "http://www.gstatic.com/generate_204", "interval": 120, "lazy": false, "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Direct.png"}
+  - {"name": "Фикс. выход (стабильный IP)", "type": "fallback", "use": ["az-vless"], "filter": "(DE2|DE4|DE1|NL2) \\| VLESS прямой", "url": "http://www.gstatic.com/generate_204", "interval": 120, "lazy": false, "hidden": true, "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Direct.png"}
   - {"name": "YouTube", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/YouTube.png"}
   - {"name": "Telegram", "type": "select", "proxies": ["Авто — без Proton", "Авто — самый быстрый", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Telegram.png"}
-  - {"name": "ИИ — ChatGPT и Claude", "type": "select", "use": ["az-vless"], "filter": "DE1|DE4|FI1|FR1", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/ChatGPT.png"}
+  - {"name": "ИИ — ChatGPT и Claude", "type": "select", "use": ["az-vless"], "filter": "DE1|DE4|FI1|FR1", "proxies": ["Авто — без Proton", "Авто — самый быстрый", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/ChatGPT.png"}
   - {"name": "Discord", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Discord.png"}
-  - {"name": "Google", "type": "select", "proxies": ["ИИ — ChatGPT и Claude", "Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Google_Search.png"}
+  - {"name": "Google", "type": "select", "proxies": ["Авто — без Proton", "Авто — самый быстрый", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Google_Search.png"}
   - {"name": "GitHub", "type": "select", "proxies": ["Напрямую (провайдер)", "Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/GitHub.png"}
   - {"name": "Spotify", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Spotify.png"}
   - {"name": "Steam", "type": "select", "proxies": ["Напрямую (провайдер)", "Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Steam.png"}
   - {"name": "Twitch", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Twitch.png"}
-  - {"name": "Instagram и Facebook", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Instagram.png"}
+  - {"name": "Instagram", "type": "select", "proxies": ["Авто — без Proton", "Авто — самый быстрый", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Instagram.png"}
+  - {"name": "Facebook", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Facebook.png"}
   - {"name": "WhatsApp", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons@main/png/whatsapp.png"}
   - {"name": "X (Twitter)", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Twitter.png"}
   - {"name": "TikTok", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/TikTok.png"}
@@ -239,6 +244,8 @@ rule-providers:
     path: ./ruleset/ru-apps.yaml
     interval: 86400
 rules:
+  # IPV6MODE: режим стека. IPv6 вне РФ -> карточка (Только IPv4 = REJECT, клиент мгновенно берёт IPv4). IPv4 никогда не режем: сайты без AAAA открываются штатно
+  - AND,((IP-CIDR6,::/0,no-resolve),(NOT,((GEOIP,ru,no-resolve))),(NOT,((GEOIP,private,no-resolve)))),🌐 Сетевой режим # IPV6MODE
   # alphavps.com: Cloudflare 1020 блокирует Proton/WARP - ведём через «Исключения» (чистый прямой выход DE, не домашний провайдер) (03.11)
   - DOMAIN-SUFFIX,alphavps.com,Исключения (без Proton)
   # медиа-стек Лампы/Filmix/трекеры (03.11): мимо Proton (его IPv6-выход режут CDN), чистый прямой выход DE
@@ -271,8 +278,38 @@ rules:
   - DOMAIN-SUFFIX,danbooru.donmai.us,Исключения (без Proton)
   - DOMAIN-SUFFIX,editmysite.com,Исключения (без Proton)
   - DOMAIN-SUFFIX,screamingfrog.co.uk,Исключения (без Proton)
-  - DOMAIN-SUFFIX,ogs.google.com,ИИ — ChatGPT и Claude
-  - DOMAIN-SUFFIX,play.google.com,ИИ — ChatGPT и Claude
+  # ЮТУБ — только группа «YouTube» (раньше всех Google-правил)
+  - DOMAIN-SUFFIX,youtubei.googleapis.com,YouTube
+  - DOMAIN,youtube.googleapis.com,YouTube
+  - GEOSITE,youtube,YouTube
+  - DOMAIN-SUFFIX,ggpht.com,YouTube
+  - DOMAIN-SUFFIX,google.ru,YouTube
+  # Google/Gemini — единая группа «Google» (дефолт выбирается по замерам, не вложенной группой «ИИ»)
+  - DOMAIN,gemini.google.com,Google
+  - DOMAIN,gemini.gstatic.com,Google
+  - DOMAIN,geminiweb-pa.clients6.google.com,Google
+  - DOMAIN,aistudio.google.com,Google
+  - DOMAIN,makersuite.google.com,Google
+  - DOMAIN,bard.google.com,Google
+  - DOMAIN,notebooklm.google.com,Google
+  - DOMAIN,ai.google.dev,Google
+  - DOMAIN,labs.google,Google
+  - DOMAIN,generativelanguage.googleapis.com,Google
+  - DOMAIN,proactivebackend-pa.googleapis.com,Google
+  - DOMAIN,alkalimakersuite-pa.clients6.google.com,Google
+  # Google-зависимости Gemini — группа «Google»
+  - DOMAIN,accounts.google.com,Google
+  - DOMAIN-SUFFIX,clients6.google.com,Google
+  - DOMAIN-SUFFIX,gstatic.com,Google
+
+  - DOMAIN-SUFFIX,ogs.google.com,Google
+  - DOMAIN-SUFFIX,play.google.com,Google
+  - DOMAIN-SUFFIX,google.com,Google
+  - DOMAIN-SUFFIX,googleapis.com,Google
+  - DOMAIN-SUFFIX,googleusercontent.com,Google
+  - DOMAIN-SUFFIX,gstatic.com,Google
+  - DOMAIN-SUFFIX,gvt1.com,Google
+  - DOMAIN-SUFFIX,withgoogle.com,Google
   # 4pda.to напрямую у провайдера не открывается в браузере (ответ на TLS-запрос не приходит, curl проходит) - через VPN (30.10)
   - DOMAIN-SUFFIX,4pda.to,Исключения (без Proton)
   - DOMAIN-SUFFIX,4pda.ru,Исключения (без Proton)
@@ -295,10 +332,26 @@ rules:
   - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,app-measurement.com)),REJECT
   - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,crashlytics.com)),REJECT
   - IP-CIDR,192.168.0.0/16,Напрямую (провайдер),no-resolve
+  # ip-checkers: сервисы проверки IP/DNS идут через VPN и честно показывают выходной IP (иначе «Остальной интернет» = прямой, домашний IP)
+  - DOMAIN-SUFFIX,ifconfig.me,Авто — самый быстрый
+  - DOMAIN-SUFFIX,ifconfig.co,Авто — самый быстрый
+  - DOMAIN-SUFFIX,checkip.amazonaws.com,Авто — самый быстрый
+  - DOMAIN-SUFFIX,ident.me,Авто — самый быстрый
+  - DOMAIN-SUFFIX,icanhazip.com,Авто — самый быстрый
+  - DOMAIN-SUFFIX,ipify.org,Авто — самый быстрый
+  - DOMAIN-SUFFIX,api64.ipify.org,Авто — самый быстрый
+  - DOMAIN-SUFFIX,ipinfo.io,Авто — самый быстрый
+  - DOMAIN-SUFFIX,ip-api.com,Авто — самый быстрый
+  - DOMAIN-SUFFIX,myip.com,Авто — самый быстрый
+  - DOMAIN-SUFFIX,wtfismyip.com,Авто — самый быстрый
+  - DOMAIN-SUFFIX,ipecho.net,Авто — самый быстрый
+  - DOMAIN-SUFFIX,browserleaks.com,Авто — самый быстрый
+  - DOMAIN-SUFFIX,whoer.net,Авто — самый быстрый
+  - DOMAIN-SUFFIX,dnsleaktest.com,Авто — самый быстрый
+  - DOMAIN-SUFFIX,bash.ws,Авто — самый быстрый
   - IP-CIDR,10.0.0.0/8,Напрямую (провайдер),no-resolve
   - IP-CIDR6,fc00::/7,Напрямую (провайдер),no-resolve
   - IP-CIDR6,fe80::/10,Напрямую (провайдер),no-resolve
-  - AND,((IP-CIDR6,::/0,no-resolve),(NOT,((GEOIP,ru,no-resolve)))),🌐 Режим IPv6 / IPv4
   - RULE-SET,my-block,REJECT
   - RULE-SET,my-block-ips,REJECT
   - RULE-SET,my-direct,Напрямую (провайдер)
@@ -413,19 +466,27 @@ rules:
   - DOMAIN-SUFFIX,protonvpn.com,Платежи и шлюзы
   - DOMAIN-SUFFIX,proton.me,Платежи и шлюзы
   # реклама и трекеры (как ADBLOCK у AntiZapret); ваши списки «напрямую»/«VPN» выше - они важнее
+  # Mail.ru: баннеры/логотипы лежат на rs.mail.ru и r.mradx.net - адблок их резал (14.11), раньше адблока отдаём напрямую
+  - DOMAIN-SUFFIX,rs.mail.ru,Напрямую (провайдер)
+  - DOMAIN-SUFFIX,mradx.net,Напрямую (провайдер)
   - AND,((RULE-SET,az-adblock),(NOT,((RULE-SET,az-adblock-allow)))),REJECT
-  - DOMAIN-SUFFIX,example.org,Напрямую (провайдер)
-  - DOMAIN-SUFFIX,example.net,Напрямую (провайдер)
-  - DOMAIN-SUFFIX,example.com,Напрямую (провайдер)
   - DOMAIN-SUFFIX,speed.cloudflare.com,Заблокированное в РФ
   - DOMAIN-SUFFIX,speedtest.net,Заблокированное в РФ
   - DOMAIN-SUFFIX,ookla.com,Заблокированное в РФ
   - DOMAIN-SUFFIX,fast.com,Заблокированное в РФ
   - DOMAIN-SUFFIX,nperf.com,Заблокированное в РФ
-  - DOMAIN-SUFFIX,youtubei.googleapis.com,Google
-  - DOMAIN,youtube.googleapis.com,Google
+  - DOMAIN-SUFFIX,youtubei.googleapis.com,YouTube
+  - DOMAIN,youtube.googleapis.com,YouTube
   - GEOSITE,youtube,YouTube
   - DOMAIN-SUFFIX,google.ru,YouTube
+  # Mail.ru: статика с зарубежных IP режется их CDN - всегда напрямую (12.11)
+  - DOMAIN-SUFFIX,mail.ru,Напрямую (провайдер)
+  - DOMAIN-SUFFIX,imgsmail.ru,Напрямую (провайдер)
+  - DOMAIN-SUFFIX,mycdn.me,Напрямую (провайдер)
+  - DOMAIN-SUFFIX,mradx.net,Напрямую (провайдер)
+  - DOMAIN-SUFFIX,cldmail.ru,Напрямую (провайдер)
+  - DOMAIN-SUFFIX,attachmail.ru,Напрямую (провайдер)
+  - DOMAIN-SUFFIX,datacloudmail.ru,Напрямую (провайдер)
   - RULE-SET,az-exclude,Напрямую (провайдер)
   - RULE-SET,az-exclude-ips,Напрямую (провайдер)
   - DOMAIN-SUFFIX,googleapis.com,Google
@@ -435,6 +496,9 @@ rules:
   - GEOIP,telegram,Telegram,no-resolve
   - GEOSITE,openai,ИИ — ChatGPT и Claude
   - GEOSITE,anthropic,ИИ — ChatGPT и Claude
+  # Anthropic по IP (если сниффер не увидел SNI): сети API
+  - IP-CIDR,160.79.104.0/23,ИИ — ChatGPT и Claude,no-resolve
+  - IP-CIDR6,2607:6bc0::/48,ИИ — ChatGPT и Claude,no-resolve
   - GEOSITE,category-ai-!cn,ИИ — ChatGPT и Claude
   - GEOSITE,discord,Discord
   - DOMAIN-SUFFIX,discordsays.ai,Discord
@@ -442,8 +506,12 @@ rules:
   - GEOSITE,spotify,Spotify
   - GEOSITE,steam,Steam
   - GEOSITE,twitch,Twitch
-  - GEOSITE,instagram,Instagram и Facebook
-  - GEOSITE,facebook,Instagram и Facebook
+  # apex instagram.com (31.13.x.174) не отвечает через большинство Proton-выходов, только 301 на www - ведём мимо Proton
+  - GEOSITE,instagram,Instagram
+  - DOMAIN-SUFFIX,instagram.com,Instagram
+  - DOMAIN-SUFFIX,cdninstagram.com,Instagram
+  - DOMAIN-SUFFIX,fbcdn.net,Instagram
+  - GEOSITE,facebook,Facebook
   - GEOSITE,whatsapp,WhatsApp
   - GEOSITE,twitter,X (Twitter)
   - GEOSITE,tiktok,TikTok

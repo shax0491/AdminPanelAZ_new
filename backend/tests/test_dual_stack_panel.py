@@ -393,8 +393,15 @@ def test_egress_selector_writes_ipv6_egress_and_keeps_warp_tunnels(db, monkeypat
     from app.services import dual_stack_panel
 
     calls = []
+    monkeypatch.setattr(dual_stack_panel, "EGRESS_VERIFY_DELAY", 0)
 
     class Adapter:
+        def get_ipv6_status(self):
+            return {"enabled": True, "egress": "proton", "active_egress": "native", "effective_mode": "c"}
+
+        def probe_dual_stack(self, family, target):
+            return {"reachable": True}
+
         def update_antizapret_settings(self, updates):
             calls.append(("settings", updates))
 
@@ -414,6 +421,66 @@ def test_egress_selector_writes_ipv6_egress_and_keeps_warp_tunnels(db, monkeypat
 
     assert calls == [("settings", {"IPV6_EGRESS": "native"}), ("restart", "antizapret")]
     assert node.egress_mode == "native"
+
+
+def test_egress_selector_rolls_back_and_keeps_db_when_state_not_applied(db, monkeypatch):
+    """Желаемый выход не применился (active_egress прежний): откат IPV6_EGRESS, в БД прежнее значение, понятная ошибка."""
+    from app.services import dual_stack_panel
+
+    calls = []
+    monkeypatch.setattr(dual_stack_panel, "EGRESS_VERIFY_DELAY", 0)
+
+    class Adapter:
+        def get_ipv6_status(self):
+            return {"enabled": True, "egress": "native", "active_egress": "native", "effective_mode": "c", "reason": "proton down"}
+
+        def update_antizapret_settings(self, updates):
+            calls.append(("settings", updates))
+
+        def restart_service(self, name):
+            calls.append(("restart", name))
+
+    monkeypatch.setattr(dual_stack_panel, "_adapter", lambda node: Adapter())
+    node = make_node(db)
+    before = node.egress_mode
+
+    with pytest.raises(HTTPException) as err:
+        dual_stack_panel.set_node_egress_mode(db, node, "proton")
+
+    assert err.value.status_code == 502 and "proton" in err.value.detail and "native" in err.value.detail
+    assert calls == [
+        ("settings", {"IPV6_EGRESS": "proton"}), ("restart", "antizapret"),
+        ("settings", {"IPV6_EGRESS": "native"}), ("restart", "antizapret"),
+    ]
+    assert node.egress_mode == before
+
+
+def test_egress_selector_rolls_back_when_ipv6_probe_fails(db, monkeypatch):
+    from app.services import dual_stack_panel
+
+    calls = []
+    monkeypatch.setattr(dual_stack_panel, "EGRESS_VERIFY_DELAY", 0)
+
+    class Adapter:
+        def get_ipv6_status(self):
+            return {"enabled": True, "egress": "native", "active_egress": "proton", "effective_mode": "c"}
+
+        def probe_dual_stack(self, family, target):
+            return {"reachable": False}
+
+        def update_antizapret_settings(self, updates):
+            calls.append(updates)
+
+        def restart_service(self, name):
+            pass
+
+    monkeypatch.setattr(dual_stack_panel, "_adapter", lambda node: Adapter())
+    node = make_node(db)
+
+    with pytest.raises(HTTPException):
+        dual_stack_panel.set_node_egress_mode(db, node, "proton")
+
+    assert calls == [{"IPV6_EGRESS": "proton"}, {"IPV6_EGRESS": "native"}]
 
 def test_mh_test_mode_refuses_production_registry_before_any_file_access(db, monkeypatch):
     from pathlib import Path
@@ -445,3 +512,251 @@ def test_mh_production_sync_rejects_documentation_address(db, monkeypatch, tmp_p
         dual_stack_panel._sync_mh_registry(node)
 
     assert "ipv4_address" not in json.loads(registry.read_text())["nodes"][0]
+
+
+def test_egress_selector_reports_failed_rollback(db, monkeypatch):
+    """Откат тоже не подтвердился: об этом прямо сказано в ошибке, БД не тронута."""
+    from app.services import dual_stack_panel
+
+    monkeypatch.setattr(dual_stack_panel, "EGRESS_VERIFY_DELAY", 0)
+    monkeypatch.setattr(dual_stack_panel, "EGRESS_VERIFY_ATTEMPTS", 2)
+
+    class Adapter:
+        def get_ipv6_status(self):
+            return {"enabled": True, "egress": "native", "active_egress": "", "effective_mode": "a", "reason": "no ipv6"}
+
+        def update_antizapret_settings(self, updates):
+            pass
+
+        def restart_service(self, name):
+            pass
+
+    monkeypatch.setattr(dual_stack_panel, "_adapter", lambda node: Adapter())
+    node = make_node(db)
+    before = node.egress_mode
+
+    with pytest.raises(HTTPException) as err:
+        dual_stack_panel.set_node_egress_mode(db, node, "proton")
+
+    assert "Откат" in err.value.detail and "не подтвержд" in err.value.detail
+    assert node.egress_mode == before
+
+
+def test_egress_refused_when_server_dual_stack_off_or_unknown(db, monkeypatch):
+    """Native/Proton выбирается только при Dual-Stack=ON; при OFF и unknown узел не трогаем, БД прежняя."""
+    from app.services import dual_stack_panel
+
+    calls = []
+
+    class Adapter:
+        def __init__(self, status):
+            self.status = status
+
+        def get_ipv6_status(self):
+            return self.status
+
+        def update_antizapret_settings(self, updates):
+            calls.append(updates)
+
+        def restart_service(self, name):
+            calls.append(name)
+
+    node = make_node(db)
+    before = node.egress_mode
+    for status_now in ({"enabled": False, "egress": "native"}, {}):
+        monkeypatch.setattr(dual_stack_panel, "_adapter", lambda n, s=status_now: Adapter(s))
+        with pytest.raises(HTTPException) as err:
+            dual_stack_panel.set_node_egress_mode(db, node, "proton")
+        assert err.value.status_code == 409
+    assert calls == [] and node.egress_mode == before
+
+
+@pytest.mark.parametrize(
+    ("db_mode", "status_now", "expected_changed", "expected_mode"),
+    [
+        ("native", {"active_egress": "proton", "effective_mode": "c"}, True, "proton"),
+        ("proton", {"active_egress": "native", "effective_mode": "c"}, True, "native"),
+        ("native", {"active_egress": "native", "effective_mode": "c"}, False, "native"),
+        ("native", {"active_egress": "proton", "effective_mode": "a"}, False, "native"),  # IPv6 выключен - факт неизвестен
+        ("native", {"active_egress": "", "effective_mode": "c"}, False, "native"),
+        ("ipv4_only", {"active_egress": "proton", "effective_mode": "c"}, False, "ipv4_only"),  # транспортный режим не трогаем
+    ],
+)
+def test_sync_egress_mode_from_status_only_touches_db(db, db_mode, status_now, expected_changed, expected_mode):
+    from app.services import dual_stack_panel
+
+    node = make_node(db)
+    node.egress_mode = db_mode
+    assert dual_stack_panel.sync_egress_mode_from_status(db, node, status_now) is expected_changed
+    assert node.egress_mode == expected_mode
+
+
+class _DsAdapter:
+    """Узел с ENABLE_IPV6: после restart применяет записанное, fail_on - значение, которое узел не принимает."""
+
+    def __init__(self, enabled, fail_on=None):
+        self.enabled, self.fail_on, self.calls = enabled, fail_on, []
+        self.pending = enabled
+
+    def get_ipv6_status(self):
+        return {"enabled": self.enabled, "egress": "proton", "effective_mode": "c" if self.enabled else "a"}
+
+    def update_antizapret_settings(self, updates):
+        self.calls.append(updates)
+        self.pending = updates["ENABLE_IPV6"] == "y"
+
+    def restart_service(self, name):
+        if self.fail_on is None or self.pending != self.fail_on:
+            self.enabled = self.pending
+
+
+def test_dual_stack_off_keeps_client_profiles_and_on_restores_without_reissue(db, monkeypatch):
+    from app.services import dual_stack_panel
+
+    monkeypatch.setattr(dual_stack_panel, "EGRESS_VERIFY_DELAY", 0)
+    adapter = _DsAdapter(True)
+    monkeypatch.setattr(dual_stack_panel, "_adapter", lambda n: adapter)
+    node = make_node(db)
+
+    assert dual_stack_panel.set_node_dual_stack(db, node, False)["changed"] is True
+    assert dual_stack_panel.set_node_dual_stack(db, node, True)["changed"] is True
+    assert dual_stack_panel.set_node_dual_stack(db, node, True)["changed"] is False
+    # трогаем только ENABLE_IPV6 (+ режим/выход при включении); профили клиентов и конфиги не затрагиваются, выход Proton сохранён
+    assert adapter.calls == [{"ENABLE_IPV6": "n"}, {"ENABLE_IPV6": "y", "IPV6_MODE": "c", "IPV6_EGRESS": "proton"}]
+
+
+def test_dual_stack_enable_rolls_back_when_node_does_not_confirm(db, monkeypatch):
+    from app.services import dual_stack_panel
+
+    monkeypatch.setattr(dual_stack_panel, "EGRESS_VERIFY_DELAY", 0)
+    monkeypatch.setattr(dual_stack_panel, "EGRESS_VERIFY_ATTEMPTS", 2)
+    adapter = _DsAdapter(False, fail_on=True)
+    monkeypatch.setattr(dual_stack_panel, "_adapter", lambda n: adapter)
+
+    with pytest.raises(HTTPException) as err:
+        dual_stack_panel.set_node_dual_stack(db, make_node(db), True)
+
+    assert err.value.status_code == 502 and "подтверждено" in err.value.detail
+    assert adapter.enabled is False and adapter.calls[-1]["ENABLE_IPV6"] == "n"
+
+
+@pytest.mark.parametrize(
+    ("warp", "expected"),
+    [
+        ({"antizapret_warp": "1", "vpn_warp": "1", "warp_provider": "proton"}, "direct"),
+        ({"antizapret_warp": "2", "vpn_warp": "2", "warp_provider": "proton"}, "proton"),
+        ({"antizapret_warp": "2", "vpn_warp": "2", "warp_provider": "cloudflare"}, "custom"),
+        ({"antizapret_warp": "3", "vpn_warp": "2", "warp_provider": "proton"}, "custom"),
+        ({"antizapret_warp": "2", "vpn_warp": "1", "warp_provider": "proton"}, "custom"),
+        ({"antizapret_warp": "2", "vpn_warp": "2", "warp_provider": "proton", "pending_apply": True}, "pending"),
+        ({}, "unknown"),
+    ],
+)
+def test_ipv4_egress_derived_from_actual_warp_settings(warp, expected):
+    from app.services.dual_stack_panel import ipv4_egress_from_warp
+
+    assert ipv4_egress_from_warp(warp) == expected
+
+
+class _WarpAdapter:
+    def __init__(self, warp, applies=True, keys=True):
+        self.warp = dict(warp, proton_antizapret_configured=keys, proton_vpn_configured=keys)
+        self.applies, self.calls = applies, []
+        self.provider = warp.get("warp_provider")
+        self.modes = (warp.get("antizapret_warp"), warp.get("vpn_warp"))
+
+    def get_warp_geo_status(self):
+        return self.warp
+
+    def set_warp_provider(self, provider):
+        self.calls.append(("provider", provider))
+        self.provider = provider
+
+    def set_warp_modes(self, az, vpn):
+        self.calls.append(("modes", az, vpn))
+        self.modes = (az, vpn)
+
+    def apply_warp_changes(self):
+        self.calls.append(("apply",))
+        if self.applies:
+            self.warp.update(warp_provider=self.provider, antizapret_warp=self.modes[0], vpn_warp=self.modes[1])
+
+
+DIRECT = {"warp_provider": "cloudflare", "antizapret_warp": "1", "vpn_warp": "1"}
+
+
+def test_ipv4_egress_switch_uses_existing_warp_mechanism_only(db, monkeypatch):
+    from app.services import dual_stack_panel
+
+    adapter = _WarpAdapter(DIRECT)
+    monkeypatch.setattr(dual_stack_panel, "_adapter", lambda n: adapter)
+    node = make_node(db)
+    egress_before = node.egress_mode
+
+    assert dual_stack_panel.set_node_ipv4_egress(db, node, "proton") == {"ipv4_egress": "proton", "changed": True}
+    assert adapter.calls == [("provider", "proton"), ("modes", "2", "2"), ("apply",)]
+    assert node.egress_mode == egress_before  # IPv6-выход и Dual-Stack не затронуты, клиентские конфиги тоже
+    assert dual_stack_panel.set_node_ipv4_egress(db, node, "direct")["changed"] is True
+    assert dual_stack_panel.set_node_ipv4_egress(db, node, "direct")["changed"] is False
+
+
+def test_ipv4_proton_refused_without_keys_and_when_state_unknown(db, monkeypatch):
+    from app.services import dual_stack_panel
+
+    for adapter in (_WarpAdapter(DIRECT, keys=False), _WarpAdapter({})):
+        monkeypatch.setattr(dual_stack_panel, "_adapter", lambda n, a=adapter: a)
+        with pytest.raises(HTTPException) as err:
+            dual_stack_panel.set_node_ipv4_egress(db, make_node(db), "proton")
+        assert err.value.status_code == 409 and adapter.calls == []
+
+
+def test_ipv4_egress_rolls_back_when_node_does_not_apply(db, monkeypatch):
+    from app.services import dual_stack_panel
+
+    adapter = _WarpAdapter(DIRECT, applies=False)
+    monkeypatch.setattr(dual_stack_panel, "_adapter", lambda n: adapter)
+    with pytest.raises(HTTPException) as err:
+        dual_stack_panel.set_node_ipv4_egress(db, make_node(db), "proton")
+    assert err.value.status_code == 502
+    assert adapter.calls[-3:] == [("provider", "cloudflare"), ("modes", "1", "1"), ("apply",)]
+
+
+class _NoClientConfigAdapter(_WarpAdapter):
+    """Любая операция над клиентскими конфигами/профилями роняет тест: смена серверных выходов их трогать не должна."""
+
+    def __getattr__(self, name):
+        if name in {"recreate_profiles", "awg3_refresh_ipv6", "write_config_file", "client_action", "create_client", "delete_client"}:
+            raise AssertionError(f"серверное переключение вызвало {name}")
+        raise AttributeError(name)
+
+    def get_ipv6_status(self):
+        on = getattr(self, "ds", True)
+        return {"enabled": on, "egress": "native", "active_egress": getattr(self, "v6", "native"), "effective_mode": "c" if on else "a"}
+
+    def update_antizapret_settings(self, updates):
+        if "ENABLE_IPV6" in updates:
+            self.ds = updates["ENABLE_IPV6"] == "y"
+        if "IPV6_EGRESS" in updates:
+            self.v6 = updates["IPV6_EGRESS"]
+
+    def restart_service(self, name):
+        pass
+
+    def probe_dual_stack(self, family, target):
+        return {"reachable": True}
+
+
+def test_direct_proton_and_native_proton_never_touch_client_configs(db, monkeypatch):
+    from app.services import dual_stack_panel
+
+    monkeypatch.setattr(dual_stack_panel, "EGRESS_VERIFY_DELAY", 0)
+    adapter = _NoClientConfigAdapter(DIRECT)
+    monkeypatch.setattr(dual_stack_panel, "_adapter", lambda n: adapter)
+    node = make_node(db)
+
+    dual_stack_panel.set_node_ipv4_egress(db, node, "proton")
+    dual_stack_panel.set_node_ipv4_egress(db, node, "direct")
+    dual_stack_panel.set_node_egress_mode(db, node, "proton")
+    dual_stack_panel.set_node_egress_mode(db, node, "native")
+    dual_stack_panel.set_node_dual_stack(db, node, False)
+    dual_stack_panel.set_node_dual_stack(db, node, True)

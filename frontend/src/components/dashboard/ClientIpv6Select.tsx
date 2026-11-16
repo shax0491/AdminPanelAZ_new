@@ -19,7 +19,10 @@ interface Props {
 export default function ClientIpv6Select({ id, value, onChange, disabled, className }: Props) {
   const status = useIpv6Status()
   // «default» в интерфейсе не показываем: берём IPV6_PROFILE_DEFAULT узла
-  const shown = value === 'default' ? (status?.profile_default === 'ipv4' ? 'ipv4' : 'dual') : value
+  // Dual-Stack доступен только при подтверждённом ENABLE_IPV6 на узле: OFF или нет данных (unknown) блокируют выбор в UI,
+  // backend всё равно отклоняет обход (409/502). Уже сохранённый dual остаётся виден и не переписывается.
+  const dualBlocked = status?.enabled !== true
+  const shown = value === 'default' ? (status?.profile_default === 'ipv4' || dualBlocked ? 'ipv4' : 'dual') : value
   return (
     <div className="space-y-1.5">
       <select
@@ -30,12 +33,17 @@ export default function ClientIpv6Select({ id, value, onChange, disabled, classN
         disabled={disabled}
       >
         {OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>
+          <option key={o.value} value={o.value} disabled={o.value === 'dual' && dualBlocked && value !== 'dual'}>
             {o.label}
           </option>
         ))}
       </select>
       <Ipv6Badge status={status} />
+      {dualBlocked && (
+        <p className="text-xs text-muted-foreground">
+          Dual-Stack недоступен: {status ? 'на сервере он выключен' : 'состояние сервера неизвестно'}. Конфиг будет только IPv4.
+        </p>
+      )}
       {status?.effective_mode === 'a' && shown === 'dual' && (
         <p className="text-xs text-amber-600 dark:text-amber-400">
           На этом VPS сейчас выключен выходной IPv6 (работает защита от утечек через IPv4). Для работы Dual-Stack включите IPv6 на узле

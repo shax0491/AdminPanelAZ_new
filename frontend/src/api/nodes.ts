@@ -38,6 +38,26 @@ export async function setNodeEgressMode(nodeId: number, mode: string) {
   })
 }
 
+export async function setNodeDualStackEnabled(nodeId: number, enabled: boolean) {
+  return apiFetch<{ enabled: boolean; changed: boolean }>(`/nodes/${nodeId}/dual-stack-enabled`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
+  })
+}
+
+export type NodeIpv4Egress = 'direct' | 'proton' | 'custom' | 'pending' | 'unknown'
+
+export async function getNodeIpv4Egress(nodeId: number) {
+  return apiFetch<{ ipv4_egress: NodeIpv4Egress; error?: string }>(`/nodes/${nodeId}/ipv4-egress`)
+}
+
+export async function setNodeIpv4Egress(nodeId: number, mode: 'direct' | 'proton') {
+  return apiFetch<{ ipv4_egress: string; changed: boolean }>(`/nodes/${nodeId}/ipv4-egress`, {
+    method: 'PATCH',
+    body: JSON.stringify({ mode, confirm: true }),
+  })
+}
+
 export async function rotateNodeIpv6(nodeId: number) {
   return apiFetch<{ ipv6_address: string; old_ipv6_address?: string }>(
     `/nodes/${nodeId}/dual-stack/rotate-ipv6`,

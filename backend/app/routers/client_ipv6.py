@@ -53,6 +53,42 @@ def render_profiles(text: str, client: str, profile: str) -> str:
     return "\n".join(kept) + "\n" if kept else ""
 
 
+def require_server_dual_stack(adapter) -> None:
+    """Dual-Stack клиента возможен, только если узел САМ подтвердил: ENABLE_IPV6=y и эффективный режим не 'a'.
+    Источник - get_ipv6_status() узла (setup + state up.sh), не БД панели. Выключен -> 409; состояние неизвестно
+    (узел недоступен, не VPN-узел, режим не подтверждён) -> fail-closed, профиль не пишем."""
+    try:
+        st = adapter.get_ipv6_status() or {}
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Dual-Stack недоступен: узел не VPN-узел или не отдаёт статус IPv6") from exc
+    except Exception as exc:  # noqa: BLE001 - не знаем состояние сервера: профиль не пишем
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Не удалось узнать состояние Dual-Stack на сервере: {exc}") from exc
+    if not st.get("enabled"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Dual-Stack выключен на сервере: включите его в карточке VPS, затем выдайте Dual-Stack профиль",
+        )
+    if st.get("effective_mode") in (None, "", "a"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Dual-Stack включён в настройках, но узел его не применил (effective_mode=a): дождитесь применения или проверьте узел",
+        )
+
+
+def _dual_set(text: str) -> set[str]:
+    return {p[0] for p in (ln.split() for ln in text.splitlines() if not ln.lstrip().startswith("#")) if len(p) >= 2 and p[1] == "dual"}
+
+
+def guard_profile_file_write(adapter, new_text: str) -> None:
+    """Прямая правка ipv6-profile.txt (редактор файлов) не должна обходить 409: новые dual-строки требуют серверный Dual-Stack."""
+    try:
+        old = adapter.read_config_file(PROFILE_FILE)
+    except FileNotFoundError:
+        old = ""
+    if _dual_set(new_text) - _dual_set(old):
+        require_server_dual_stack(adapter)
+
+
 @router.get("")
 def list_client_profiles(db: Session = Depends(get_db), _: User = Depends(require_admin)):
     return {"profiles": _read(get_active_adapter(db))}
@@ -69,6 +105,8 @@ def set_client_profile(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Недопустимое имя клиента")
     require_ha_primary_for_config_ops(db)
     adapter = get_active_adapter(db)
+    if body.profile == "dual":  # "ipv4" и "default" допустимы всегда: при выключенном Dual-Stack клиент работает по IPv4
+        require_server_dual_stack(adapter)
     try:
         current = adapter.read_config_file(PROFILE_FILE)
     except FileNotFoundError:

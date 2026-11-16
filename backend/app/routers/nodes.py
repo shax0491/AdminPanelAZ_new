@@ -17,6 +17,8 @@ from app.schemas import (
     NodeHaContext,
     NodeHealthResponse,
     NodeDualStackTransportUpdate,
+    NodeDualStackEnabledUpdate,
+    NodeIpv4EgressUpdate,
     NodeEgressUpdate,
     NodeMtlsStatusResponse,
     NodeOpenVpnMultihomeBody,
@@ -623,8 +625,19 @@ def nodes_ipv6_summary(db: Session = Depends(get_db), _: User = Depends(require_
         except Exception as exc:  # noqa: BLE001 - узел недоступен/старый агент: бейдж покажет «нет данных»
             return node.id, {"error": str(exc)[:120] or type(exc).__name__}
 
+    from app.services.dual_stack_panel import sync_egress_mode_from_status
+
     with ThreadPoolExecutor(max_workers=8) as pool:
-        return {str(i): v for i, v in pool.map(one, nodes)}
+        result = {str(i): v for i, v in pool.map(one, nodes)}
+    # БД подтягиваем к факту (read-only для узлов): карточка показывала egress=native у узлов, реально идущих через Proton
+    changed = False
+    for node in nodes:
+        data = result.get(str(node.id)) or {}
+        if "error" not in data:
+            changed = sync_egress_mode_from_status(db, node, data) or changed
+    if changed:
+        db.commit()
+    return result
 
 
 def _node_for_dual_stack(node_id: int, db: Session) -> Node:
@@ -1483,3 +1496,47 @@ def restart_node_agent_endpoint(
         message=result.get("message", "Перезапуск node agent запланирован"),
         restarting=bool(result.get("restarting", True)),
     )
+
+
+@router.patch("/{node_id}/dual-stack-enabled")
+def set_node_dual_stack_enabled(
+    node_id: int,
+    payload: NodeDualStackEnabledUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from app.services.dual_stack_panel import set_node_dual_stack
+
+    _require_nodes_module(db)
+    result = set_node_dual_stack(db, _node_for_dual_stack(node_id, db), payload.enabled)
+    log_action(db, action="node_dual_stack", user_id=current_user.id, username=current_user.username, details=f"node={node_id} enabled={payload.enabled}")
+    return result
+
+
+@router.get("/{node_id}/ipv4-egress")
+def get_node_ipv4_egress(node_id: int, _: User = Depends(require_admin), db: Session = Depends(get_db)):
+    from app.services.dual_stack_panel import ipv4_egress_from_warp
+
+    node = _node_for_dual_stack(node_id, db)
+    try:
+        warp = get_adapter_for_node(node).get_warp_geo_status() or {}
+    except Exception as exc:  # noqa: BLE001 - узел не ответил: UI покажет «неизвестно», а не последнее известное
+        return {"ipv4_egress": "unknown", "error": str(exc)[:120]}
+    return {"ipv4_egress": ipv4_egress_from_warp(warp)}
+
+
+@router.patch("/{node_id}/ipv4-egress")
+def set_node_ipv4_egress_route(
+    node_id: int,
+    payload: NodeIpv4EgressUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from app.services.dual_stack_panel import set_node_ipv4_egress
+
+    _require_nodes_module(db)
+    if not payload.confirm:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Нужно подтверждение: применение перезапускает туннели узла на несколько секунд")
+    result = set_node_ipv4_egress(db, _node_for_dual_stack(node_id, db), payload.mode)
+    log_action(db, action="node_ipv4_egress", user_id=current_user.id, username=current_user.username, details=f"node={node_id} mode={payload.mode}")
+    return result

@@ -7,6 +7,8 @@
 роутеры забирают их сами (config-sync.sh, раз в 30 минут) и применяют без перезапуска.
 """
 import json, os, re, subprocess, sys, tempfile
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from netmode import set_dns_ipv6
 
 BASE = os.environ.get("MH_APP_BASE", "/opt/mh-app")
 OUT = os.environ.get("MH_APP_OUT", "/var/www/az-lists")
@@ -24,12 +26,12 @@ def group_name(n):
 
 
 # MTProxy-домен -> узел (ключ из nodes.json), на котором он стоит
-MTPROXY_HOST = {"cdn": "DE1", "animal": "NL2", "static": "LV1", "media": "FI1", "bigboss": "DE4"}
+MTPROXY_HOST = {"cdn": "DE1", "animal": "NL2", "static": "LV1", "media": "FI1", "bigboss": "DE4", "force": "FR1"}
 # через какой узел вести MTProxy на работе (замер 23.10: работа->узел + узел->сервер MTProxy); иначе первый рабочий узел
-WORK_MTP_VIA = {"static": "FI1", "media": "LV1", "cdn": "FR1"}   # cdn (DE1) через FR1: NL2 с 27.10 заблокирован Fortinet с работы
+WORK_MTP_VIA = {"static": "FI1", "media": "DE4", "cdn": "DE4", "animal": "DE4", "bigboss": "FI1", "force": "FI1"}
 
 
-URL_TEST = {"url": "http://www.gstatic.com/generate_204", "interval": 300, "tolerance": 10, "lazy": False}
+URL_TEST = {"url": "http://www.gstatic.com/generate_204", "interval": 300, "tolerance": 50, "lazy": False}
 
 
 def build(tpl, nodes, work):
@@ -52,7 +54,7 @@ def build(tpl, nodes, work):
                 o = json.loads(line.strip()[2:].replace('"🇳🇱 NL2", "🇱🇻 LV1", "type"', '"🇳🇱 NL2", "type"'))
             except ValueError:
                 continue
-            if o.get("type") == "select" and o.get("use") == ["az-vless"] and o.get("filter") and o["name"] not in ("Все серверы — проверка", "ИИ — ChatGPT и Claude"):
+            if o.get("type") == "select" and o.get("use") == ["az-vless"] and o.get("filter") and o["name"] not in ("Все серверы — проверка", "ИИ — ChatGPT и Claude", "DE1 прямой (ИИ)"):
                 old_server.add(o["name"])
     for line in tpl:
         m = re.match(r"^([a-z-]+):", line)
@@ -146,6 +148,43 @@ def build(tpl, nodes, work):
     text = re.sub(r"^# Собран на DE3.*\n", "", text)
     text = text.replace("__MH_HOME_SECRET__", HOME_SECRET)
     text = text.replace("__MH_SUBSCRIPTION_URL__", HOME_SUBSCRIPTION_URL)
+    if work:  # у рабочего роутера нет нативного IPv6: карточка режимов IPv6/IPv4 и v6-правила не нужны, sniffer/dns как раньше
+        text = "\n".join(l for l in text.split("\n") if not any(k in l for k in (
+            "Режим IPv6 / IPv4", "Сетевой режим", "Авто Dual-Stack", "Авто (IPv4 + IPv6)", "Приоритет IPv6", "Только IPv4", "IP-CIDR6,fc00::/7", "IP-CIDR6,fe80::/10",
+            "IPv6 вне РФ по режиму", "IPv6 к РФ-доменам и нашим MTProxy", "(DOMAIN-SUFFIX,рф),(DOMAIN-SUFFIX,hoststatus2343.ru)", "(DOMAIN-SUFFIX,hoststatus2343.ru),(IP-CIDR6", "MTProxy-домены (AAAA")))
+        text = text.replace("override-destination: false", "override-destination: true").replace("enhanced-mode: normal", "enhanced-mode: redir-host")
+    # IPv6: /opt/mh-app/ipv6.flag - дом, /opt/mh-app/ipv6-work.flag - работа ("1" = Dual-Stack, иначе только IPv4)
+    try:
+        v6 = open(BASE + ("/ipv6-work.flag" if work else "/ipv6.flag")).read().strip() == "1"
+    except OSError:
+        v6 = False
+    text = re.sub(r"^(\s*ipv6: )(true|false)$", lambda m: m.group(1) + ("true" if v6 else "false"), text, flags=re.M)
+    # DNS mihomo клиентам AAAA не отдаёт (дома клиенты идут по IPv4, v6 до части РФ-адресов из Ростелекома не доходит)
+    # карточка «Только IPv4» (ipmode.state = ipv4, пишет mode_follow): клиентам дома AAAA не отдаётся
+    try:
+        ipv4_only = open(BASE + "/ipmode.state", encoding="utf-8").read().strip() == "ipv4"
+    except OSError:
+        ipv4_only = False
+    text = set_dns_ipv6(text, not (work or ipv4_only))
+    if not work:
+        text = text.replace('"1.1.1.1#', '"8.8.8.8#')  # через Proton 1.1.1.1:53 не отвечает, 8.8.8.8 да
+    if not work:  # MTProxy-домены: клиентам только A (AAAA ломает Telegram-прокси), остальное остаётся dual-stack
+        import socket
+        hl = []
+        for sub, key in MTPROXY_HOST.items():
+            nd = next((n for n in nodes if n["key"] == key), None)
+            if nd:
+                try:
+                    ip = socket.getaddrinfo(nd["host"], None, socket.AF_INET)[0][4][0]
+                    hl.append('  "%s.hoststatus2343.ru": %s' % (sub, ip))
+                except OSError:
+                    pass
+        if hl and "\nhosts:" not in text:
+            text = text.replace("\ndns:\n", "\nhosts:\n" + "\n".join(hl) + "\ndns:\n", 1)
+    if work:  # на работе нет IPv6: правила режима стека (IPV6MODE) только для дома
+        text = "\n".join(l for l in text.split("\n") if "IPV6MODE" not in l)
+    if work:
+        text = text.replace(', "ip-version": "ipv4-prefer"', "")
     return HEAD + text
 
 
@@ -180,5 +219,6 @@ NODES_ALL = json.load(open(BASE + "/nodes.json", encoding="utf-8"))["nodes"]
 if __name__ == "__main__":
     tpl = open(BASE + "/templates/home.yaml", encoding="utf-8").read().split("\n")
     ok = publish("home-config.yaml", build(tpl, NODES_ALL, False))
+    # 12.11: на работе нет только узлов с work:false (сейчас LV1 - офис его режет)
     ok = publish("work-config.yaml", build(tpl, [n for n in NODES_ALL if n.get("work", True)], True)) and ok
     sys.exit(0 if ok else 1)
