@@ -14,8 +14,11 @@ if [ "$V6M" = b ] || [ "$V6M" = c ]; then
   ip -6 addr replace fd29:7::1/64 dev "$I"; ip -6 addr replace fd28:7::1/64 dev "$I"
 else
   ip -6 addr del fd29:7::1/64 dev "$I" 2>/dev/null; ip -6 addr del fd28:7::1/64 dev "$I" 2>/dev/null
+  ip -6 route del fd29:7::/32 dev "$I" 2>/dev/null
 fi
 MTU=$(cat /etc/amnezia/amneziawg3/mtu 2>/dev/null || echo 1280)
 case $MTU in ''|*[!0-9]*) MTU=1280 ;; esac
 ip link set "$I" mtu "$MTU" up
+# маршрут на интерфейс только когда он up (иначе "Nexthop device is not up" и клиенты fd29:7:N::/64 остаются без обратного пути)
+[ "$V6M" = b ] || [ "$V6M" = c ] && ip -6 route replace fd29:7::/32 dev "$I"
 /usr/local/sbin/awg3-rules.sh up
