@@ -152,6 +152,33 @@ def ipv6_active(client: str) -> bool:
     return ipv6_enabled() and client_ipv6_profile(client) == "dual"
 
 
+DUAL_MAP_SCRIPT = Path("/root/antizapret/az-dual-clients.sh")  # есть только на узлах с картой dual-клиентов для kresd
+
+
+def sync_dual_map(run: Runner | None = None) -> None:
+    """Пересобрать /etc/knot-resolver/dual-clients.txt (kresd перечитывает его сам). Ошибка скрипта пробрасывается; прежняя карта цела."""
+    if os.path.isfile(DUAL_MAP_SCRIPT):  # isfile глотает OSError: у не-root /root недоступен (PermissionError у Path.exists)
+        (run or _default_runner)(["sh", str(DUAL_MAP_SCRIPT)], None)
+
+
+def _profile_text_without(client: str) -> str | None:
+    """Текст ipv6-profile.txt без строк клиента (комментарии и чужие строки как есть); None, если строк нет."""
+    try:
+        text = IPV6_PROFILE_FILE.read_text(encoding="utf-8")
+    except OSError:  # нет файла или он недоступен (не-root): как client_ipv6_profile, чистить нечего
+        return None
+    lines = text.splitlines(keepends=True)
+    kept = [ln for ln in lines if not (ln.split() and ln.split()[0] == client and not ln.lstrip().startswith("#"))]
+    return None if len(kept) == len(lines) else "".join(kept)
+
+
+def _write_profile_text(text: str) -> None:
+    tmp = IPV6_PROFILE_FILE.with_name(IPV6_PROFILE_FILE.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    shutil.copymode(IPV6_PROFILE_FILE, tmp)  # вызывается только для существующего файла
+    tmp.replace(IPV6_PROFILE_FILE)
+
+
 def ip6_of(mode: str, ip: str) -> str:
     """fd29:7::N (split) / fd28:7::N (full), N - последний октет IPv4 в hex, как у AWG 1.5/2.0 в client.sh."""
     return f"{IPV6_SUBNETS[mode]}{int(ip.rsplit('.', 1)[1]):x}"
@@ -363,6 +390,7 @@ def create_client(
         **_v6_for_config(name, mode, ip),
     )
     profile = _write_profile(store, mode, name, config)
+    sync_dual_map(run)
     return {"name": name, "mode": mode, "ip": ip, "port": port, "public_key": public, "config": config, "profile": str(profile)}
 
 
@@ -428,16 +456,32 @@ def delete_client(name: str, *, store: Awg3Store | None = None, run: Runner | No
     if name not in clients:
         raise Awg3ClientError(f"client '{name}' not found")
     public = clients[name]["public_key"]
-    run(["awg", "set", IFACE, "peer", public, "remove"], None)
+    base = base_name(name)
+    last = not any(r != name and base_name(r) == base for r in clients)
+    # Последняя запись клиента: строка профиля уходит вместе с ним, иначе новый клиент с тем же именем унаследует dual.
+    # Пишем её ДО удаления пира: сбой записи -> ничего не изменено; сбой удаления -> строка возвращается.
+    old_profile = _profile_text_without(base) if last else None
+    if old_profile is not None:
+        original = IPV6_PROFILE_FILE.read_text(encoding="utf-8")
+        try:
+            _write_profile_text(old_profile)
+        except OSError as exc:
+            raise Awg3ClientError(f"не удалось очистить ipv6-profile.txt, клиент '{base}' не удалён: {exc}") from exc
+    try:
+        run(["awg", "set", IFACE, "peer", public, "remove"], None)
 
-    text = store.server_conf.read_text(encoding="utf-8")
-    blocks = text.split("\n[Peer]\n")
-    kept = [blocks[0]] + [b for b in blocks[1:] if f"PublicKey = {public}" not in b]
-    store.server_conf.write_text("\n[Peer]\n".join(kept), encoding="utf-8")
-
-    _profile_path(store, _mode_of(clients[name]), name).unlink(missing_ok=True)
-    del clients[name]
-    store.save_clients(clients)
+        _drop_peer_block(store, public)
+        _profile_path(store, _mode_of(clients[name]), name).unlink(missing_ok=True)
+        del clients[name]
+        store.save_clients(clients)
+    except Exception:
+        if old_profile is not None:
+            _write_profile_text(original)
+        raise
+    try:
+        sync_dual_map(run)
+    except Awg3ClientError as exc:
+        raise Awg3ClientError(f"клиент '{name}' удалён, но карта dual-клиентов не обновлена: {exc}") from exc
 
 
 def _drop_peer_block(store: "Awg3Store", public: str) -> None:
@@ -542,6 +586,7 @@ def refresh_client_ipv6(
             _set_peer_allowed_in_conf(store, c["public_key"], allowed)
         get_client_config(record, endpoint_host=endpoint_host, split_allowed_ips=split_allowed_ips, store=store, run=run)
         refreshed.append(record)
+    sync_dual_map(run)
     return refreshed
 
 
