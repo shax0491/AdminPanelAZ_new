@@ -98,6 +98,7 @@ def test_guard_rejects_category_without_hysteria2(cfg):
     broken = yaml.safe_load(cfg[1])
     for g in broken["proxy-groups"]:
         if g["name"] == "Telegram":
-            g.pop("use"); g.pop("filter")
+            g.pop("use")
+            g.pop("filter")
     with pytest.raises(ValueError, match="нет Hysteria2"):
         MOD.validate(yaml.safe_dump(broken, allow_unicode=True))
