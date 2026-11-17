@@ -200,3 +200,16 @@ def test_server_py_calls_the_same_builder():
     assert "from subscription import build_subscription" in server
     assert "build_subscription(nodes, prio=prio)" in server
     assert "VLESS %s" not in server and "⚡IPv6" not in server
+
+
+def test_hysteria2_entry_is_added_pinned_and_vless_entries_are_unchanged():
+    module = load_builder()
+    plain = module.build_subscription([node()])
+    hy2 = {"port": 8443, "password": "pw", "pin": "AA:BB:CC"}
+    text = module.build_subscription([node(hy2=hy2)])
+    assert text.startswith(plain.rstrip("\n"))  # VLESS-записи те же, Hysteria2 только добавлена
+    line = [ln for ln in text.splitlines() if "Hysteria2" in ln]
+    assert len(line) == 1
+    assert 'name: "DE DE1 | Hysteria2"' in line[0] and "type: hysteria2" in line[0]
+    assert 'fingerprint: "aabbcc"' in line[0] and "skip-cert-verify" not in line[0]
+    assert "Hysteria2" not in plain

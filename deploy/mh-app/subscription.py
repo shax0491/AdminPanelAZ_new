@@ -71,6 +71,26 @@ def _entry(name: str, host: str, port: int, node: dict[str, Any]) -> str:
     )
 
 
+def _hy2_entry(node: dict[str, Any], host: str) -> str:
+    """Дополнительный выход Hysteria2 (UDP, самоподписанный сертификат узла проверяется по пину sha256, не skip-cert-verify).
+    Данные берутся из nodes.json: "hy2": {"port": 8443, "password": "...", "pin": "AA:BB:...", "sni": "bing.com"}."""
+    hy2 = node["hy2"]
+    pin = str(hy2["pin"]).replace(":", "").lower()
+    return (
+        "  - {name: "
+        + _quoted(f"{node['flag']} {node['key']} | Hysteria2")
+        + ", type: hysteria2, server: "
+        + _quoted(host)
+        + f", port: {int(hy2['port'])}, password: "
+        + _quoted(hy2["password"])
+        + ", sni: "
+        + _quoted(hy2.get("sni", "bing.com"))
+        + ", fingerprint: "
+        + _quoted(pin)
+        + ", alpn: [h3]}"
+    )
+
+
 def build_subscription(nodes: list[dict[str, Any]], prio: bool = False, ipv4_only: bool = False) -> str:
     """Единая сборка подписки az-vless (её вызывает и production server.py).
 
@@ -105,4 +125,6 @@ def build_subscription(nodes: list[dict[str, Any]], prio: bool = False, ipv4_onl
                 variants.append((str(dual_stack_host), "Dual-Stack" if mode == "прямой" else f"{mode} Dual-Stack"))
             for host, variant in variants:
                 lines.append(_entry(f"{node['flag']} {node['key']} | VLESS {variant}", host, port, node))
+        if node.get("hy2"):  # дополнительный протокол: VLESS-выходы не заменяются и в «Авто» не входят (фильтры по «VLESS»)
+            lines.append(_hy2_entry(node, ipv4_host))
     return "\n".join(lines) + "\n"
