@@ -28,7 +28,8 @@ CLIENT_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
 class ProfileBody(BaseModel):
     profile: Literal["default", "ipv4", "dual"]
-    # Перегенерировать клиентские конфиги WG/AWG (client.sh 4, затрагивает всех клиентов) и обновить AWG3-пир.
+    # True: для клиента БЕЗ AWG3 перегенерировать WG/AWG/OpenVPN-профили (client.sh 4, затрагивает всех; AWG3-конфиги
+    # потом пересоздаются). Для AWG3-клиента не действует: его пир, конфиг и карта обновляются всегда, без client.sh 4.
     regenerate: bool = True
 
 
@@ -94,6 +95,26 @@ def list_client_profiles(db: Session = Depends(get_db), _: User = Depends(requir
     return {"profiles": _read(get_active_adapter(db))}
 
 
+def _awg3_bases(adapter) -> set[str]:
+    """Имена клиентов с AWG3-записями на активном узле; узел без AWG3 -> пусто."""
+    try:
+        return {awg3_clients.base_name(c["name"]) for c in adapter.awg3_list_clients()}
+    except (NotImplementedError, AttributeError):
+        return set()
+
+
+def _refresh_awg3(adapter, client: str) -> list[str]:
+    """Пир+конфиг клиента и карта dual-clients.txt на узле. Ошибка не прячется за HTTP 200: профиль уже записан, можно повторить."""
+    try:
+        done = adapter.awg3_refresh_ipv6(client)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Профиль записан, но AWG 3.0 «{client}» не обновлён: {exc}",
+        ) from exc
+    return ["AWG 3.0: " + ", ".join(done)] if done else []
+
+
 @router.put("/{client}")
 def set_client_profile(
     client: str,
@@ -113,20 +134,21 @@ def set_client_profile(
         current = ""
     adapter.write_config_file(PROFILE_FILE, render_profiles(current, client, body.profile))
     notes: list[str] = []
-    if body.regenerate:
+    awg3_bases = _awg3_bases(adapter)
+    if client in awg3_bases:
+        # AWG3-клиент: пир, его конфиг и карта dual-clients.txt обновляются всегда и только для него.
+        notes.extend(_refresh_awg3(adapter, client))
+        if body.regenerate:
+            notes.append("WG/AWG/OpenVPN-профили клиента не перегенерированы (client.sh 4 трогает всех): примените общую перегенерацию в настройках")
+    elif body.regenerate:
         try:
             adapter.recreate_profiles()
             notes.append("профили WG/AWG перегенерированы")
         except Exception as exc:  # noqa: BLE001 - профиль уже записан, перегенерацию можно повторить
             notes.append(f"перегенерация профилей не удалась: {exc}")
-        try:
-            done = adapter.awg3_refresh_ipv6(client)
-            if done:
-                notes.append("AWG 3.0: " + ", ".join(done))
-        except awg3_clients.Awg3ClientError:
-            pass  # у клиента нет AWG3-записей
-        except (NotImplementedError, AttributeError):
-            pass
+        # client.sh 4 стирает AWG3-конфиги всех клиентов: пересоздаём их из реестра, чтобы ни один не пропал.
+        for other in sorted(awg3_bases):
+            _refresh_awg3(adapter, other)
     log_action(
         db,
         action="client_ipv6_profile",
