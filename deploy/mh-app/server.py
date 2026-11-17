@@ -217,6 +217,30 @@ def poller():
         time.sleep(30)
 
 
+def notifier():
+    """Раз в 30 с: Hysteria2 доступен/недоступен, смена транспорта и резерва, режим сети, потеря связи с роутером (notify.py)."""
+    from notify import Watcher
+    w = Watcher(CFG.get("reserve_nodes", ("FI1", "FR1", "LV1")))
+    while True:
+        try:
+            px = mihomo("/proxies", timeout=10).get("proxies", {})
+            prov = mihomo("/providers/proxies/az-vless", timeout=10).get("proxies", [])
+            msgs = w.link(True)
+            msgs += w.hy2({p["name"]: p.get("alive") is not False for p in prov if "Hysteria2" in p.get("name", "")})
+            for g in (AUTO, "Авто — без Proton"):
+                name = g
+                while name in px and px[name].get("now"):
+                    name = px[name]["now"]
+                if name != g:
+                    msgs += w.auto(g, name)
+            msgs += w.mode((px.get(CARD_MODE) or {}).get("now") or "")
+        except Exception:  # noqa: BLE001 - нет связи с Mihomo: путь проверки, не падение серверов
+            msgs = w.link(False)
+        for m in msgs:
+            tg_manual(m)
+        time.sleep(30)
+
+
 def mode_plan(px, mode):
     """Что переключить, чтобы все карточки пошли через AWG 2.0 (mode=awg2) или обратно на AWG 3.1 (mode=awg3)."""
     plan = []
@@ -680,10 +704,14 @@ def mode_follow():
         mihomo("/providers/proxies/az-vless", "PUT", timeout=30)
 
     def rebuild():
-        subprocess.run([sys.executable, os.path.join(BASE, "build_configs.py")], check=True, timeout=120)
+        subprocess.run(["sudo", "-n", "/usr/bin/python3", "/usr/local/lib/mh-build/build_configs.py"], check=True, timeout=120)
 
     def log(msg):
         print(msg, file=sys.stderr, flush=True)
+        m = re.search(r"режим «(.+?)» НЕ применён: (.*)", str(msg))
+        if m:
+            from notify import apply_error
+            tg_manual(apply_error("сетевой режим", "прежний режим сохранён", m.group(1), m.group(2)))
 
     last = None
     while True:
@@ -699,4 +727,5 @@ if __name__ == "__main__":
     if HOME_MIHOMO:
         threading.Thread(target=poller, daemon=True).start()
         threading.Thread(target=mode_follow, daemon=True).start()
+        threading.Thread(target=notifier, daemon=True).start()
     ThreadingHTTPServer((CFG.get("bind", "127.0.0.1"), PORT), H).serve_forever()

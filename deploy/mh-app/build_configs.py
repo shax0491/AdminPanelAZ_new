@@ -43,6 +43,7 @@ def build(tpl, nodes, work):
     rkeys = "|".join(n["key"] for n in res)
     mkeys = "|".join(n["key"] for n in main)
     res_name = "🌍 Резерв: " + " · ".join(n["key"] for n in res) if res else None
+    res_np_name = "🌍 Резерв без Proton"
     names = [group_name(n) for n in main] + ([res_name] if res else [])
     out, section, skip = [], None, False
     server_groups_done = False
@@ -89,16 +90,26 @@ def build(tpl, nodes, work):
                 continue
             if o["name"] in ("Авто — самый быстрый", "Авто — без Proton") and mkeys:
                 kind = "Proton" if "быстрый" in o["name"] else "прямой"
-                o["filter"] = "(%s) \\| VLESS %s" % (mkeys, kind)    # основные узлы
+                o["filter"] = "(%s) \\| (VLESS %s|Hysteria2)" % (mkeys, kind)    # основные узлы
                 npk = [n["key"] for n in main if not n.get("port_proton")]   # узлы без Proton: в «самый быстрый» идут прямым вариантом
                 if kind == "Proton" and npk:
                     o["filter"] += "|(%s) \\| VLESS прямой" % "|".join(npk)
                 if res:
-                    o["proxies"] = [res_name]                          # + одна карточка резерва
+                    o["proxies"] = [res_name if kind == "Proton" else res_np_name]   # + резерв («без Proton» - его вариант без Proton)
                 out.append("  - " + json.dumps(o, ensure_ascii=False))
                 if res and kind == "прямой":       # карточка резерва: быстрейшая из карточек запасных серверов
-                    out.append("  - " + json.dumps(dict({"name": res_name, "type": "url-test",
-                                                         "proxies": [group_name(n) for n in res], "icon": ICON}, **URL_TEST), ensure_ascii=False))
+                    out.append("  - " + json.dumps(dict({"name": res_name, "type": "url-test", "use": ["az-vless"],
+                                                         "filter": "(%s) \\| (VLESS прямой|VLESS Proton|Hysteria2)" % rkeys, "icon": ICON}, **URL_TEST), ensure_ascii=False))
+                    out.append("  - " + json.dumps(dict({"name": res_np_name, "type": "url-test", "use": ["az-vless"], "hidden": True,
+                                                         "filter": "(%s) \\| (VLESS прямой|Hysteria2)" % rkeys, "icon": ICON}, **URL_TEST), ensure_ascii=False))
+                continue
+            if o["name"] in ("DE прямой (для сайтов с Cloudflare)", "Фикс. выход (стабильный IP)"):
+                o["filter"] = o["filter"].replace("VLESS прямой", "(VLESS прямой|Hysteria2)")
+            if o["name"] == "Исключения (без Proton)":   # «Без Proton» - вложенный вариант «Исключения»: Proton внутри нет
+                out.append("  - " + json.dumps({"name": "Исключения", "type": "select", "icon": o.get("icon", ICON),
+                                                "proxies": ["Фикс. выход (стабильный IP)", "Авто — без Proton", "Без Proton: узлы", "Напрямую (провайдер)"]}, ensure_ascii=False))
+                out.append("  - " + json.dumps({"name": "Без Proton: узлы", "type": "select", "use": ["az-vless"], "hidden": True,
+                                                "filter": "(%s) \\| (VLESS прямой|Hysteria2)" % mkeys, "icon": ICON}, ensure_ascii=False))
                 continue
             if "proxies" in o and any(p in old_server for p in o["proxies"]):
                 new, put = [], False
@@ -140,7 +151,7 @@ def build(tpl, nodes, work):
         if work and section == "rules" and line.strip() == "- DOMAIN-SUFFIX,hoststatus2343.ru,Напрямую (провайдер)":
             continue
         out.append(line)
-    text = "\n".join(out)
+    text = "\n".join(out).replace("Исключения (без Proton)", "Исключения")
     if work:  # скрытые группы для MTProxy на работе: только прямой VLESS одного узла
         groups = "".join('  - {"name": "MTP · %s", "type": "select", "use": ["az-vless"], "filter": "^%s %s \\\\| VLESS прямой$", "hidden": true}\n'
                          % (n["key"], n["flag"], n["key"]) for n in nodes)
