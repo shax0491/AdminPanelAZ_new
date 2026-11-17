@@ -37,6 +37,8 @@ def cfg(tmp_path_factory, monkeypatch_module=None):
     sys.path.insert(0, str(DEPLOY))
     spec.loader.exec_module(mod)
     tpl = (DEPLOY / "templates" / "home.yaml").read_text(encoding="utf-8").split("\n")
+    global MOD
+    MOD = mod
     return yaml.safe_load(mod.build(tpl, NODES, False)), mod.build(tpl, NODES, False)
 
 
@@ -64,19 +66,38 @@ def _leaves(groups, name, seen=()):
 def test_hysteria2_in_auto_reserve_and_fixed_groups(cfg):
     groups = {g["name"]: g for g in cfg[0]["proxy-groups"]}
     for name in ("Авто — самый быстрый", "Авто — без Proton", "🌍 Резерв: FI1 · FR1 · LV1", "DE прямой (для сайтов с Cloudflare)",
-                 "Фикс. выход (стабильный IP)", "Исключения", "🇩🇪 DE1", "🇱🇻 LV1"):
+                 "Фикс. выход (стабильный IP)", "🇩🇪 DE1", "🇱🇻 LV1"):
         assert any("Hysteria2" in n for n in _leaves(groups, name)), name
     assert groups["Фикс. выход (стабильный IP)"]["type"] == "fallback"
 
 
 def test_no_proton_groups_never_reach_proton(cfg):
     groups = {g["name"]: g for g in cfg[0]["proxy-groups"]}
-    for name in ("Авто — без Proton", "Исключения", "Без Proton: узлы", "🌍 Резерв без Proton", "Фикс. выход (стабильный IP)"):
+    for name in ("Авто — без Proton", "🌍 Резерв без Proton", "Фикс. выход (стабильный IP)"):
         assert not any("Proton" in n for n in _leaves(groups, name)), name
 
 
-def test_exceptions_is_single_stable_parent(cfg):
-    assert "Исключения (без Proton)" not in cfg[1]
+def test_exceptions_and_ai_direct_groups_are_gone(cfg):
     names = [g["name"] for g in cfg[0]["proxy-groups"]]
-    assert names.count("Исключения") == 1
-    assert cfg[1].count(",Исключения") >= 1  # правила ссылаются на стабильного родителя
+    for gone in ("Исключения", "Исключения (без Proton)", "Без Proton: узлы", "ИИ — DE4 прямой"):
+        assert gone not in names and ("," + gone) not in cfg[1]
+    assert cfg[1].count(",Фикс. выход (стабильный IP)") >= 9  # Filmix и остальные бывшие «Исключения» ведут в Фикс. выход
+
+
+def test_every_category_has_main_node_hysteria2(cfg):
+    groups = {g["name"]: g for g in cfg[0]["proxy-groups"]}
+    cats = [n for n, g in groups.items() if g["type"] == "select" and "Авто — самый быстрый" in g.get("proxies", [])]
+    assert len(cats) >= 15
+    for n in cats:
+        hy = [l for l in _leaf_names() if re.search(groups[n].get("filter") or "", l) and "Hysteria2" in l]
+        assert {"DE2", "DE1", "DE4", "NL2"} <= {l.split()[1] for l in hy}, n
+
+
+def test_guard_rejects_category_without_hysteria2(cfg):
+    MOD.validate(cfg[1])  # целый конфиг проходит
+    broken = yaml.safe_load(cfg[1])
+    for g in broken["proxy-groups"]:
+        if g["name"] == "Telegram":
+            g.pop("use"); g.pop("filter")
+    with pytest.raises(ValueError, match="нет Hysteria2"):
+        MOD.validate(yaml.safe_dump(broken, allow_unicode=True))

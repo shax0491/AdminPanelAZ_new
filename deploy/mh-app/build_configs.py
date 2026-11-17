@@ -105,12 +105,6 @@ def build(tpl, nodes, work):
                 continue
             if o["name"] in ("DE прямой (для сайтов с Cloudflare)", "Фикс. выход (стабильный IP)"):
                 o["filter"] = o["filter"].replace("VLESS прямой", "(VLESS прямой|Hysteria2)")
-            if o["name"] == "Исключения (без Proton)":   # «Без Proton» - вложенный вариант «Исключения»: Proton внутри нет
-                out.append("  - " + json.dumps({"name": "Исключения", "type": "select", "icon": o.get("icon", ICON),
-                                                "proxies": ["Фикс. выход (стабильный IP)", "Авто — без Proton", "Без Proton: узлы", "Напрямую (провайдер)"]}, ensure_ascii=False))
-                out.append("  - " + json.dumps({"name": "Без Proton: узлы", "type": "select", "use": ["az-vless"], "hidden": True,
-                                                "filter": "(%s) \\| (VLESS прямой|Hysteria2)" % mkeys, "icon": ICON}, ensure_ascii=False))
-                continue
             if "proxies" in o and any(p in old_server for p in o["proxies"]):
                 new, put = [], False
                 for p in o["proxies"]:
@@ -120,6 +114,16 @@ def build(tpl, nodes, work):
                     else:
                         new.append(p)
                 o["proxies"] = new
+            if o.get("type") == "select" and "Авто — самый быстрый" in o.get("proxies", []):
+                # пользовательская категория: Hysteria2 всех узлов отдельными листьями (выбор без «Авто» и без карточки узла);
+                # для work узлы без work берёт exclude-filter провайдера
+                # только основные узлы: Hysteria2 резервных (FI1/FR1/LV1) выбирается в их карточках / через «Резерв»
+                hy = "(%s) \| Hysteria2" % mkeys
+                if o.get("use"):
+                    if hy not in o.get("filter", ""):
+                        o["filter"] = (o.get("filter") or "") + "|" + hy
+                else:
+                    o["use"], o["filter"] = ["az-vless"], hy
             out.append("  - " + json.dumps(o, ensure_ascii=False)); continue
         # работа: Fortinet перехватывает прямые DNS-запросы (62.76.76.62, 77.88.8.8) и подсовывает страницу блокировки -
         # все прямые DNS mihomo - Cloudflare по DoH (Fortinet его не трогает, от туннеля Кинетика не зависит); запросы через «Авто» (Cloudflare по VPN) не трогаем
@@ -151,7 +155,7 @@ def build(tpl, nodes, work):
         if work and section == "rules" and line.strip() == "- DOMAIN-SUFFIX,hoststatus2343.ru,Напрямую (провайдер)":
             continue
         out.append(line)
-    text = "\n".join(out).replace("Исключения (без Proton)", "Исключения")
+    text = "\n".join(out)
     if work:  # скрытые группы для MTProxy на работе: только прямой VLESS одного узла
         groups = "".join('  - {"name": "MTP · %s", "type": "select", "use": ["az-vless"], "filter": "^%s %s \\\\| VLESS прямой$", "hidden": true}\n'
                          % (n["key"], n["flag"], n["key"]) for n in nodes)
@@ -161,7 +165,7 @@ def build(tpl, nodes, work):
     text = text.replace("__MH_SUBSCRIPTION_URL__", HOME_SUBSCRIPTION_URL)
     if work:  # у рабочего роутера нет нативного IPv6: карточка режимов IPv6/IPv4 и v6-правила не нужны, sniffer/dns как раньше
         text = "\n".join(l for l in text.split("\n") if not any(k in l for k in (
-            "Режим IPv6 / IPv4", "Сетевой режим", "Авто Dual-Stack", "Авто (IPv4 + IPv6)", "Приоритет IPv6", "Только IPv4", "IP-CIDR6,fc00::/7", "IP-CIDR6,fe80::/10",
+            "Режим IPv6 / IPv4", "IP-CIDR6,", "Сетевой режим", "Авто Dual-Stack", "Авто (IPv4 + IPv6)", "Приоритет IPv6", "Только IPv4", "IP-CIDR6,fc00::/7", "IP-CIDR6,fe80::/10",
             "IPv6 вне РФ по режиму", "IPv6 к РФ-доменам и нашим MTProxy", "(DOMAIN-SUFFIX,рф),(DOMAIN-SUFFIX,hoststatus2343.ru)", "(DOMAIN-SUFFIX,hoststatus2343.ru),(IP-CIDR6", "MTProxy-домены (AAAA")))
         text = text.replace("override-destination: false", "override-destination: true").replace("enhanced-mode: normal", "enhanced-mode: redir-host")
     # IPv6: /opt/mh-app/ipv6.flag - дом, /opt/mh-app/ipv6-work.flag - работа ("1" = Dual-Stack, иначе только IPv4)
@@ -211,7 +215,58 @@ def check(text):
         return r.returncode == 0, (r.stdout + r.stderr).strip().splitlines()[-1:]
 
 
+def validate(text):
+    """Защита до публикации: у каждой пользовательской категории есть Hysteria2, нет пустых групп, дублей, висячих ссылок, циклов,
+    Proton в группах «без Proton». Ошибка = ValueError, публикация не выполняется, прежний конфиг остаётся."""
+    import yaml
+    c = yaml.safe_load(text)
+    groups = {g["name"]: g for g in c["proxy-groups"]}
+    builtin = {"DIRECT", "REJECT", "PASS", "REJECT-DROP", "COMPATIBLE"}
+    for n, g in groups.items():
+        px = g.get("proxies") or []
+        if not px and not g.get("use"):
+            raise ValueError("пустая группа: " + n)
+        if len(px) != len(set(px)):
+            raise ValueError("дубль в proxies: " + n)
+        for p in px:
+            if p not in groups and p not in builtin and p not in {x["name"] for x in c.get("proxies") or []}:
+                raise ValueError("висячая ссылка %s -> %s" % (n, p))
+        if g.get("type") == "select" and "Авто — самый быстрый" in px and "\| Hysteria2" not in (g.get("filter") or ""):
+            raise ValueError("в категории нет Hysteria2: " + n)
+        if "без Proton" in n or n in ("Фикс. выход (стабильный IP)", "Без Proton: узлы") or n.startswith("DE прямой"):
+            if "Proton" in (g.get("filter") or "") and "VLESS Proton" in (g.get("filter") or "").replace("(VLESS прямой|Hysteria2)", ""):
+                raise ValueError("Proton в группе без Proton: " + n)
+    state = {}
+
+    def dfs(n):
+        if state.get(n) == 1:
+            raise ValueError("цикл через " + n)
+        if state.get(n) == 2 or n not in groups:
+            return
+        state[n] = 1
+        for p in groups[n].get("proxies") or []:
+            dfs(p)
+        state[n] = 2
+    for n in groups:
+        dfs(n)
+    # вложенность «без Proton»: ни одна вложенная группа не должна приводить к Proton
+    def has_proton(n, seen=()):
+        g = groups.get(n)
+        if not g or n in seen:
+            return False
+        if "VLESS Proton" in (g.get("filter") or "") and "прямой" not in (g.get("filter") or "").split("VLESS Proton")[0][-3:]:
+            return True
+        return any(has_proton(p, seen + (n,)) for p in g.get("proxies") or [])
+    for n in groups:
+        if "без Proton" in n and has_proton(n):
+            raise ValueError("Proton достижим из " + n)
+
+
 def publish(name, text):
+    try:
+        validate(text)
+    except ValueError as e:
+        print('%s: ГАРД НЕ ПРОШЁЛ, не публикую: %s' % (name, e)); return False
     ok, msg = check(text)
     if not ok:
         print("%s: ПРОВЕРКА НЕ ПРОШЛА, не публикую: %s" % (name, msg)); return False

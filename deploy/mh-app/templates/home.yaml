@@ -89,11 +89,10 @@ proxy-groups:
   - {"name": "🇳🇱 NL2", "type": "select", "use": ["az-vless"], "filter": "NL2", "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
   - {"name": "🇱🇻 LV1", "type": "select", "use": ["az-vless"], "filter": "LV1", "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png"}
   - {"name": "Заблокированное в РФ", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Russia.png"}
-  - {"name": "Исключения (без Proton)", "type": "select", "proxies": ["Фикс. выход (стабильный IP)", "Авто — без Proton", "Напрямую (провайдер)", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Bypass.png"}
   - {"name": "Фикс. выход (стабильный IP)", "type": "fallback", "use": ["az-vless"], "filter": "(DE2|DE4|DE1|NL2) \\| VLESS прямой", "url": "http://www.gstatic.com/generate_204", "interval": 120, "lazy": false, "hidden": true, "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Direct.png"}
   - {"name": "YouTube", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/YouTube.png"}
   - {"name": "Telegram", "type": "select", "proxies": ["Авто — без Proton", "Авто — самый быстрый", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Telegram.png"}
-  - {"name": "ИИ — ChatGPT и Claude", "type": "select", "use": ["az-vless"], "filter": "DE1|DE4|FI1|FR1", "proxies": ["Авто — без Proton", "Авто — самый быстрый", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/ChatGPT.png"}
+  - {"name": "ИИ — ChatGPT и Claude", "type": "select", "use": ["az-vless"], "filter": "DE4 \\| (VLESS прямой|Hysteria2)|DE1|FI1|FR1", "proxies": ["Авто — без Proton", "Авто — самый быстрый", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/ChatGPT.png"}
   - {"name": "Discord", "type": "select", "proxies": ["Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Discord.png"}
   - {"name": "Google", "type": "select", "proxies": ["Авто — без Proton", "Авто — самый быстрый", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1", "Напрямую (провайдер)"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Google_Search.png"}
   - {"name": "GitHub", "type": "select", "proxies": ["Напрямую (провайдер)", "Авто — самый быстрый", "Авто — без Proton", "🇩🇪 DE2", "🇩🇪 DE1", "🇩🇪 DE4", "🇳🇱 NL2", "🇱🇻 LV1"], "icon": "https://cdn.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/GitHub.png"}
@@ -246,38 +245,38 @@ rule-providers:
 rules:
   # IPV6MODE: режим стека. IPv6 вне РФ -> карточка (Только IPv4 = REJECT, клиент мгновенно берёт IPv4). IPv4 никогда не режем: сайты без AAAA открываются штатно
   - AND,((IP-CIDR6,::/0,no-resolve),(NOT,((GEOIP,ru,no-resolve))),(NOT,((GEOIP,private,no-resolve)))),🌐 Сетевой режим # IPV6MODE
-  # alphavps.com: Cloudflare 1020 блокирует Proton/WARP - ведём через «Исключения» (чистый прямой выход DE, не домашний провайдер) (03.11)
-  - DOMAIN-SUFFIX,alphavps.com,Исключения (без Proton)
+  # alphavps.com: Cloudflare 1020 блокирует Proton/WARP - ведём через «Фикс. выход» (стабильный прямой выход DE, не домашний провайдер) (03.11)
+  - DOMAIN-SUFFIX,alphavps.com,Фикс. выход (стабильный IP)
   # медиа-стек Лампы/Filmix/трекеры (03.11): мимо Proton (его IPv6-выход режут CDN), чистый прямой выход DE
-  - DOMAIN-SUFFIX,filmix.my,Исключения (без Proton)
-  - DOMAIN-SUFFIX,filmix.ac,Исключения (без Proton)
-  - DOMAIN-SUFFIX,filmix.fm,Исключения (без Proton)
-  - DOMAIN-SUFFIX,filmix.tv,Исключения (без Proton)
-  - DOMAIN-SUFFIX,filmix.biz,Исключения (без Proton)
-  - DOMAIN-SUFFIX,filmix.net,Исключения (без Proton)
-  - DOMAIN-SUFFIX,filmix.me,Исключения (без Proton)
-  - DOMAIN-SUFFIX,filmixapp.cyou,Исключения (без Proton)
-  - DOMAIN-SUFFIX,filmixapp.com,Исключения (без Proton)
-  - DOMAIN-SUFFIX,megapeer.vip,Исключения (без Proton)
-  - DOMAIN-SUFFIX,bitru.org,Исключения (без Proton)
-  - DOMAIN-SUFFIX,rutor.info,Исключения (без Proton)
-  - DOMAIN-SUFFIX,rutor.is,Исключения (без Proton)
-  - DOMAIN-SUFFIX,nnmclub.to,Исключения (без Proton)
-  - DOMAIN-SUFFIX,bigfangroup.org,Исключения (без Proton)
-  - DOMAIN-SUFFIX,anifilm.pro,Исключения (без Proton)
-  - DOMAIN-SUFFIX,anilibria.tv,Исключения (без Proton)
-  - DOMAIN-SUFFIX,kinozal.tv,Исключения (без Proton)
+  - DOMAIN-SUFFIX,filmix.my,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,filmix.ac,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,filmix.fm,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,filmix.tv,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,filmix.biz,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,filmix.net,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,filmix.me,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,filmixapp.cyou,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,filmixapp.com,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,megapeer.vip,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,bitru.org,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,rutor.info,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,rutor.is,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,nnmclub.to,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,bigfangroup.org,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,anifilm.pro,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,anilibria.tv,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,kinozal.tv,Фикс. выход (стабильный IP)
   # Домены, которые банит Proton или которым нужен один постоянный IP (RuTracker: cookie Cloudflare/сессия привязаны к IP; 03.11)
-  - DOMAIN-SUFFIX,rutracker.org,Исключения (без Proton)
-  - DOMAIN-SUFFIX,rutracker.net,Исключения (без Proton)
-  - DOMAIN-SUFFIX,rutracker.nl,Исключения (без Proton)
-  - DOMAIN-SUFFIX,rutracker.cr,Исключения (без Proton)
-  - DOMAIN-SUFFIX,t-ru.org,Исключения (без Proton)
-  - DOMAIN-SUFFIX,rutrk.org,Исключения (без Proton)
-  - DOMAIN-SUFFIX,imgur.com,Исключения (без Proton)
-  - DOMAIN-SUFFIX,danbooru.donmai.us,Исключения (без Proton)
-  - DOMAIN-SUFFIX,editmysite.com,Исключения (без Proton)
-  - DOMAIN-SUFFIX,screamingfrog.co.uk,Исключения (без Proton)
+  - DOMAIN-SUFFIX,rutracker.org,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,rutracker.net,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,rutracker.nl,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,rutracker.cr,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,t-ru.org,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,rutrk.org,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,imgur.com,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,danbooru.donmai.us,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,editmysite.com,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,screamingfrog.co.uk,Фикс. выход (стабильный IP)
   # ЮТУБ — только группа «YouTube» (раньше всех Google-правил)
   - DOMAIN-SUFFIX,youtubei.googleapis.com,YouTube
   - DOMAIN,youtube.googleapis.com,YouTube
@@ -311,8 +310,8 @@ rules:
   - DOMAIN-SUFFIX,gvt1.com,Google
   - DOMAIN-SUFFIX,withgoogle.com,Google
   # 4pda.to напрямую у провайдера не открывается в браузере (ответ на TLS-запрос не приходит, curl проходит) - через VPN (30.10)
-  - DOMAIN-SUFFIX,4pda.to,Исключения (без Proton)
-  - DOMAIN-SUFFIX,4pda.ru,Исключения (без Proton)
+  - DOMAIN-SUFFIX,4pda.to,Фикс. выход (стабильный IP)
+  - DOMAIN-SUFFIX,4pda.ru,Фикс. выход (стабильный IP)
   # кухонный ТВ (AT_MiTVStick, 192.168.1.61): телеметрия и реклама Xiaomi/Google - REJECT (30.10, по просьбе)
   - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,mistat.xiaomi.com)),REJECT
   - AND,((SRC-IP-CIDR,192.168.1.61/32),(DOMAIN-SUFFIX,mistat.intl.xiaomi.com)),REJECT
