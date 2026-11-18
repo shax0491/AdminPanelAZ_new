@@ -1,5 +1,10 @@
 # 🛡️ AdminPanel AntiZapret
 
+> **IPv6 У КЛИЕНТА РАБОТАЕТ ТОЛЬКО ЕСЛИ ПРОВАЙДЕР РЕАЛЬНО ВЫДАЁТ IPv6 ИЛИ ЕСТЬ РАБОЧИЙ IPv6-ТУННЕЛЬ. IPv6 НА VPS И AAAA-ЗАПИСЬ САМИ ПО СЕБЕ IPv6 КЛИЕНТУ НЕ СОЗДАЮТ.**
+> Конфиги Mihomo, Hysteria2, MTProxyL и SSH через прыжок: [docs/mh-app.md](docs/mh-app.md)
+
+
+
 Веб-панель для администрирования VPN-сервера [AntiZapret](https://github.com/shax0491/AntiZapret-VPN_new): клиенты, маршрутизация, мониторинг, бэкапы, Telegram.
 
 [![GitHub](https://img.shields.io/badge/GitHub-shax0491%2FAdminPanelAZ__new-181717?style=for-the-badge&logo=github)](https://github.com/shax0491/AdminPanelAZ_new)
