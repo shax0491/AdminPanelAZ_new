@@ -54,6 +54,15 @@ export function NodeEgressGuardStatus({ node }: { node: Node }) {
     };
   }, []);
 
+  // статус тянем сам при открытии карточки и раз в минуту (раньше только по кнопке «Обновить»)
+  useEffect(() => {
+    if (node.node_kind !== 'vpn') return undefined;
+    void refresh();
+    const timer = setInterval(() => void refresh(), 60_000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node.id, node.node_kind]);
+
   if (node.node_kind !== 'vpn') return null;
 
   async function refresh() {
@@ -133,7 +142,7 @@ export function NodeEgressGuardStatus({ node }: { node: Node }) {
       {!loaded && !busy && !error && (
         <p className="text-sm text-muted-foreground">
           Статус не загружен. Нажмите «Обновить», чтобы проверить состояние guard на узле
-          (запрос выполняется через SSH/agent и автоматически не выполняется).
+          (статус подгружается автоматически при открытии и раз в минуту).
         </p>
       )}
 
