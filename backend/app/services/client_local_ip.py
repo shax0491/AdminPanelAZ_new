@@ -105,11 +105,12 @@ def load_wireguard_local_ip_map(adapter: NodeAdapter) -> dict[str, str]:
             for ip in ips:
                 if ip not in bucket:
                     bucket.append(ip)
-    # Fallback: live wg dump (covers peers still in runtime)
+    # Fallback: live wg dump, only for clients missing from the server confs.
+    # Merging it for every client piled other peers' IPs onto one name (5 IPs on one card).
     try:
         for peer in adapter.parse_wireguard_status():
             name = (peer.client_name or "").strip().lower()
-            if not name:
+            if not name or name in collected:
                 continue
             _merge_ip(collected, name, peer.allowed_ips)
     except Exception:

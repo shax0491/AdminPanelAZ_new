@@ -26,16 +26,16 @@ describe('NodeEgressGuardStatus', () => {
     expect(mockedGet).not.toHaveBeenCalled();
   });
 
-  it('не загружает статус автоматически, первая загрузка по кнопке', () => {
+  it('загружает статус сам при открытии, без клика', async () => {
+    mockedGet.mockResolvedValue({ installed: false, errors: [] });
     render(<NodeEgressGuardStatus node={vpnNode} />);
-    expect(mockedGet).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: /обновить/i })).toBeTruthy();
+    expect(await screen.findByText('Guard: не установлен')).toBeTruthy();
+    expect(mockedGet).toHaveBeenCalledWith(7);
   });
 
   it('installed=false показывает подсказку про az-guard', async () => {
     mockedGet.mockResolvedValue({ installed: false, errors: [] });
     render(<NodeEgressGuardStatus node={vpnNode} />);
-    fireEvent.click(screen.getByRole('button', { name: /обновить/i }));
     expect(await screen.findByText(/az-guard не установлен/i)).toBeTruthy();
     expect(screen.getByText('Guard: не установлен')).toBeTruthy();
     expect(mockedGet).toHaveBeenCalledWith(7);
@@ -62,7 +62,6 @@ describe('NodeEgressGuardStatus', () => {
       layers_v6: [],
     });
     render(<NodeEgressGuardStatus node={vpnNode} />);
-    fireEvent.click(screen.getByRole('button', { name: /обновить/i }));
     expect(await screen.findByText('Guard: активен')).toBeTruthy();
     expect(screen.getAllByText('ens3').length).toBeGreaterThan(0);
     expect(screen.getByText('live')).toBeTruthy();
@@ -73,7 +72,6 @@ describe('NodeEgressGuardStatus', () => {
   it('ошибка API отображается через role=alert', async () => {
     mockedGet.mockRejectedValue(new Error('SSH timeout'));
     render(<NodeEgressGuardStatus node={vpnNode} />);
-    fireEvent.click(screen.getByRole('button', { name: /обновить/i }));
     expect((await screen.findByRole('alert')).textContent).toContain('SSH timeout');
   });
 
