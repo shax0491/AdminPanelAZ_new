@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models import TrafficSessionState, VpnType
+from app.services.awg3_clients import base_name as awg3_base_name
 from app.services.node_adapter import NodeAdapter
 
 logger = logging.getLogger(__name__)
@@ -118,6 +119,21 @@ def load_wireguard_local_ip_map(adapter: NodeAdapter) -> dict[str, str]:
     return _format_map(collected)
 
 
+def load_awg3_local_ip_map(adapter: NodeAdapter) -> dict[str, str]:
+    """AWG3 registry keeps two records per client (<name>_az, <name>_vpn); merge them by base name."""
+    collected: dict[str, list[str]] = {}
+    try:
+        records = adapter.awg3_list_clients()
+    except Exception:
+        logger.debug("local ip: awg3 list failed", exc_info=True)
+        return {}
+    for record in records:
+        key = awg3_base_name(str(record.get("name") or "")).strip().lower()
+        if key:
+            _merge_ip(collected, key, record.get("ip"))
+    return _format_map(collected)
+
+
 def load_openvpn_local_ip_map(
     adapter: NodeAdapter,
     db: Session | None = None,
@@ -187,9 +203,11 @@ def build_client_local_ip_map(
 
     wg_names: set[str] | None = None
     ovpn_names: set[str] | None = None
+    awg3_names: set[str] | None = None
     if configs is not None:
         wg_names = set()
         ovpn_names = set()
+        awg3_names = set()
         for config in configs:
             key = (getattr(config, "client_name", "") or "").strip().lower()
             if not key:
@@ -197,12 +215,20 @@ def build_client_local_ip_map(
             vpn_type = getattr(config, "vpn_type", None)
             if vpn_type == VpnType.wireguard or vpn_type == "wireguard":
                 wg_names.add(key)
+            elif vpn_type == VpnType.amneziawg3 or vpn_type == "amneziawg3":
+                awg3_names.add(key)
             else:
                 ovpn_names.add(key)
 
     if configs is None or wg_names:
         for key, ip in load_wireguard_local_ip_map(adapter).items():
             if wg_names is not None and key not in wg_names:
+                continue
+            _merge_ip(collected, key, ip)
+
+    if configs is None or awg3_names:
+        for key, ip in load_awg3_local_ip_map(adapter).items():
+            if awg3_names is not None and key not in awg3_names:
                 continue
             _merge_ip(collected, key, ip)
 

@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models import Node, VpnConfig, VpnType
+from app.services.awg3_clients import base_name as awg3_base_name
 from app.services.client_portal import cleanup_deleted_client_records
 from app.services.node_manager import get_adapter_for_node
 from app.services.node_sync.client_sync import purge_ha_shadow_configs
@@ -34,7 +35,10 @@ def _is_on_disk(
     ovpn_on_disk: set[str],
     wg_on_disk: set[str],
     awg2_on_disk: set[str],
+    awg3_on_disk: set[str] | None = None,
 ) -> bool:
+    if vpn_type == VpnType.amneziawg3:
+        return client_name in (awg3_on_disk or set())
     if vpn_type == VpnType.openvpn:
         return client_name in ovpn_on_disk
     if vpn_type == VpnType.amneziawg2:
@@ -48,14 +52,19 @@ def _remove_stale_configs(
     ovpn_on_disk: set[str],
     wg_on_disk: set[str],
     awg2_on_disk: set[str] | None,
+    awg3_on_disk: set[str] | None = None,
 ) -> int:
-    """Remove VpnConfig rows for this node that no longer exist on disk; ``None`` leaves AWG2 rows alone."""
+    """Remove VpnConfig rows for this node that no longer exist on disk; ``None`` leaves AWG2/AWG3 rows alone."""
     removed = 0
     configs = db.query(VpnConfig).filter(VpnConfig.node_id == node_id).all()
     for config in configs:
         if awg2_on_disk is None and config.vpn_type == VpnType.amneziawg2:
             continue
-        if _is_on_disk(config.client_name, config.vpn_type, ovpn_on_disk, wg_on_disk, awg2_on_disk or set()):
+        if awg3_on_disk is None and config.vpn_type == VpnType.amneziawg3:
+            continue
+        if _is_on_disk(
+            config.client_name, config.vpn_type, ovpn_on_disk, wg_on_disk, awg2_on_disk or set(), awg3_on_disk
+        ):
             continue
         if config.ha_primary_config_id is None:
             purge_ha_shadow_configs(db, config.id)
@@ -79,6 +88,12 @@ def import_clients_from_disk(db: Session, node: Node, owner_id: int) -> ConfigDi
     except (HTTPException, ConnectionError, OSError) as exc:
         logger.warning("Skipping AWG2 import probe for node %s: %s", node_id, exc)
         awg2_on_disk = None
+    awg3_on_disk: set[str] | None
+    try:
+        awg3_on_disk = {awg3_base_name(c["name"]) for c in adapter.awg3_list_clients()}
+    except (HTTPException, ConnectionError, OSError) as exc:
+        logger.warning("Skipping AWG3 import probe for node %s: %s", node_id, exc)
+        awg3_on_disk = None
 
     for client_name in ovpn_on_disk:
         exists = (
@@ -152,7 +167,28 @@ def import_clients_from_disk(db: Session, node: Node, owner_id: int) -> ConfigDi
             )
             imported += 1
 
-    removed = _remove_stale_configs(db, node_id, ovpn_on_disk, wg_on_disk, awg2_on_disk)
+    for client_name in awg3_on_disk or ():
+        exists = (
+            db.query(VpnConfig)
+            .filter(
+                VpnConfig.node_id == node_id,
+                VpnConfig.client_name == client_name,
+                VpnConfig.vpn_type == VpnType.amneziawg3,
+            )
+            .first()
+        )
+        if not exists:
+            db.add(
+                VpnConfig(
+                    node_id=node_id,
+                    client_name=client_name,
+                    vpn_type=VpnType.amneziawg3,
+                    owner_id=owner_id,
+                )
+            )
+            imported += 1
+
+    removed = _remove_stale_configs(db, node_id, ovpn_on_disk, wg_on_disk, awg2_on_disk, awg3_on_disk)
 
     db.commit()
     return ConfigDiskSyncResult(imported=imported, removed=removed, awg2_skipped=awg2_on_disk is None)

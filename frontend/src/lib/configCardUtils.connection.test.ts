@@ -126,6 +126,12 @@ describe('buildClientConnectionMap / isConfigConnected', () => {
     expect(isConfigConnected('dave', 'wireguard', map)).toBe(false)
     expect(isConfigConnected('dave', 'amneziawg2', map)).toBe(true)
   })
+
+  it('amneziawg3 takes the local IP from the backend, not from a same-named wireguard peer', () => {
+    const map = { ab_phone: { localIp: '10.28.8.8' } } as never
+    expect(getConfigLocalIp('AB_Phone', map, '10.9.0.2, 10.9.1.2', 'amneziawg3')).toBe('10.9.0.2, 10.9.1.2')
+    expect(getConfigLocalIp('AB_Phone', map, null, 'amneziawg3')).toBeNull()
+  })
 })
 
 describe('resolveDisplayedTraffic', () => {

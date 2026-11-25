@@ -553,6 +553,8 @@ export function getConfigLocalIp(
   tab?: ProtocolTab,
 ): string | null {
   const entry = connectionMap?.[clientName.trim().toLowerCase()]
+  // AWG3: the map is keyed by name across all nodes (a same-named WireGuard client would leak in); use the backend value.
+  if (tab === 'amneziawg3') return (fallback || '').trim() || null
   const fromMap = tab === 'amneziawg2' ? entry?.amneziawg2Ip : entry?.localIp
   const value = (fromMap || fallback || '').trim()
   return value || null
