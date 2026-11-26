@@ -56,6 +56,7 @@ router.include_router(configs_router)
 router.include_router(me_configs_router)
 router.include_router(me_redeem_router)
 router.include_router(settings_router)
+router.include_router(status_router)
 router.add_api_route("/assets/{file_path:path}", mini_app_asset, include_in_schema=False, methods=["GET"])
 router.add_api_route("", mini_app_page, methods=["GET"])
 
