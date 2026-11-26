@@ -244,6 +244,15 @@ ANTIZAPRET_PARAMS = [
         "description": "При обновлении списков AntiZapret переподключает встроенный WARP, если сервер работает больше минуты — помогает, когда WARP «отвалился» и домены идут напрямую. Нужно «Применить (doall.sh)»",
     },
     {
+        "key": "DEFAULT_IP",
+        "env": "DEFAULT_IP",
+        "type": "string",
+        "default": "",
+        "html_id": "DEFAULT_IP-input",
+        "title": "Входной IP сервера",
+        "description": "При нескольких IP на сервере — IP, который попадает в клиентские конфиги (client.sh). Пусто — определяется автоматически. Нужен AntiZapret-VPN с 26.11.2026; на узлах за GRE (noez) укажите входной IP.",
+    },
+    {
         "key": "ANTIZAPRET_OUT_IP",
         "env": "ANTIZAPRET_OUT_IP",
         "type": "string",

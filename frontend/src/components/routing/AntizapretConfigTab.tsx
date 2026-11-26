@@ -116,6 +116,7 @@ const FIELD_SECTIONS: {
       'scan_protection',
       'torrent_guard',
       'restrict_forward',
+      'DEFAULT_IP',
       'ANTIZAPRET_OUT_IP',
       'VPN_OUT_IP',
     ],
