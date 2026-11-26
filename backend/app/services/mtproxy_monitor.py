@@ -260,7 +260,9 @@ def _monitored_nodes(db, node_id: int | None):
     query = db.query(Node).filter(Node.status == NodeStatus.online, Node.node_kind.in_(("vpn", "mtproxy")))
     if node_id is not None:
         query = query.filter(Node.id == node_id)
-    return query.order_by(Node.id.asc()).all()
+    nodes = query.order_by(Node.id.asc()).all()
+    _prefetch(nodes)
+    return nodes
 
 
 def mtproxy_down_value(db, node_id: int | None) -> float | None:
@@ -333,6 +335,16 @@ def mtproxy_quota_users(db, node_id: int | None, min_pct: float) -> list[str]:
     return lines
 
 
+def _prefetch(nodes) -> None:
+    """Опрашивает узлы параллельно, чтобы холодный кэш не складывал время всех узлов подряд."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    nodes = list(nodes)
+    if len(nodes) > 1:
+        with ThreadPoolExecutor(max_workers=min(8, len(nodes))) as pool:
+            list(pool.map(node_mtproxy_status, nodes))
+
+
 def mtproxy_overview(db) -> list[dict]:
     """Сводка по узлам с MTProxyL для страницы мониторинга и бота."""
     rows: list[dict] = []
@@ -356,9 +368,9 @@ def mtproxy_all_nodes(db) -> list[dict]:
     from app.services.node_manager import is_mtproxy_node, is_vpn_node
 
     rows: list[dict] = []
-    for node in db.query(Node).order_by(Node.id.asc()).all():
-        if not (is_vpn_node(node) or is_mtproxy_node(node)):
-            continue
+    all_nodes = [n for n in db.query(Node).order_by(Node.id.asc()).all() if is_vpn_node(n) or is_mtproxy_node(n)]
+    _prefetch(n for n in all_nodes if n.status == NodeStatus.online)
+    for node in all_nodes:
         row: dict = {"node_id": node.id, "node_name": node.name, "node_online": node.status == NodeStatus.online,
                      "node_kind": node.node_kind or "vpn"}
         status = node_mtproxy_status(node) if row["node_online"] else None
